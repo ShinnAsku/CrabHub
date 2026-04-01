@@ -40,13 +40,16 @@ jobs:
             pkg-config \
             build-essential
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install pnpm
-        run: npm install -g pnpm
+          cache: 'pnpm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -59,10 +62,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install frontend dependencies
-        run: pnpm install
-
-      - name: Install Tauri CLI
-        run: pnpm add -D @tauri-apps/cli@latest
+        run: pnpm install --frozen-lockfile=false
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
