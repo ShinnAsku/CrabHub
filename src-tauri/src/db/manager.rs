@@ -139,64 +139,92 @@ impl DatabaseConnection for PostgresConnection {
                 let name = col.name().to_string();
                 let type_name = col.type_info().name();
                 let value = match type_name {
-                    "BOOL" => row
-                        .try_get::<bool, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::Bool)
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "INT2" | "INT4" | "INT8" => row
-                        .try_get::<i64, _>(col.name())
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "FLOAT4" | "FLOAT8" => row
-                        .try_get::<f64, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::from)
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "NUMERIC" | "MONEY" => row
-                        .try_get::<Decimal, _>(col.name())
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "TEXT" | "VARCHAR" | "CHAR" | "BPCHAR" | "NAME" | "UUID" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATE" | "TIME" | "TIMETZ" | "INTERVAL" | "TIMESTAMP" | "TIMESTAMPTZ" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "JSON" | "JSONB" => row
-                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
-                        .ok()
-                        .map(|v| v.0)
-                        .unwrap_or(serde_json::Value::Null),
-                    _ => {
-                        if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                    "BOOL" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<bool>, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(v) = row.try_get::<bool, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
                             serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "INT2" | "INT4" | "INT8" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "FLOAT4" | "FLOAT8" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
+                            serde_json::Value::from(v)
+                        } else if let Ok(v) = row.try_get::<f64, _>(col.name()) {
+                            serde_json::Value::from(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "NUMERIC" | "MONEY" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<Decimal>, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(v) = row.try_get::<Decimal, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "TEXT" | "VARCHAR" | "CHAR" | "BPCHAR" | "NAME" | "UUID" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "DATE" | "TIME" | "TIMETZ" | "INTERVAL" | "TIMESTAMP" | "TIMESTAMPTZ" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "JSON" | "JSONB" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(col.name()) {
+                            v.0
+                        } else if let Ok(v) = row.try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name()) {
+                            v.0
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    _ => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<Vec<u8>>, _>(col.name()) {
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
                         } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
                             serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
                         } else {
@@ -544,64 +572,92 @@ impl DatabaseConnection for MySqlConnection {
                 let name = col.name().to_string();
                 let type_name = col.type_info().name();
                 let value = match type_name {
-                    "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "INTEGER" | "BIGINT" => row
-                        .try_get::<i64, _>(col.name())
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "FLOAT" | "DOUBLE" => row
-                        .try_get::<f64, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::from)
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DECIMAL" | "NUMERIC" => row
-                        .try_get::<Decimal, _>(col.name())
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "CHAR" | "VARCHAR" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT" | "ENUM" | "SET" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "BOOLEAN" | "BOOL" => row
-                        .try_get::<bool, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::Bool)
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "JSON" => row
-                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
-                        .ok()
-                        .map(|v| v.0)
-                        .unwrap_or(serde_json::Value::Null),
-                    _ => {
-                        if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                    "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "INTEGER" | "BIGINT" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
                             serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "FLOAT" | "DOUBLE" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
+                            serde_json::Value::from(v)
+                        } else if let Ok(v) = row.try_get::<f64, _>(col.name()) {
+                            serde_json::Value::from(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "DECIMAL" | "NUMERIC" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<Decimal>, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(v) = row.try_get::<Decimal, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "CHAR" | "VARCHAR" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT" | "ENUM" | "SET" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "BOOLEAN" | "BOOL" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<bool>, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(v) = row.try_get::<bool, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "JSON" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(col.name()) {
+                            v.0
+                        } else if let Ok(v) = row.try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name()) {
+                            v.0
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    _ => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<Vec<u8>>, _>(col.name()) {
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
                         } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
                             serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
                         } else {
@@ -883,59 +939,88 @@ impl DatabaseConnection for SQLiteConnection {
                 let name = col.name().to_string();
                 let type_name = col.type_info().name();
                 let value = match type_name {
-                    "INTEGER" | "INT" | "BIGINT" => row
-                        .try_get::<i64, _>(col.name())
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "REAL" | "FLOAT" | "DOUBLE" => row
-                        .try_get::<f64, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::from)
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "NUMERIC" | "DECIMAL" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "TEXT" | "VARCHAR" | "CHAR" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "BOOLEAN" | "BOOL" => row
-                        .try_get::<bool, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::Bool)
-                        .or_else(|| {
-                            row.try_get::<String, _>(col.name())
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => row
-                        .try_get::<String, _>(col.name())
-                        .ok()
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                    "JSON" => row
-                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
-                        .ok()
-                        .map(|v| v.0)
-                        .unwrap_or(serde_json::Value::Null),
-                    _ => {
-                        if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                    "INTEGER" | "INT" | "BIGINT" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
+                            serde_json::Value::String(v.to_string())
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
                             serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "REAL" | "FLOAT" | "DOUBLE" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
+                            serde_json::Value::from(v)
+                        } else if let Ok(v) = row.try_get::<f64, _>(col.name()) {
+                            serde_json::Value::from(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "NUMERIC" | "DECIMAL" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "TEXT" | "VARCHAR" | "CHAR" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "BOOLEAN" | "BOOL" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<bool>, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(v) = row.try_get::<bool, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "JSON" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(col.name()) {
+                            v.0
+                        } else if let Ok(v) = row.try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name()) {
+                            v.0
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    _ => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<Vec<u8>>, _>(col.name()) {
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
                         } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
                             serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
                         } else {
