@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import Editor, { type OnMount, loader } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
 import {
   Play,
   AlignLeft,
@@ -24,6 +25,9 @@ import TableDesigner from "./TableDesigner";
 import QueryAnalyzer from "./QueryAnalyzer";
 
 type ResultTab = "results" | "messages" | "plan";
+
+// Configure Monaco Editor to use local files instead of CDN
+loader.config({ monaco });
 
 function isSelectQuery(sql: string): boolean {
   const trimmed = sql.trim().toUpperCase();

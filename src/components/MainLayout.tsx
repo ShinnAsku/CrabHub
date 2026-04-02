@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { useAppStore, type Connection } from "@/stores/app-store";
+import { useAppStore, type Connection, type SchemaNode } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 import Toolbar from "./Toolbar";
 import Sidebar from "./Sidebar";
+import NavicatMainPanel from "./NavicatMainPanel";
 import TabBar from "./TabBar";
 import EditorPanel from "./EditorPanel";
 import AIPanel from "./AIPanel";
@@ -24,8 +25,14 @@ function MainLayout() {
     activeTabId,
     tabs,
     activeConnectionId,
+    connections,
     snippetPanelOpen,
     toggleSnippetPanel,
+    setSelectedSchemaId,
+    selectedSchemaName,
+    setSelectedSchemaName,
+    setSelectedTable,
+    setSelectedTableId,
   } = useAppStore();
 
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
@@ -166,6 +173,20 @@ function MainLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [addTab, closeTab, activeTabId, tabs.length, toggleSidebar, toggleAIPanel]);
 
+  const handleSchemaClick = useCallback((schemaName: string, connectionId: string) => {
+    setSelectedSchemaName(schemaName);
+    setSelectedSchemaId(`${connectionId}-${schemaName}`);
+  }, [setSelectedSchemaId, setSelectedSchemaName]);
+
+  const handleTableClick = useCallback((table: SchemaNode, _connectionId: string) => {
+    setSelectedTable(table);
+    setSelectedTableId(table.id);
+  }, [setSelectedTable, setSelectedTableId]);
+
+  const activeConnection = activeConnectionId
+    ? connections.find((c) => c.id === activeConnectionId) || null
+    : null;
+
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">
       {/* Top Toolbar */}
@@ -179,22 +200,26 @@ function MainLayout() {
         onOpenDataMigration={() => setDataMigrationOpen(true)}
       />
 
-      {/* Main Content: Sidebar + Center Area */}
+      {/* Main Content: Sidebar + Navicat Panel */}
       <PanelGroup direction="horizontal">
         {/* Left Sidebar (Connection Tree) */}
         {sidebarOpen && (
           <Panel defaultSize={18} minSize={12} maxSize={30}>
-            <Sidebar openConnectionDialog={handleOpenConnectionDialog} />
+            <Sidebar openConnectionDialog={handleOpenConnectionDialog} onSchemaClick={handleSchemaClick} onTableClick={handleTableClick} />
           </Panel>
         )}
         {sidebarOpen && <PanelResizeHandle className="w-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-col-resize" />}
 
-        {/* Center: Tab Bar + Editor + Result */}
+        {/* Center: Navicat-style Panel */}
         <Panel>
-          <div className="flex flex-col h-full">
-            <TabBar />
-            <EditorPanel />
-          </div>
+          {activeConnection ? (
+            <NavicatMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />
+          ) : (
+            <div className="flex flex-col h-full">
+              <TabBar />
+              <EditorPanel />
+            </div>
+          )}
         </Panel>
       </PanelGroup>
 

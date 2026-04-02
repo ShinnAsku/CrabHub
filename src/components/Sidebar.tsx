@@ -32,11 +32,13 @@ import QueryHistory from "./QueryHistory";
 
 interface SidebarProps {
   openConnectionDialog: (editConnection?: Connection) => void;
+  onSchemaClick?: (schemaName: string, connectionId: string) => void;
+  onTableClick?: (table: SchemaNode, connectionId: string) => void;
 }
 
 type SidebarView = "connections" | "history";
 
-function Sidebar({ openConnectionDialog }: SidebarProps) {
+function Sidebar({ openConnectionDialog, onSchemaClick, onTableClick: _onTableClick }: SidebarProps) {
   const [view, setView] = useState<SidebarView>("connections");
 
   return (
@@ -83,7 +85,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {view === "connections" ? (
-          <ConnectionList openConnectionDialog={openConnectionDialog} />
+          <ConnectionList openConnectionDialog={openConnectionDialog} onSchemaClick={onSchemaClick} onTableClick={_onTableClick} />
         ) : (
           <QueryHistory />
         )}
@@ -96,8 +98,12 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
 
 function ConnectionList({
   openConnectionDialog,
+  onSchemaClick,
+  onTableClick,
 }: {
   openConnectionDialog: (editConnection?: Connection) => void;
+  onSchemaClick?: (schemaName: string, connectionId: string) => void;
+  onTableClick?: (table: SchemaNode, connectionId: string) => void;
 }) {
   const { connections } = useAppStore();
 
@@ -120,6 +126,8 @@ function ConnectionList({
           key={conn.id}
           connection={conn}
           openConnectionDialog={openConnectionDialog}
+          onSchemaClick={onSchemaClick}
+          onTableClick={onTableClick}
         />
       ))}
     </div>
@@ -131,9 +139,13 @@ function ConnectionList({
 function ConnectionItem({
   connection,
   openConnectionDialog,
+  onSchemaClick,
+  onTableClick,
 }: {
   connection: Connection;
   openConnectionDialog: (editConnection?: Connection) => void;
+  onSchemaClick?: (schemaName: string, connectionId: string) => void;
+  onTableClick?: (table: SchemaNode, connectionId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -208,9 +220,17 @@ function ConnectionItem({
 
       const nodes: SchemaNode[] = [];
 
-      if (schemas.length > 0) {
-        // Multi-schema database (PostgreSQL, etc.)
-        for (const schemaName of schemas) {
+      // Check if tables have schema information
+      const hasSchemaInfo = tables.some(t => t.schema);
+
+      if (schemas.length > 0 || hasSchemaInfo) {
+        // Multi-schema database (PostgreSQL, MySQL, etc.)
+        // Get all unique schemas from tables if schemas is empty
+        const allSchemas = schemas.length > 0 
+          ? schemas 
+          : [...new Set(tables.map(t => t.schema).filter(Boolean))] as string[];
+
+        for (const schemaName of allSchemas) {
           const schemaTables = tables.filter((t) => t.schema === schemaName);
           const tableNodes: SchemaNode[] = [];
 
@@ -247,7 +267,7 @@ function ConnectionItem({
           });
         }
       } else {
-        // Single-schema database (MySQL, SQLite, etc.)
+        // Single-schema database (SQLite, etc.)
         const tableNodes: SchemaNode[] = [];
         for (const table of tables) {
           let columns: SchemaNode[] = [];
@@ -275,8 +295,8 @@ function ConnectionItem({
       }
 
       setSchemaData(connection.id, nodes);
-    } catch {
-      // Schema fetch failed
+    } catch (err) {
+      console.error("Schema fetch failed:", err);
     } finally {
       setLoading(false);
     }
@@ -424,6 +444,8 @@ function ConnectionItem({
               node={node}
               depth={0}
               onDoubleClickTable={handleDoubleClickTable}
+              onSchemaClick={onSchemaClick}
+              onTableClick={onTableClick}
               connectionId={connection.id}
             />
           ))}
@@ -490,11 +512,15 @@ function SchemaTreeNode({
   node,
   depth,
   onDoubleClickTable,
+  onSchemaClick,
+  onTableClick,
   connectionId,
 }: {
   node: SchemaNode;
   depth: number;
   onDoubleClickTable: (node: SchemaNode) => void;
+  onSchemaClick?: (schemaName: string, connectionId: string) => void;
+  onTableClick?: (table: SchemaNode, connectionId: string) => void;
   connectionId?: string;
 }) {
   const [expanded, setExpanded] = useState(depth < 1);
@@ -569,7 +595,19 @@ function SchemaTreeNode({
         className={`flex items-center gap-1.5 w-full px-1.5 py-1 text-xs rounded transition-colors hover:bg-muted text-left cursor-pointer ${
           node.type === "column" ? "ml-2" : ""
         }`}
-        onClick={() => hasChildren && setExpanded(!expanded)}
+        onClick={() => {
+          if (node.type === "schema" && onSchemaClick && connectionId) {
+            onSchemaClick(node.name, connectionId);
+          }
+          if ((node.type === "table" || node.type === "view") && onTableClick && connectionId) {
+            onTableClick(node, connectionId);
+          } else if (node.type === "table" || node.type === "view") {
+            onDoubleClickTable(node);
+          }
+          if (hasChildren) {
+            setExpanded(!expanded);
+          }
+        }}
         onDoubleClick={() => {
           if (node.type === "table" || node.type === "view") {
             onDoubleClickTable(node);
@@ -616,6 +654,8 @@ function SchemaTreeNode({
               node={child}
               depth={depth + 1}
               onDoubleClickTable={onDoubleClickTable}
+              onSchemaClick={onSchemaClick}
+              onTableClick={onTableClick}
               connectionId={connectionId}
             />
           ))}

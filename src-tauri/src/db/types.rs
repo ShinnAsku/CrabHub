@@ -43,7 +43,7 @@ pub struct ConnectionConfig {
     pub port: Option<u16>,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub database: String,
+    pub database: Option<String>,
     #[serde(default)]
     pub ssl_enabled: bool,
     #[serde(default = "default_keepalive_interval")]

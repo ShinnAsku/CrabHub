@@ -30,14 +30,14 @@ function TabBar() {
         {tabs.map((tab) => {
           const connColor = getConnectionColor(tab.connectionId);
           return (
-            <button
+            <div
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`group flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-r border-border transition-colors shrink-0 ${
+              className={`group flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-r border-border transition-colors shrink-0 cursor-pointer ${
                 activeTabId === tab.id
                   ? "text-foreground bg-muted border-b-2 border-b-[hsl(var(--tab-active))]"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               }`}
+              onClick={() => setActiveTab(tab.id)}
             >
               {/* Connection indicator dot */}
               {connColor && (
@@ -63,7 +63,7 @@ function TabBar() {
               >
                 <X size={12} />
               </button>
-            </button>
+            </div>
           );
         })}
       </div>

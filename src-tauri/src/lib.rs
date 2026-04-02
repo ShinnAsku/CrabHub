@@ -4,7 +4,7 @@ use db::manager::ConnectionManager;
 use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub async fn run() {
     let manager = Arc::new(ConnectionManager::new());
 
     tauri::Builder::default()
@@ -33,7 +33,10 @@ pub fn run() {
                 )?;
             }
             // Start the background heartbeat task
-            ConnectionManager::start_heartbeat(manager.clone());
+            let manager_clone = manager.clone();
+            tauri::async_runtime::spawn(async move {
+                ConnectionManager::start_heartbeat(manager_clone).await;
+            });
             Ok(())
         })
         .run(tauri::generate_context!())

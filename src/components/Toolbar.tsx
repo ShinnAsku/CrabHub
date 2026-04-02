@@ -73,11 +73,11 @@ function Toolbar({
 
   return (
     <div
-      className="flex items-center h-9 px-2 border-b border-border select-none shrink-0 gap-0.5"
+      className="flex items-center h-9 px-2 border-b border-border select-none shrink-0 gap-0.5 min-w-[600px]"
       onMouseDown={handleDragStart}
     >
       {/* Logo */}
-      <div className="flex items-center gap-1.5 mr-2">
+      <div className="flex items-center gap-1.5 mr-2 shrink-0">
         <ButterflyIcon size={16} />
         <span className="text-xs font-semibold text-foreground tracking-tight">
           openDB
@@ -85,10 +85,10 @@ function Toolbar({
       </div>
 
       {/* Divider */}
-      <div className="w-px h-4 bg-border mx-1" />
+      <div className="w-px h-4 bg-border mx-1 shrink-0" />
 
       {/* Group 1: Connection & Query */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 shrink-0">
         <ToolbarButton
           onClick={(e) => {
             e.stopPropagation();
@@ -97,7 +97,7 @@ function Toolbar({
           title={t('toolbar.newConnection')}
         >
           <Network size={13} />
-          <span>{t('toolbar.connection')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[60px]">{t('toolbar.connection')}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -107,15 +107,15 @@ function Toolbar({
           title={t('toolbar.newQuery')}
         >
           <FilePlus size={13} />
-          <span>{t('toolbar.query')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('toolbar.query')}</span>
         </ToolbarButton>
       </div>
 
       {/* Divider */}
-      <div className="w-px h-4 bg-border mx-1" />
+      <div className="w-px h-4 bg-border mx-1 shrink-0" />
 
       {/* Group 2: Import / Export */}
-      <div className="flex items-center gap-0.5 relative">
+      <div className="flex items-center gap-0.5 relative shrink-0">
         <ToolbarButton
           onClick={(e) => {
             e.stopPropagation();
@@ -124,7 +124,7 @@ function Toolbar({
           title={t('toolbar.importCsv')}
         >
           <Upload size={13} />
-          <span>{t('toolbar.import')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('toolbar.import')}</span>
         </ToolbarButton>
         <div className="relative">
           <ToolbarButton
@@ -135,7 +135,7 @@ function Toolbar({
             title={t('toolbar.export')}
           >
             <Download size={13} />
-            <span>{t('toolbar.export')}</span>
+            <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('toolbar.export')}</span>
             <ChevronDown size={10} />
           </ToolbarButton>
           {exportOpen && (
@@ -167,10 +167,10 @@ function Toolbar({
       </div>
 
       {/* Divider */}
-      <div className="w-px h-4 bg-border mx-1" />
+      <div className="w-px h-4 bg-border mx-1 shrink-0" />
 
       {/* Group 3: Tools */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 shrink-0">
         <ToolbarButton
           onClick={(e) => {
             e.stopPropagation();
@@ -179,7 +179,7 @@ function Toolbar({
           title={t('toolbar.snippet')}
         >
           <Code2 size={13} />
-          <span>{t('toolbar.snippetShort')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('toolbar.snippetShort')}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -189,7 +189,7 @@ function Toolbar({
           title={t('toolbar.schemaDiff')}
         >
           <GitCompare size={13} />
-          <span>{t('toolbar.schemaDiffShort')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[50px]">{t('toolbar.schemaDiffShort')}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -199,7 +199,7 @@ function Toolbar({
           title={t('toolbar.erDiagram')}
         >
           <Network size={13} />
-          <span>{t('toolbar.erDiagramShort')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('toolbar.erDiagramShort')}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -209,7 +209,7 @@ function Toolbar({
           title={t('toolbar.tableDesigner')}
         >
           <Table2 size={13} />
-          <span>{t('toolbar.tableDesignerShort')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[50px]">{t('toolbar.tableDesignerShort')}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -219,7 +219,7 @@ function Toolbar({
           title={t('analyzer.performanceAnalysis')}
         >
           <BarChart3 size={13} />
-          <span>{t('analyzer.title')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[60px]">{t('analyzer.title')}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -229,15 +229,15 @@ function Toolbar({
           title={t('migration.title')}
         >
           <ArrowLeftRight size={13} />
-          <span>{t('migration.titleShort')}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('migration.titleShort')}</span>
         </ToolbarButton>
       </div>
 
       {/* Divider */}
-      <div className="w-px h-4 bg-border mx-1" />
+      <div className="w-px h-4 bg-border mx-1 shrink-0" />
 
       {/* Group 4: AI */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 shrink-0">
         <ToolbarButton
           onClick={(e) => {
             e.stopPropagation();
@@ -247,15 +247,15 @@ function Toolbar({
           title={t('toolbar.aiAssistant')}
         >
           <Sparkles size={13} />
-          <span>AI</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[20px]">AI</span>
         </ToolbarButton>
       </div>
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div className="flex-1 min-w-0" />
 
       {/* Group 5: Theme & Settings */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 shrink-0">
         <ToolbarButton
           onClick={(e) => {
             e.stopPropagation();
@@ -273,7 +273,7 @@ function Toolbar({
           title={t('toolbar.language')}
         >
           <Globe size={13} />
-          <span>{language === 'zh' ? 'EN' : '中'}</span>
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[30px]">{language === 'zh' ? 'EN' : '中'}</span>
         </ToolbarButton>
         <ToolbarButton
           onClick={(e) => {
@@ -295,21 +295,23 @@ function ToolbarButton({
   onClick,
   title,
   active,
+  className,
 }: {
   children: React.ReactNode;
   onClick: (e: React.MouseEvent) => void;
   title?: string;
   active?: boolean;
+  className?: string;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
-      className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors ${
+      className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors whitespace-nowrap min-w-[80px] ${
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:text-foreground hover:bg-muted"
-      }`}
+      } ${className || ""}`}
     >
       {children}
     </button>

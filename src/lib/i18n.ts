@@ -46,6 +46,18 @@ const translations: Record<Language, Record<string, string>> = {
     'toolbar.settings': '设置',
     'toolbar.language': '语言',
 
+    // ===== Navicat-style tabs =====
+    'navicat.tables': '表',
+    'navicat.views': '视图',
+    'navicat.materializedViews': '实体化视图',
+    'navicat.functions': '函数',
+    'navicat.roles': '角色',
+    'navicat.other': '其它',
+    'navicat.queries': '查询',
+    'navicat.backups': '备份',
+    'navicat.objects': '对象',
+    'navicat.ddl': 'DDL',
+
     // ===== Sidebar =====
     'sidebar.connections': '连接',
     'sidebar.history': '查询历史',
@@ -152,6 +164,9 @@ const translations: Record<Language, Record<string, string>> = {
     'connection.reconnectSuccess': '重连成功',
     'connection.healthHealthy': '连接正常',
     'connection.healthUnhealthy': '连接异常',
+    'connection.tabGeneral': '常规',
+    'connection.tabAdvanced': '高级',
+    'connection.tabDatabase': '数据库',
 
     // ===== AI Panel =====
     'ai.title': 'AI 助手',
@@ -406,6 +421,18 @@ const translations: Record<Language, Record<string, string>> = {
     'toolbar.settings': 'Settings',
     'toolbar.language': 'Language',
 
+    // ===== Navicat-style tabs =====
+    'navicat.tables': 'Tables',
+    'navicat.views': 'Views',
+    'navicat.materializedViews': 'Materialized Views',
+    'navicat.functions': 'Functions',
+    'navicat.roles': 'Roles',
+    'navicat.other': 'Other',
+    'navicat.queries': 'Queries',
+    'navicat.backups': 'Backups',
+    'navicat.objects': 'Objects',
+    'navicat.ddl': 'DDL',
+
     // ===== Sidebar =====
     'sidebar.connections': 'Connections',
     'sidebar.history': 'Query History',
@@ -512,6 +539,9 @@ const translations: Record<Language, Record<string, string>> = {
     'connection.reconnectSuccess': 'Reconnected',
     'connection.healthHealthy': 'Healthy',
     'connection.healthUnhealthy': 'Unhealthy',
+    'connection.tabGeneral': 'General',
+    'connection.tabAdvanced': 'Advanced',
+    'connection.tabDatabase': 'Database',
 
     // ===== AI Panel =====
     'ai.title': 'AI Assistant',

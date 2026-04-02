@@ -15,11 +15,13 @@ export interface ColumnInfo {
 export interface SchemaNode {
   id: string;
   name: string;
-  type: "schema" | "table" | "view" | "column";
+  type: "schema" | "table" | "view" | "column" | "function" | "materialized_view" | "role" | "backup";
   schema?: string;
   icon?: string;
   children?: SchemaNode[];
 }
+
+export type NavicatTab = "tables" | "views" | "materialized_views" | "functions" | "roles" | "other" | "queries" | "backups";
 
 export interface QueryResult {
   columns: ColumnInfo[];
@@ -49,7 +51,7 @@ export interface ConnectionConfig {
   port: number;
   username: string;
   password: string;
-  database: string;
+  database?: string;
   sslEnabled: boolean;
   keepaliveInterval?: number;
   autoReconnect?: boolean;
@@ -70,7 +72,7 @@ export interface Connection {
   port: number;
   username: string;
   password?: string;
-  database: string;
+  database?: string;
   sslEnabled: boolean;
   keepaliveInterval: number;
   autoReconnect: boolean;
@@ -122,6 +124,15 @@ interface AppState {
   schemaData: Record<string, SchemaNode[]>;
   activeConnectionId: string | null;
   isExecuting: boolean;
+
+  // Navicat-style state
+  activeNavicatTab: NavicatTab;
+  selectedSchemaId: string | null;
+  selectedSchemaName: string | undefined;
+  selectedTableId: string | null;
+  selectedTable: SchemaNode | null;
+  selectedTableData: QueryResult | null;
+  selectedTableDDL: string;
 
   // Query history
   queryHistory: QueryHistoryEntry[];
@@ -182,6 +193,15 @@ interface AppState {
   addSlowQuery: (query: Omit<SlowQuery, "id">) => void;
   clearSlowQueries: () => void;
   setSlowQueryThreshold: (ms: number) => void;
+
+  // Navicat-style actions
+  setActiveNavicatTab: (tab: NavicatTab) => void;
+  setSelectedSchemaId: (id: string | null) => void;
+  setSelectedSchemaName: (name: string | undefined) => void;
+  setSelectedTableId: (id: string | null) => void;
+  setSelectedTable: (table: SchemaNode | null) => void;
+  setSelectedTableData: (data: QueryResult | null) => void;
+  setSelectedTableDDL: (ddl: string) => void;
 }
 
 let tabCounter = 0;
@@ -200,7 +220,7 @@ function loadTheme(): "light" | "dark" {
 // Apply theme class to document
 function applyThemeClass(theme: "light" | "dark") {
   if (typeof document !== "undefined") {
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.setAttribute("data-theme", theme);
   }
 }
 
@@ -282,6 +302,15 @@ export const useAppStore = create<AppState>((set) => ({
   schemaData: {},
   activeConnectionId: null,
   isExecuting: false,
+
+  // Navicat-style state defaults
+  activeNavicatTab: "tables",
+  selectedSchemaId: null,
+  selectedSchemaName: undefined,
+  selectedTableId: null,
+  selectedTable: null,
+  selectedTableData: null,
+  selectedTableDDL: "",
 
   // Query history
   queryHistory: loadQueryHistory(),
@@ -474,4 +503,14 @@ export const useAppStore = create<AppState>((set) => ({
       try { localStorage.setItem("opendb-slow-query-threshold", String(ms)); } catch {}
       return { slowQueryThreshold: ms };
     }),
+
+  // ===== Navicat-style Actions =====
+
+  setActiveNavicatTab: (tab) => set({ activeNavicatTab: tab }),
+  setSelectedSchemaId: (id) => set({ selectedSchemaId: id }),
+  setSelectedSchemaName: (name) => set({ selectedSchemaName: name }),
+  setSelectedTableId: (id) => set({ selectedTableId: id }),
+  setSelectedTable: (table) => set({ selectedTable: table }),
+  setSelectedTableData: (data) => set({ selectedTableData: data }),
+  setSelectedTableDDL: (ddl) => set({ selectedTableDDL: ddl }),
 }));

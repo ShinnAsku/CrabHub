@@ -1,6 +1,8 @@
 use async_trait::async_trait;
+
 use futures::StreamExt;
-use sqlx::Row;
+use rust_decimal::Decimal;
+use sqlx::{Column, Row, TypeInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -37,23 +39,40 @@ pub struct PostgresConnection {
 
 impl PostgresConnection {
     pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
+        use urlencoding::encode;
+        
         let host = config.host.as_deref().unwrap_or("localhost");
         let port = config.port.unwrap_or(5432);
         let username = config.username.as_deref().unwrap_or("postgres");
         let password = config.password.as_deref().unwrap_or("");
+        let database = config.database.as_deref().unwrap_or("");
 
         let ssl_mode = if config.ssl_enabled { "require" } else { "prefer" };
 
         let connection_string = if password.is_empty() {
-            format!(
-                "postgres://{}@{}:{}/{}?sslmode={}",
-                username, host, port, config.database, ssl_mode
-            )
+            if database.is_empty() {
+                format!(
+                    "postgres://{}@{}:{}?sslmode={}",
+                    encode(username), host, port, ssl_mode
+                )
+            } else {
+                format!(
+                    "postgres://{}@{}:{}/{}?sslmode={}",
+                    encode(username), host, port, encode(database), ssl_mode
+                )
+            }
         } else {
-            format!(
-                "postgres://{}:{}@{}:{}/{}?sslmode={}",
-                username, password, host, port, config.database, ssl_mode
-            )
+            if database.is_empty() {
+                format!(
+                    "postgres://{}:{}@{}:{}?sslmode={}",
+                    encode(username), encode(password), host, port, ssl_mode
+                )
+            } else {
+                format!(
+                    "postgres://{}:{}@{}:{}/{}?sslmode={}",
+                    encode(username), encode(password), host, port, encode(database), ssl_mode
+                )
+            }
         };
 
         log::info!("Connecting to PostgreSQL at {}:{}", host, port);
@@ -112,23 +131,80 @@ impl DatabaseConnection for PostgresConnection {
         // Extract column information from the first row
         let columns = build_columns_from_pg_row(&result[0]);
 
-        // Convert rows to JSON maps keyed by column name
+        // Convert rows to JSON maps keyed by column name - 使用 dbpaw 的精确类型匹配方法
         let mut result_rows = Vec::new();
         for row in &result {
             let mut map = serde_json::Map::new();
-            for col in &columns {
-                let val: serde_json::Value = match row.try_get::<Option<serde_json::Value>, _>(col.name.as_str()) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => serde_json::Value::Null,
-                    Err(_) => {
-                        // Try as string fallback
-                        match row.try_get::<Option<String>, _>(col.name.as_str()) {
-                            Ok(Some(s)) => serde_json::Value::String(s),
-                            _ => serde_json::Value::Null,
+            for col in row.columns() {
+                let name = col.name().to_string();
+                let type_name = col.type_info().name();
+                let value = match type_name {
+                    "BOOL" => row
+                        .try_get::<bool, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::Bool)
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "INT2" | "INT4" | "INT8" => row
+                        .try_get::<i64, _>(col.name())
+                        .ok()
+                        .map(|v| serde_json::Value::String(v.to_string()))
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "FLOAT4" | "FLOAT8" => row
+                        .try_get::<f64, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::from)
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "NUMERIC" | "MONEY" => row
+                        .try_get::<Decimal, _>(col.name())
+                        .ok()
+                        .map(|v| serde_json::Value::String(v.to_string()))
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "TEXT" | "VARCHAR" | "CHAR" | "BPCHAR" | "NAME" | "UUID" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "DATE" | "TIME" | "TIMETZ" | "INTERVAL" | "TIMESTAMP" | "TIMESTAMPTZ" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "JSON" | "JSONB" => row
+                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
+                        .ok()
+                        .map(|v| v.0)
+                        .unwrap_or(serde_json::Value::Null),
+                    _ => {
+                        if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
+                        } else {
+                            serde_json::Value::Null
                         }
                     }
                 };
-                map.insert(col.name.clone(), val);
+                map.insert(name, value);
             }
             result_rows.push(map);
         }
@@ -340,30 +416,70 @@ pub struct MySqlConnection {
 
 impl MySqlConnection {
     pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
+        use urlencoding::encode;
+        
         let host = config.host.as_deref().unwrap_or("localhost");
         let port = config.port.unwrap_or(3306);
         let username = config.username.as_deref().unwrap_or("root");
         let password = config.password.as_deref().unwrap_or("");
-
-        let ssl_mode = if config.ssl_enabled {
-            "&ssl-mode=preferred"
-        } else {
-            ""
-        };
+        let database = config.database.as_deref().unwrap_or("");
 
         let connection_string = if password.is_empty() {
-            format!(
-                "mysql://{}@{}:{}/{}{}",
-                username, host, port, config.database, ssl_mode
-            )
+            if database.is_empty() {
+                if config.ssl_enabled {
+                    format!(
+                        "mysql://{}@{}:{}/?ssl-mode=preferred",
+                        encode(username), host, port
+                    )
+                } else {
+                    format!(
+                        "mysql://{}@{}:{}",
+                        encode(username), host, port
+                    )
+                }
+            } else {
+                if config.ssl_enabled {
+                    format!(
+                        "mysql://{}@{}:{}/{}/?ssl-mode=preferred",
+                        encode(username), host, port, encode(database)
+                    )
+                } else {
+                    format!(
+                        "mysql://{}@{}:{}/{}",
+                        encode(username), host, port, encode(database)
+                    )
+                }
+            }
         } else {
-            format!(
-                "mysql://{}:{}@{}:{}/{}{}",
-                username, password, host, port, config.database, ssl_mode
-            )
+            if database.is_empty() {
+                if config.ssl_enabled {
+                    format!(
+                        "mysql://{}:{}@{}:{}/?ssl-mode=preferred",
+                        encode(username), encode(password), host, port
+                    )
+                } else {
+                    format!(
+                        "mysql://{}:{}@{}:{}",
+                        encode(username), encode(password), host, port
+                    )
+                }
+            } else {
+                if config.ssl_enabled {
+                    format!(
+                        "mysql://{}:{}@{}:{}/{}/?ssl-mode=preferred",
+                        encode(username), encode(password), host, port, encode(database)
+                    )
+                } else {
+                    format!(
+                        "mysql://{}:{}@{}:{}/{}",
+                        encode(username), encode(password), host, port, encode(database)
+                    )
+                }
+            }
         };
 
         log::info!("Connecting to MySQL at {}:{}", host, port);
+        log::info!("Connection string: {}", connection_string);
 
         let pool = sqlx::mysql::MySqlPoolOptions::new()
             .max_connections(5)
@@ -372,7 +488,10 @@ impl MySqlConnection {
             .acquire_timeout(Duration::from_secs(10))
             .connect(&connection_string)
             .await
-            .map_err(|e| DbError::ConnectionError(format!("Failed to connect to MySQL: {}", e)))?;
+            .map_err(|e| {
+                log::error!("MySQL connection error: {}", e);
+                DbError::ConnectionError(format!("Failed to connect to MySQL: {}", e))
+            })?;
 
         log::info!("Successfully connected to MySQL");
 
@@ -417,23 +536,80 @@ impl DatabaseConnection for MySqlConnection {
 
         let columns = build_columns_from_mysql_row(&result[0]);
 
-        // Convert rows to JSON maps keyed by column name
+        // Convert rows to JSON maps keyed by column name - 使用精确类型匹配方法
         let mut result_rows = Vec::new();
         for row in &result {
             let mut map = serde_json::Map::new();
-            for col in &columns {
-                let val: serde_json::Value = match row.try_get::<Option<serde_json::Value>, _>(col.name.as_str()) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => serde_json::Value::Null,
-                    Err(_) => {
-                        // Try as string fallback
-                        match row.try_get::<Option<String>, _>(col.name.as_str()) {
-                            Ok(Some(s)) => serde_json::Value::String(s),
-                            _ => serde_json::Value::Null,
+            for col in row.columns() {
+                let name = col.name().to_string();
+                let type_name = col.type_info().name();
+                let value = match type_name {
+                    "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "INTEGER" | "BIGINT" => row
+                        .try_get::<i64, _>(col.name())
+                        .ok()
+                        .map(|v| serde_json::Value::String(v.to_string()))
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "FLOAT" | "DOUBLE" => row
+                        .try_get::<f64, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::from)
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "DECIMAL" | "NUMERIC" => row
+                        .try_get::<Decimal, _>(col.name())
+                        .ok()
+                        .map(|v| serde_json::Value::String(v.to_string()))
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "CHAR" | "VARCHAR" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT" | "ENUM" | "SET" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "BOOLEAN" | "BOOL" => row
+                        .try_get::<bool, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::Bool)
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "JSON" => row
+                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
+                        .ok()
+                        .map(|v| v.0)
+                        .unwrap_or(serde_json::Value::Null),
+                    _ => {
+                        if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
+                        } else {
+                            serde_json::Value::Null
                         }
                     }
                 };
-                map.insert(col.name.clone(), val);
+                map.insert(name, value);
             }
             result_rows.push(map);
         }
@@ -457,8 +633,8 @@ impl DatabaseConnection for MySqlConnection {
                 TABLE_TYPE as table_type,
                 TABLE_ROWS as table_rows
             FROM information_schema.tables
-            WHERE TABLE_SCHEMA = DATABASE()
-            ORDER BY TABLE_NAME
+            WHERE TABLE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+            ORDER BY TABLE_SCHEMA, TABLE_NAME
         "#;
 
         let rows = sqlx::query(sql)
@@ -488,21 +664,36 @@ impl DatabaseConnection for MySqlConnection {
         Ok(tables)
     }
 
-    async fn get_columns(&self, table: &str, _schema: Option<&str>) -> Result<Vec<ColumnInfo>, DbError> {
-        let sql = r#"
-            SELECT
-                COLUMN_NAME as column_name,
-                DATA_TYPE as data_type,
-                IS_NULLABLE as is_nullable,
-                COLUMN_DEFAULT as column_default,
-                COLUMN_COMMENT as column_comment,
-                COLUMN_KEY as column_key
-            FROM information_schema.columns
-            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
-            ORDER BY ORDINAL_POSITION
-        "#;
+    async fn get_columns(&self, table: &str, schema: Option<&str>) -> Result<Vec<ColumnInfo>, DbError> {
+        let sql = if let Some(schema_name) = schema {
+            format!(r#"
+                SELECT
+                    COLUMN_NAME as column_name,
+                    DATA_TYPE as data_type,
+                    IS_NULLABLE as is_nullable,
+                    COLUMN_DEFAULT as column_default,
+                    COLUMN_COMMENT as column_comment,
+                    COLUMN_KEY as column_key
+                FROM information_schema.columns
+                WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            "#, schema_name.replace('\'', "''"))
+        } else {
+            r#"
+                SELECT
+                    COLUMN_NAME as column_name,
+                    DATA_TYPE as data_type,
+                    IS_NULLABLE as is_nullable,
+                    COLUMN_DEFAULT as column_default,
+                    COLUMN_COMMENT as column_comment,
+                    COLUMN_KEY as column_key
+                FROM information_schema.columns
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            "#.to_string()
+        };
 
-        let rows = sqlx::query(sql)
+        let rows = sqlx::query(&sql)
             .bind(table)
             .fetch_all(&self.pool)
             .await
@@ -618,10 +809,12 @@ impl SQLiteConnection {
         let db_path = config
             .host
             .as_deref()
-            .unwrap_or(&config.database);
+            .unwrap_or_else(|| config.database.as_deref().unwrap_or(""));
 
         let connection_string = if db_path.starts_with("sqlite:") {
             db_path.to_string()
+        } else if db_path.is_empty() {
+            "sqlite::memory:".to_string()
         } else {
             format!("sqlite:{}", db_path)
         };
@@ -682,23 +875,75 @@ impl DatabaseConnection for SQLiteConnection {
 
         let columns = build_columns_from_sqlite_row(&result[0]);
 
-        // Convert rows to JSON maps keyed by column name
+        // Convert rows to JSON maps keyed by column name - 使用精确类型匹配方法
         let mut result_rows = Vec::new();
         for row in &result {
             let mut map = serde_json::Map::new();
-            for col in &columns {
-                let val: serde_json::Value = match row.try_get::<Option<serde_json::Value>, _>(col.name.as_str()) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => serde_json::Value::Null,
-                    Err(_) => {
-                        // Try as string fallback
-                        match row.try_get::<Option<String>, _>(col.name.as_str()) {
-                            Ok(Some(s)) => serde_json::Value::String(s),
-                            _ => serde_json::Value::Null,
+            for col in row.columns() {
+                let name = col.name().to_string();
+                let type_name = col.type_info().name();
+                let value = match type_name {
+                    "INTEGER" | "INT" | "BIGINT" => row
+                        .try_get::<i64, _>(col.name())
+                        .ok()
+                        .map(|v| serde_json::Value::String(v.to_string()))
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "REAL" | "FLOAT" | "DOUBLE" => row
+                        .try_get::<f64, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::from)
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "NUMERIC" | "DECIMAL" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "TEXT" | "VARCHAR" | "CHAR" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "BOOLEAN" | "BOOL" => row
+                        .try_get::<bool, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::Bool)
+                        .or_else(|| {
+                            row.try_get::<String, _>(col.name())
+                                .ok()
+                                .map(serde_json::Value::String)
+                        })
+                        .unwrap_or(serde_json::Value::Null),
+                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => row
+                        .try_get::<String, _>(col.name())
+                        .ok()
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                    "JSON" => row
+                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
+                        .ok()
+                        .map(|v| v.0)
+                        .unwrap_or(serde_json::Value::Null),
+                    _ => {
+                        if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
+                        } else {
+                            serde_json::Value::Null
                         }
                     }
                 };
-                map.insert(col.name.clone(), val);
+                map.insert(name, value);
             }
             result_rows.push(map);
         }
@@ -958,19 +1203,34 @@ impl GaussDBConnection {
         let port = config.port.unwrap_or(5432);
         let username = config.username.as_deref().unwrap_or("gaussdb");
         let password = config.password.as_deref().unwrap_or("");
+        let database = config.database.as_deref().unwrap_or("");
 
         let ssl_mode = if config.ssl_enabled { "require" } else { "prefer" };
 
         let connection_string = if password.is_empty() {
-            format!(
-                "host={} port={} user={} dbname={} sslmode={}",
-                host, port, username, config.database, ssl_mode
-            )
+            if database.is_empty() {
+                format!(
+                    "host={} port={} user={} sslmode={}",
+                    host, port, username, ssl_mode
+                )
+            } else {
+                format!(
+                    "host={} port={} user={} dbname={} sslmode={}",
+                    host, port, username, database, ssl_mode
+                )
+            }
         } else {
-            format!(
-                "host={} port={} user={} password={} dbname={} sslmode={}",
-                host, port, username, password, config.database, ssl_mode
-            )
+            if database.is_empty() {
+                format!(
+                    "host={} port={} user={} password={} sslmode={}",
+                    host, port, username, password, ssl_mode
+                )
+            } else {
+                format!(
+                    "host={} port={} user={} password={} dbname={} sslmode={}",
+                    host, port, username, password, database, ssl_mode
+                )
+            }
         };
 
         log::info!("Connecting to GaussDB at {}:{}", host, port);
@@ -1313,7 +1573,11 @@ impl MSSQLConnection {
         config_builder.host(host);
         config_builder.port(port);
         config_builder.authentication(tiberius::AuthMethod::sql_server(username, password));
-        config_builder.database(&config.database);
+        if let Some(database) = &config.database {
+            if !database.is_empty() {
+                config_builder.database(database);
+            }
+        }
         config_builder.trust_cert();
 
         let tcp = tokio::net::TcpStream::connect(config_builder.get_addr())
@@ -1665,6 +1929,7 @@ impl ClickHouseConnection {
         let port = config.port.unwrap_or(8123);
         let username = config.username.as_deref().unwrap_or("default");
         let password = config.password.as_deref().unwrap_or("");
+        let database = config.database.as_deref().unwrap_or("default");
 
         let scheme = if config.ssl_enabled { "https" } else { "http" };
         let url = format!("{}://{}:{}", scheme, host, port);
@@ -1677,7 +1942,7 @@ impl ClickHouseConnection {
             .map_err(|e| DbError::ConnectionError(format!("Failed to create HTTP client: {}", e)))?;
 
         // Test connection with a simple query
-        let test_url = format!("{}/?user={}&database={}", url, username, config.database);
+        let test_url = format!("{}/?user={}&database={}", url, username, database);
         let mut req = client.get(&test_url);
         if !password.is_empty() {
             req = req.basic_auth(username, Some(password));
@@ -1704,7 +1969,7 @@ impl ClickHouseConnection {
         Ok(Self {
             client,
             url,
-            database: config.database.clone(),
+            database: database.to_string(),
             username: username.to_string(),
             password: password.to_string(),
         })
@@ -2116,74 +2381,72 @@ impl ConnectionManager {
     }
 
     /// Start the background heartbeat loop
-    pub fn start_heartbeat(manager: Arc<Self>) {
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(30)).await;
+    pub async fn start_heartbeat(manager: Arc<Self>) {
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
 
-                // Collect connection IDs and their keepalive settings
-                let connection_infos: Vec<(String, bool, bool)> = {
+            // Collect connection IDs and their keepalive settings
+            let connection_infos: Vec<(String, bool, bool)> = {
+                let connections = manager.connections.read().await;
+                connections
+                    .iter()
+                    .map(|(id, entry)| {
+                        (
+                            id.clone(),
+                            entry.config.keepalive_interval == 0,
+                            entry.config.auto_reconnect,
+                        )
+                    })
+                    .collect()
+            };
+            // Read lock is dropped here
+
+            for (id, skip_keepalive, auto_reconnect) in &connection_infos {
+                if *skip_keepalive {
+                    continue;
+                }
+
+                // Send heartbeat via SELECT 1
+                let result = {
                     let connections = manager.connections.read().await;
-                    connections
-                        .iter()
-                        .map(|(id, entry)| {
-                            (
-                                id.clone(),
-                                entry.config.keepalive_interval == 0,
-                                entry.config.auto_reconnect,
-                            )
-                        })
-                        .collect()
+                    if let Some(entry) = connections.get(id) {
+                        entry.connection.query_sql("SELECT 1").await
+                    } else {
+                        continue;
+                    }
                 };
                 // Read lock is dropped here
 
-                for (id, skip_keepalive, auto_reconnect) in &connection_infos {
-                    if *skip_keepalive {
-                        continue;
-                    }
-
-                    // Send heartbeat via SELECT 1
-                    let result = {
-                        let connections = manager.connections.read().await;
-                        if let Some(entry) = connections.get(id) {
-                            entry.connection.query_sql("SELECT 1").await
-                        } else {
-                            continue;
+                match result {
+                    Ok(_) => {
+                        log::debug!("Heartbeat OK for connection '{}'", id);
+                        let mut conns = manager.connections.write().await;
+                        if let Some(e) = conns.get_mut(id) {
+                            e.last_heartbeat = Instant::now();
+                            e.is_healthy = true;
                         }
-                    };
-                    // Read lock is dropped here
-
-                    match result {
-                        Ok(_) => {
-                            log::debug!("Heartbeat OK for connection '{}'", id);
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Heartbeat failed for connection '{}': {}",
+                            id,
+                            e
+                        );
+                        // Mark as unhealthy
+                        {
                             let mut conns = manager.connections.write().await;
                             if let Some(e) = conns.get_mut(id) {
-                                e.last_heartbeat = Instant::now();
-                                e.is_healthy = true;
+                                e.is_healthy = false;
                             }
                         }
-                        Err(e) => {
-                            log::warn!(
-                                "Heartbeat failed for connection '{}': {}",
-                                id,
-                                e
-                            );
-                            // Mark as unhealthy
-                            {
-                                let mut conns = manager.connections.write().await;
-                                if let Some(e) = conns.get_mut(id) {
-                                    e.is_healthy = false;
-                                }
-                            }
-                            // Attempt auto-reconnect if enabled
-                            if *auto_reconnect {
-                                let _ = manager.reconnect(id).await;
-                            }
+                        // Attempt auto-reconnect if enabled
+                        if *auto_reconnect {
+                            let _ = manager.reconnect(id).await;
                         }
                     }
                 }
             }
-        });
+        }
     }
 
     /// Create a new database connection asynchronously
