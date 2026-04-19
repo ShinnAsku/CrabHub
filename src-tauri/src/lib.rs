@@ -17,9 +17,9 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // Use Tabularis-compatible plugin directory
     #[cfg(target_os = "macos")]
     {
-        // macOS: ~/Library/Application Support/com.debba.tabularis/plugins/
+        // macOS: ~/Library/Application Support/com.opendb.app/plugins/
         if let Some(home) = dirs::home_dir() {
-            let path = home.join("Library").join("Application Support").join("com.debba.tabularis").join("plugins");
+            let path = home.join("Library").join("Application Support").join("com.opendb.app").join("plugins");
             std::fs::create_dir_all(&path)?;
             return Ok(path);
         }
@@ -27,9 +27,9 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
     #[cfg(target_os = "linux")]
     {
-        // Linux: ~/.local/share/tabularis/plugins/
+        // Linux: ~/.local/share/opendb/plugins/
         if let Some(home) = dirs::home_dir() {
-            let path = home.join(".local").join("share").join("tabularis").join("plugins");
+            let path = home.join(".local").join("share").join("opendb").join("plugins");
             std::fs::create_dir_all(&path)?;
             return Ok(path);
         }
@@ -37,9 +37,9 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
     #[cfg(target_os = "windows")]
     {
-        // Windows: %APPDATA%\\com.debba.tabularis\\plugins\\
+        // Windows: %APPDATA%\com.opendb.app\plugins\
         if let Some(app_data) = std::env::var("APPDATA") {
-            let path = PathBuf::from(app_data).join("com.debba.tabularis").join("plugins");
+            let path = PathBuf::from(app_data).join("com.opendb.app").join("plugins");
             std::fs::create_dir_all(&path)?;
             return Ok(path);
         }
@@ -47,7 +47,7 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
     // Fallback to app data dir if specific app directory
     if let Some(app_dir) = dirs::config_dir() {
-        let path = app_dir.join("tabularis").join("plugins");
+        let path = app_dir.join("opendb").join("plugins");
         std::fs::create_dir_all(&path)?;
         Ok(path)
     } else {

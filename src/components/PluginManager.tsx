@@ -82,6 +82,16 @@ interface InstalledPlugin {
   }> | null;
 }
 
+interface BuiltinPlugin {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  default_port: number | null;
+  is_builtin: boolean;
+  enabled: boolean;
+}
+
 // Utils
 function parseAuthor(author: string) {
   const match = author.match(/^(.*?)\s*<(.*?)>$/);
@@ -296,9 +306,50 @@ function PluginCard({
   );
 }
 
+// Builtin plugins (hardcoded like in Tabularis)
+const BUILTIN_PLUGINS: BuiltinPlugin[] = [
+  {
+    id: "postgres",
+    name: "PostgreSQL",
+    version: "1.0.0",
+    description: "PostgreSQL databases",
+    default_port: 5432,
+    is_builtin: true,
+    enabled: true
+  },
+  {
+    id: "mysql",
+    name: "MySQL",
+    version: "1.0.0",
+    description: "MySQL and MariaDB databases",
+    default_port: 3306,
+    is_builtin: true,
+    enabled: true
+  },
+  {
+    id: "sqlite",
+    name: "SQLite",
+    version: "1.0.0",
+    description: "SQLite file-based databases",
+    default_port: null,
+    is_builtin: true,
+    enabled: true
+  },
+  {
+    id: "gaussdb",
+    name: "GaussDB",
+    version: "1.0.0",
+    description: "GaussDB databases",
+    default_port: 8000,
+    is_builtin: true,
+    enabled: true
+  }
+];
+
 // Main plugin manager component
 const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [registryPlugins, setRegistryPlugins] = useState<RegistryPluginWithStatus[]>([]);
+  const [installedPlugins, setInstalledPlugins] = useState<InstalledPlugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [installing, setInstalling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -322,6 +373,12 @@ const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         defaultVersions[plugin.id] = plugin.latest_version;
       });
       setSelectedVersions(defaultVersions);
+      
+      // Load installed plugins
+      const installed = await invoke<any>("list_plugins");
+      const installedPluginsData = typeof installed === 'string' ? JSON.parse(installed) : installed;
+      const installedPluginsArray = Array.isArray(installedPluginsData) ? installedPluginsData : [];
+      setInstalledPlugins(installedPluginsArray);
     } catch (err) {
       setError("Failed to load plugins");
       console.error(err);
@@ -568,6 +625,105 @@ const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   />
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Installed Plugins */}
+        <div className="mb-6">
+          <h2 className="text-md font-medium text-foreground mb-2">已安装插件</h2>
+          <p className="text-sm text-muted-foreground mb-4">启用或禁用数据库驱动程序。内置驱动程序无法禁用。</p>
+          
+          {loading && (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+              <Loader2 size={16} className="animate-spin" />
+              加载已安装插件...
+            </div>
+          )}
+          
+          {!loading && error && (
+            <div className="bg-destructive/20 border border-destructive text-destructive px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+              <AlertTriangle size={16} />
+              加载已安装插件失败: {error}
+            </div>
+          )}
+          
+          {!loading && !error && (
+            <div className="space-y-3">
+              {/* Builtin Plugins */}
+              {BUILTIN_PLUGINS.map((plugin) => (
+                <PluginCard
+                  key={plugin.id}
+                  name={plugin.name}
+                  description={plugin.description}
+                  version={plugin.version}
+                  status={
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">
+                      Built-in
+                    </span>
+                  }
+                  actions={
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">已启用</span>
+                      <div className="relative inline-block w-10 mr-2 align-middle select-none">
+                        <input
+                          type="checkbox"
+                          checked
+                          disabled
+                          className="sr-only"
+                        />
+                        <div className="block h-6 rounded-full bg-green-500 cursor-not-allowed"></div>
+                        <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                      </div>
+                    </div>
+                  }
+                  dimmed={false}
+                />
+              ))}
+              
+              {/* Installed Third-party Plugins */}
+              {installedPlugins.map((plugin) => (
+                <PluginCard
+                  key={plugin.id}
+                  name={plugin.name}
+                  description={plugin.description}
+                  version={plugin.version}
+                  status={
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-600">
+                      已安装
+                    </span>
+                  }
+                  actions={
+                    <>
+                      <button
+                        onClick={() => handleTogglePlugin(plugin.id, !plugin.enabled)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          plugin.enabled
+                            ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        }`}
+                        disabled={toggling === plugin.id}
+                      >
+                        {toggling === plugin.id ? (
+                          <RefreshCw size={12} className="animate-spin" />
+                        ) : plugin.enabled ? (
+                          '禁用'
+                        ) : (
+                          '启用'
+                        )}
+                      </button>
+                      
+                      <button
+                        onClick={() => handleRemovePlugin(plugin.id)}
+                        className="px-3 py-1.5 bg-destructive/10 text-destructive rounded-md text-xs font-medium hover:bg-destructive/20 transition-colors"
+                      >
+                        删除
+                      </button>
+                    </>
+                  }
+                  dimmed={false}
+                />
+              ))}
             </div>
           )}
         </div>
