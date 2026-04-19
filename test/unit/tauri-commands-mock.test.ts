@@ -4,7 +4,7 @@ import { mockConnections, mockTables, mockQueryResult, mockTauriCommands } from 
 describe('Tauri Commands Mock', () => {
   it('should have mock connections', () => {
     expect(mockConnections.length).toBeGreaterThan(0)
-    expect(mockConnections[0]?.type).toBe('postgres')
+    expect(mockConnections[0]?.type).toBe('postgresql')
     expect(mockConnections[1]?.type).toBe('sqlite')
   })
 
@@ -15,7 +15,10 @@ describe('Tauri Commands Mock', () => {
   })
 
   it('should have mock query result', () => {
-    expect(mockQueryResult.columns).toEqual(['id', 'name', 'email'])
+    expect(mockQueryResult.columns.length).toBe(3)
+    expect(mockQueryResult.columns[0]?.name).toBe('id')
+    expect(mockQueryResult.columns[1]?.name).toBe('name')
+    expect(mockQueryResult.columns[2]?.name).toBe('email')
     expect(mockQueryResult.rows.length).toBe(2)
     expect(mockQueryResult.rowCount).toBe(2)
   })

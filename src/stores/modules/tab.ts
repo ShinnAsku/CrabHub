@@ -9,7 +9,7 @@ interface TabState {
   isExecuting: boolean;
 
   // Actions
-  addTab: (tab: Omit<Tab, "id">) => void;
+  addTab: (tab: Omit<Tab, "id">) => string;
   closeTab: (id: string) => void;
   setActiveTab: (id: string | null) => void;
   updateTabContent: (id: string, content: string) => void;
@@ -26,15 +26,17 @@ export const useTabStore = create<TabState>((set) => ({
   tabCounter: 0,
   isExecuting: false,
 
-  addTab: (tab) =>
-    set((state) => {
-      tabCounter++;
-      const newTab: Tab = { ...tab, id: `tab-${tabCounter}` };
-      return {
-        tabs: [...state.tabs, newTab],
-        activeTabId: newTab.id,
-      };
-    }),
+  addTab: (tab) => {
+    tabCounter++;
+    const newTab: Tab = { ...tab, id: `tab-${tabCounter}` };
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: newTab.id
+    }));
+    return newTab.id;
+  },
+
+
 
   closeTab: (id) =>
     set((state) => {

@@ -17,6 +17,7 @@ import DataMigration from "./DataMigration";
 import ErrorBoundary from "./ErrorBoundary";
 import ERSelectorDialog from "./ERSelectorDialog";
 import ImportExportDialog from "./ImportExportDialog";
+import PluginManager from "./PluginManager";
 
 function MainLayout() {
   const {
@@ -47,6 +48,7 @@ function MainLayout() {
   const [dataMigrationOpen, setDataMigrationOpen] = useState(false);
   const [erSelectorOpen, setERSelectorOpen] = useState(false);
   const [importExportMode, setImportExportMode] = useState<"import" | "export" | null>(null);
+  const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
 
   const handleOpenConnectionDialog = useCallback(
     (editConnection?: Connection) => {
@@ -138,18 +140,38 @@ function MainLayout() {
       // Ctrl+Shift+N: New query tab
       if (ctrl && e.shiftKey && e.key === "N") {
         e.preventDefault();
-        addTab({
-          title: `${t('tab.query')} ${tabs.length + 1}`,
-          type: "query",
-          content: "",
-    
-        });
-        setTimeout(() => {
-          const newActiveId = useTabStore.getState().activeTabId;
-          if (newActiveId) {
-            window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
-          }
-        }, 0);
+        const connectedConnections = connections.filter(conn => conn.connected);
+        
+        if (connectedConnections.length === 0) {
+          // No connected database
+          import("@tauri-apps/plugin-dialog").then((dialog) => {
+            dialog.message('Please connect to a database before opening a query.');
+          });
+          return;
+        } else if (connectedConnections.length > 1) {
+          // Multiple connected databases, show selection dialog
+          // For Tauri v2, we'll use a simple message dialog for now
+          // TODO: Implement proper selection dialog using Tauri v2 API
+          import("@tauri-apps/plugin-dialog").then((dialog) => {
+            dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
+          });
+          return;
+        } else {
+          // Only one connected database
+          const queryCount = tabs.filter((t) => t.type === "query").length + 1;
+          addTab({
+            title: `${t('tab.query')} ${queryCount}`,
+            type: "query",
+            content: "",
+            connectionId: connectedConnections[0].id,
+          });
+          setTimeout(() => {
+            const newActiveId = useTabStore.getState().activeTabId;
+            if (newActiveId) {
+              window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
+            }
+          }, 0);
+        }
         return;
       }
 
@@ -213,8 +235,16 @@ function MainLayout() {
       }
     };
 
+    const handleOpenPluginManager = () => {
+      setPluginManagerOpen(true);
+    };
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("openPluginManager", handleOpenPluginManager);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("openPluginManager", handleOpenPluginManager);
+    };
   }, [addTab, closeTab, activeTabId, tabs.length, toggleSidebar, toggleAIPanel]);
 
   const activeConnection = activeConnectionId
@@ -233,6 +263,7 @@ function MainLayout() {
         onOpenDataMigration={() => setDataMigrationOpen(true)}
         onOpenImport={() => setImportExportMode("import")}
         onOpenExport={() => setImportExportMode("export")}
+        connections={connections}
       />
 
       {/* Main Content: Sidebar + Navicat Panel */}
@@ -284,12 +315,29 @@ function MainLayout() {
               activeTab.content ? activeTab.content + "\n" + sql : sql
             );
           } else {
-            addTab({
-              title: t('welcome.codeSnippet'),
-              type: "query",
-              content: sql,
-        
-            });
+            const connectedConnections = connections.filter(conn => conn.connected);
+            
+            if (connectedConnections.length === 0) {
+              // No connected database
+              import("@tauri-apps/plugin-dialog").then((dialog) => {
+                dialog.message('Please connect to a database before opening a query.');
+              });
+            } else if (connectedConnections.length > 1) {
+              // Multiple connected databases, show selection dialog
+              // For Tauri v2, we'll use a simple message dialog for now
+              // TODO: Implement proper selection dialog using Tauri v2 API
+              import("@tauri-apps/plugin-dialog").then((dialog) => {
+                dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
+              });
+            } else {
+              // Only one connected database
+              addTab({
+                title: t('welcome.codeSnippet'),
+                type: "query",
+                content: sql,
+                connectionId: connectedConnections[0].id,
+              });
+            }
           }
           toggleSnippetPanel();
         }}
@@ -313,6 +361,13 @@ function MainLayout() {
           mode={importExportMode}
           onClose={() => setImportExportMode(null)}
         />
+      )}
+      {pluginManagerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-2xl h-full max-h-[80vh] bg-background rounded-lg shadow-lg overflow-hidden">
+            <PluginManager onClose={() => setPluginManagerOpen(false)} />
+          </div>
+        </div>
       )}
     </div>
   );

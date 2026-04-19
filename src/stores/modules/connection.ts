@@ -1,6 +1,21 @@
 import { create } from "zustand";
 import type { Connection } from '@/types';
-import { invoke } from "@tauri-apps/api/core";
+import { isMockMode, mockInvoke } from "@/lib/tauri-commands-mock";
+
+// Check if we're running in Tauri environment
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+// Wrapper for invoke that checks Tauri environment first
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (isMockMode()) {
+    return mockInvoke<T>(cmd, args);
+  }
+  if (!isTauri) {
+    throw new Error("This app must be run in a Tauri environment. Please use the desktop app instead of the browser.");
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
 
 interface ConnectionState {
   connections: Connection[];
@@ -29,7 +44,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   loadConnections: async () => {
     console.log("[ConnectionStore] loadConnections: 开始从 SQLite 加载连接列表...");
     try {
-      const stored = await invoke<any[]>("get_connections");
+      const stored = await safeInvoke<any[]>("get_connections");
       console.log("[ConnectionStore] loadConnections: 从后端获取到原始数据:", JSON.stringify(stored, null, 2));
       const connections: Connection[] = stored.map((c: any) => ({
         ...c,
@@ -79,7 +94,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         },
       };
       console.log("[ConnectionStore] addConnection: 发送到后端的数据:", JSON.stringify(payload, null, 2));
-      await invoke("add_connection", payload);
+      await safeInvoke("add_connection", payload);
       console.log("[ConnectionStore] addConnection: 成功保存到 SQLite");
     } catch (e) {
       console.error("[ConnectionStore] addConnection: 保存到 SQLite 失败:", e);
@@ -122,7 +137,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         },
       };
       console.log("[ConnectionStore] updateConnection: 发送到后端:", JSON.stringify(payload, null, 2));
-      await invoke("update_connection", payload);
+      await safeInvoke("update_connection", payload);
       console.log("[ConnectionStore] updateConnection: 成功更新到 SQLite");
     } catch (e) {
       console.error("[ConnectionStore] updateConnection: 更新 SQLite 失败:", e);
@@ -139,7 +154,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   removeConnection: async (id) => {
     console.log(`[ConnectionStore] removeConnection: 删除连接 id=${id}`);
     try {
-      await invoke("delete_connection", { id });
+      await safeInvoke("delete_connection", { id });
       console.log("[ConnectionStore] removeConnection: 成功从 SQLite 删除");
     } catch (e) {
       console.error("[ConnectionStore] removeConnection: 从 SQLite 删除失败:", e);

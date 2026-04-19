@@ -13,6 +13,7 @@ import {
   Server,
   Settings,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { useConnectionStore } from "@/stores/modules/connection";
 import type { Connection, ConnectionConfig } from "@/types";
 import { connectDatabase, disconnectDatabase, testConnection } from "@/lib/tauri-commands";
@@ -25,7 +26,8 @@ interface ConnectionDialogProps {
   editConnection?: Connection;
 }
 
-const DB_TYPES: { value: Connection["type"]; label: string; port: number; color: string }[] = [
+// 内置数据库类型
+const BUILTIN_DB_TYPES: { value: string; label: string; port: number; color: string }[] = [
   { value: "postgresql", label: "PostgreSQL", port: 5432, color: "#336791" },
   { value: "mysql", label: "MySQL", port: 3306, color: "#4479A1" },
   { value: "sqlite", label: "SQLite", port: 0, color: "#44A05E" },
@@ -33,6 +35,18 @@ const DB_TYPES: { value: Connection["type"]; label: string; port: number; color:
   { value: "clickhouse", label: "ClickHouse", port: 8123, color: "#FFCC00" },
   { value: "gaussdb", label: "GaussDB", port: 5432, color: "#FF6B00" },
 ];
+
+// 插件数据库类型接口
+interface PluginDbType {
+  value: string;
+  label: string;
+  port: number;
+  color: string;
+}
+
+// 已安装插件接口
+
+
 
 const TABS = [
   { id: "general", label: t('connection.tabGeneral'), icon: Globe },
@@ -75,7 +89,46 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 插件数据库类型
+  const [pluginDbTypes, setPluginDbTypes] = useState<PluginDbType[]>([]);
+
+
   const isSQLite = type === "sqlite";
+
+  // 加载插件数据库类型
+  useEffect(() => {
+    const loadPluginDbTypes = async () => {
+      try {
+        const installedPlugins = await invoke<any[]>("list_plugins");
+        
+        // 加载插件状态（启用/禁用）
+        const status: Record<string, boolean> = {};
+        installedPlugins.forEach(plugin => {
+          status[plugin.id] = plugin.enabled ?? true; // Use enabled status from plugin data or default to enabled
+        });
+        
+        // 只加载启用的插件
+        const pluginTypes: PluginDbType[] = installedPlugins
+          .filter(plugin => plugin.enabled ?? true)
+          .map(plugin => ({
+            value: `plugin:${plugin.id}`,
+            label: `Plugin: ${plugin.name}`,
+            port: plugin.default_port || 0,
+            color: "#6c757d" // 灰色，代表插件
+          }));
+        setPluginDbTypes(pluginTypes);
+      } catch (error) {
+        console.error("Failed to load plugin database types:", error);
+      }
+    };
+
+    loadPluginDbTypes();
+  }, []);
+
+  // 获取所有数据库类型（内置 + 插件）
+  const getAllDbTypes = (): Array<{ value: string; label: string; port: number; color: string }> => {
+    return [...BUILTIN_DB_TYPES, ...pluginDbTypes];
+  };
 
   // Populate form when editing
   useEffect(() => {
@@ -128,7 +181,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
   // Auto-fill port when type changes
   useEffect(() => {
     if (!editConnection) {
-      const dbType = DB_TYPES.find((d) => d.value === type);
+      const dbType = getAllDbTypes().find((d) => d.value === type);
       if (dbType) {
         setPort(dbType.port);
         // Set default username based on database type
@@ -140,13 +193,17 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
         } else if (type === "gaussdb") {
           setUsername("gaussdb");
           setDatabase("gaussdb");
+        } else if (type.startsWith("plugin:")) {
+          // 插件类型的默认值
+          setUsername("");
+          setDatabase("");
         } else {
           setUsername("root");
           setDatabase("");
         }
       }
     }
-  }, [type, editConnection]);
+  }, [type, editConnection, pluginDbTypes]);
 
   // Set default values for new connections
   useEffect(() => {
@@ -474,7 +531,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   onChange={(e) => setType(e.target.value as Connection["type"])}
                   className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground cursor-pointer pr-8"
                 >
-                  {DB_TYPES.map((db) => (
+                  {getAllDbTypes().map((db) => (
                     <option key={db.value} value={db.value}>
                       {db.label}
                     </option>
@@ -483,7 +540,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 <Database
                   size={12}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                  style={{ color: DB_TYPES.find((d) => d.value === type)?.color }}
+                  style={{ color: getAllDbTypes().find((d) => d.value === type)?.color }}
                 />
               </div>
             </div>

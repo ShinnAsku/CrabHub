@@ -1,13 +1,59 @@
 mod ai;
+mod commands;
 mod connection_store;
 mod db;
+mod plugins;
+mod rpc;
 mod ssh;
 
 use connection_store::ConnectionStore;
 use db::manager::ConnectionManager;
 use std::sync::Arc;
+use std::path::PathBuf;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
+
+fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    // Use Tabularis-compatible plugin directory
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: ~/Library/Application Support/com.debba.tabularis/plugins/
+        if let Some(home) = dirs::home_dir() {
+            let path = home.join("Library").join("Application Support").join("com.debba.tabularis").join("plugins");
+            std::fs::create_dir_all(&path)?;
+            return Ok(path);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Linux: ~/.local/share/tabularis/plugins/
+        if let Some(home) = dirs::home_dir() {
+            let path = home.join(".local").join("share").join("tabularis").join("plugins");
+            std::fs::create_dir_all(&path)?;
+            return Ok(path);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: %APPDATA%\\com.debba.tabularis\\plugins\\
+        if let Some(app_data) = std::env::var("APPDATA") {
+            let path = PathBuf::from(app_data).join("com.debba.tabularis").join("plugins");
+            std::fs::create_dir_all(&path)?;
+            return Ok(path);
+        }
+    }
+
+    // Fallback to app data dir if specific app directory
+    if let Some(app_dir) = dirs::config_dir() {
+        let path = app_dir.join("tabularis").join("plugins");
+        std::fs::create_dir_all(&path)?;
+        Ok(path)
+    } else {
+        Err("Could not determine home directory".into())
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub async fn run() {
@@ -52,6 +98,14 @@ pub async fn run() {
             ai::commands::ai_chat,
             ai::commands::analyze_sql,
             ai::commands::format_sql,
+            // Plugin commands
+            plugins::commands::list_plugins,
+            plugins::commands::fetch_plugin_registry,
+            plugins::commands::install_plugin,
+            plugins::commands::remove_plugin,
+            plugins::commands::reload_plugins,
+            plugins::commands::enable_plugin,
+            plugins::commands::disable_plugin,
         ])
         .setup(move |app| {
             // Build native Edit menu for macOS keyboard shortcuts (Cmd+Z/C/V/X/A)
@@ -86,11 +140,38 @@ pub async fn run() {
             let store = Arc::new(ConnectionStore::new(db_path.to_str().unwrap()).unwrap());
             app.manage(store);
 
+            // Initialize PluginManager - use Tabularis-compatible plugin directory
+            let plugins_dir = get_tabularis_plugins_dir()?;
+            let plugin_manager = Arc::new(plugins::manager::PluginManager::new(plugins_dir));
+            app.manage(plugin_manager);
+
             // Start the background heartbeat task
             let manager_clone = manager.clone();
             tauri::async_runtime::spawn(async move {
                 ConnectionManager::start_heartbeat(manager_clone).await;
             });
+
+            // Start RPC server for plugin communication
+            let manager_clone = manager.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = rpc::server::start_rpc_server(manager_clone).await {
+                    log::error!("Failed to start RPC server: {}", e);
+                }
+            });
+
+            // Start MCP server for AI tool integration (TODO: Fix rmcp dependency)
+            // tauri::async_runtime::spawn(async move {
+            //     use rmcp::Server;
+            //     use rmcp::tool::ToolCollection;
+            //     
+            //     let tools = ToolCollection::default();
+            //     let server = Server::new(tools);
+            //     
+            //     if let Err(e) = server.serve("127.0.0.1:3031").await {
+            //         log::error!("Failed to start MCP server: {}", e);
+            //     }
+            // });
+
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -13,9 +13,13 @@ import {
   Globe,
   BarChart3,
   ArrowLeftRight,
+  FileText,
+  Database,
+  Package,
 } from "lucide-react";
 import { useAppStore, useTabStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
+import * as dialog from "@tauri-apps/plugin-dialog";
 
 function Toolbar({
   onOpenConnectionDialog,
@@ -26,6 +30,7 @@ function Toolbar({
   onOpenDataMigration,
   onOpenImport,
   onOpenExport,
+  connections,
 }: {
   onOpenConnectionDialog: () => void;
   onOpenSnippetPanel: () => void;
@@ -35,6 +40,7 @@ function Toolbar({
   onOpenDataMigration: () => void;
   onOpenImport: () => void;
   onOpenExport: () => void;
+  connections: any[];
 }) {
   const { theme, toggleTheme, aiPanelOpen, toggleAIPanel, addTab, tabs, activeConnectionId, language, setLanguage, setViewModeType } = useAppStore();
 
@@ -48,14 +54,30 @@ function Toolbar({
     }
   }, []);
 
-  const handleNewQuery = useCallback(() => {
-    const queryCount = tabs.filter((t) => t.type === "query").length + 1;
-    addTab({
-      title: `${t('tab.query')} ${queryCount}`,
-      type: "query",
-      content: "",
-      connectionId: activeConnectionId || undefined,
-    });
+  const handleNewQuery = useCallback(async () => {
+    const connectedConnections = connections.filter(conn => conn.connected);
+    
+    if (connectedConnections.length === 0) {
+      // No connected database
+      await dialog.message('Please connect to a database before opening a query.');
+      return;
+    } else if (connectedConnections.length > 1) {
+      // Multiple connected databases, show selection dialog
+      // For Tauri v2, we'll use a simple message dialog for now
+      // TODO: Implement proper selection dialog using Tauri v2 API
+      await dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
+      return;
+    } else {
+      // Only one connected database
+      const queryCount = tabs.filter((t) => t.type === "query").length + 1;
+      addTab({
+        title: `${t('tab.query')} ${queryCount}`,
+        type: "query",
+        content: "",
+        connectionId: connectedConnections[0].id,
+      });
+    }
+    
     setViewModeType("query");
     setTimeout(() => {
       const newActiveId = useTabStore.getState().activeTabId;
@@ -63,7 +85,73 @@ function Toolbar({
         window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
       }
     }, 0);
-  }, [addTab, tabs.length, activeConnectionId, setViewModeType]);
+  }, [addTab, tabs.length, connections, setViewModeType]);
+
+  const handleNewNotebook = useCallback(async () => {
+    const connectedConnections = connections.filter(conn => conn.connected);
+    
+    if (connectedConnections.length === 0) {
+      // No connected database
+      await dialog.message('Please connect to a database before opening a notebook.');
+      return;
+    } else if (connectedConnections.length > 1) {
+      // Multiple connected databases, show selection dialog
+      // For Tauri v2, we'll use a simple message dialog for now
+      // TODO: Implement proper selection dialog using Tauri v2 API
+      await dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
+      return;
+    } else {
+      // Only one connected database
+      const notebookCount = tabs.filter((t) => t.type === "notebook").length + 1;
+      addTab({
+        title: `${t('tab.notebook')} ${notebookCount}`,
+        type: "notebook",
+        content: "",
+        connectionId: connectedConnections[0].id,
+      });
+    }
+    
+    setViewModeType("query");
+    setTimeout(() => {
+      const newActiveId = useTabStore.getState().activeTabId;
+      if (newActiveId) {
+        window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
+      }
+    }, 0);
+  }, [addTab, tabs.length, connections, setViewModeType]);
+
+  const handleNewQueryBuilder = useCallback(async () => {
+    const connectedConnections = connections.filter(conn => conn.connected);
+    
+    if (connectedConnections.length === 0) {
+      // No connected database
+      await dialog.message('Please connect to a database before opening a query builder.');
+      return;
+    } else if (connectedConnections.length > 1) {
+      // Multiple connected databases, show selection dialog
+      // For Tauri v2, we'll use a simple message dialog for now
+      // TODO: Implement proper selection dialog using Tauri v2 API
+      await dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
+      return;
+    } else {
+      // Only one connected database
+      const builderCount = tabs.filter((t) => t.type === "query-builder").length + 1;
+      addTab({
+        title: `${t('tab.queryBuilder')} ${builderCount}`,
+        type: "query-builder",
+        content: "",
+        connectionId: connectedConnections[0].id,
+      });
+    }
+    
+    setViewModeType("query");
+    setTimeout(() => {
+      const newActiveId = useTabStore.getState().activeTabId;
+      if (newActiveId) {
+        window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
+      }
+    }, 0);
+  }, [addTab, tabs.length, connections, setViewModeType]);
 
   return (
     <div
@@ -102,6 +190,26 @@ function Toolbar({
         >
           <FilePlus size={13} />
           <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('toolbar.query')}</span>
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={(e) => {
+            e.stopPropagation();
+            handleNewNotebook();
+          }}
+          title={t('toolbar.newNotebook')}
+        >
+          <FileText size={13} />
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[60px]">{t('toolbar.notebook')}</span>
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={(e) => {
+            e.stopPropagation();
+            handleNewQueryBuilder();
+          }}
+          title={t('toolbar.newQueryBuilder')}
+        >
+          <Database size={13} />
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[80px]">{t('toolbar.queryBuilder')}</span>
         </ToolbarButton>
       </div>
 
@@ -186,6 +294,16 @@ function Toolbar({
         >
           <ArrowLeftRight size={13} />
           <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('migration.titleShort')}</span>
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={(e) => {
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent('openPluginManager'));
+          }}
+          title="Plugin Manager"
+        >
+          <Package size={13} />
+          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">Plugins</span>
         </ToolbarButton>
       </div>
 

@@ -610,10 +610,34 @@ function PlanNodeView({
 
   const costPercent = maxCost > 0 && costValue ? Math.min((costValue / maxCost) * 100, 100) : 0;
 
+  // Get node icon based on type
+  const getNodeIcon = (type: string) => {
+    const lower = type.toLowerCase();
+    if (lower.includes('scan') || lower.includes('table')) {
+      return '📋';
+    } else if (lower.includes('index')) {
+      return '🔍';
+    } else if (lower.includes('join')) {
+      return '🔄';
+    } else if (lower.includes('sort')) {
+      return '📊';
+    } else if (lower.includes('aggregate') || lower.includes('group')) {
+      return '🔢';
+    } else if (lower.includes('filter')) {
+      return '🎯';
+    } else if (lower.includes('subquery')) {
+      return '📦';
+    } else if (lower.includes('materialize')) {
+      return '💾';
+    } else {
+      return '📝';
+    }
+  };
+
   return (
     <div style={{ marginLeft: depth > 0 ? 16 : 0 }}>
       <div
-        className={`rounded border ${isExpensive ? costColorMap[costLevel] : 'border-border'} transition-colors`}
+        className={`rounded border ${isExpensive ? costColorMap[costLevel] : 'border-border'} transition-colors shadow-sm hover:shadow-md`}
       >
         {/* Node header */}
         <div
@@ -627,6 +651,11 @@ function PlanNodeView({
             ) : (
               <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
             )}
+          </span>
+
+          {/* Node icon */}
+          <span className="text-sm shrink-0">
+            {getNodeIcon(node.type)}
           </span>
 
           {/* Type icon */}
@@ -690,11 +719,16 @@ function PlanNodeView({
         {/* Cost bar */}
         {costPercent > 0 && (
           <div className="px-2.5 pb-1">
-            <div className="h-0.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${costBarColorMap[costLevel]} transition-all`}
-                style={{ width: `${costPercent}%` }}
-              />
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-0.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${costBarColorMap[costLevel]} transition-all duration-500 ease-in-out`}
+                  style={{ width: `${costPercent}%` }}
+                />
+              </div>
+              <span className="text-[9px] font-mono text-muted-foreground shrink-0 min-w-[35px] text-right">
+                {costPercent.toFixed(0)}%
+              </span>
             </div>
           </div>
         )}
@@ -712,13 +746,25 @@ function PlanNodeView({
       {/* Children */}
       {hasChildren && expanded && (
         <div className="mt-0.5">
-          {node.children!.map((child) => (
-            <PlanNodeView
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              maxCost={maxCost}
-            />
+          {/* Connection line */}
+          {depth > 0 && (
+            <div className="relative h-2.5">
+              <div className="absolute left-7 top-0 bottom-0 w-px bg-border" />
+            </div>
+          )}
+          {node.children!.map((child, index) => (
+            <React.Fragment key={child.id}>
+              {index > 0 && depth > 0 && (
+                <div className="relative h-2.5">
+                  <div className="absolute left-7 top-0 bottom-0 w-px bg-border" />
+                </div>
+              )}
+              <PlanNodeView
+                node={child}
+                depth={depth + 1}
+                maxCost={maxCost}
+              />
+            </React.Fragment>
           ))}
         </div>
       )}

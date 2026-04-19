@@ -5,7 +5,7 @@
 ## 特性
 
 - 🪶 **轻量高效** — 基于 Tauri v2，安装包 < 15MB
-- 🎯 **极简 UI** — 参考 DbPaw 极简设计风格，告别"驾驶舱"式复杂界面
+- 🎯 **极简 UI** — 极简设计风格，告别"驾驶舱"式复杂界面
 - 🤖 **AI 驱动** — 内置 AI 助手，支持自然语言建表、查询、SQL 解释
 - 🗄️ **多数据库** — 支持 PostgreSQL、MySQL、SQLite、MSSQL、GaussDB、ClickHouse
 - 🔒 **安全可靠** — OS Keyring 存储凭证，TLS 加密连接

@@ -17,6 +17,8 @@ import {
   ClipboardPaste,
   MousePointerClick,
   TextCursorInput,
+  Brain,
+  Lightbulb,
 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import type { QueryResult, PagedQueryResult } from "@/types";
@@ -27,6 +29,8 @@ import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
 import TableDesigner from "./TableDesigner";
 import QueryAnalyzer from "./QueryAnalyzer";
+import NotebookView from "./notebook/NotebookView";
+import QueryBuilder from "./query-builder/QueryBuilder";
 
 // SQL keywords for autocompletion
 const SQL_KEYWORDS = [
@@ -223,7 +227,7 @@ function splitSqlStatements(sql: string): string[] {
 }
 
 function EditorPanel() {
-  const { tabs, activeTabId, connections, addTab } = useAppStore();
+  const { tabs, activeTabId, connections, addTab, closeTab } = useAppStore();
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -283,6 +287,40 @@ function EditorPanel() {
               connectionId: activeTab.connectionId,
               
             });
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab.type === "notebook") {
+    return (
+      <div className="flex-1 min-h-0">
+        <NotebookView
+          connectionId={activeTab.connectionId || ""}
+          onClose={() => closeTab(activeTabId)}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab.type === "query-builder") {
+    return (
+      <div className="flex-1 min-h-0">
+        <QueryBuilder
+          connectionId={activeTab.connectionId || ""}
+          onClose={() => closeTab(activeTabId)}
+          onQueryGenerated={(sql) => {
+            // Create a new query tab with the generated SQL
+            const queryCount = tabs.filter((t) => t.type === "query").length + 1;
+            const newTabId = addTab({
+              title: `${t('tab.query')} ${queryCount}`,
+              type: "query",
+              content: sql,
+              connectionId: activeTab.connectionId,
+            });
+            // Activate the new tab
+            useAppStore.getState().setActiveTab(newTabId);
           }}
         />
       </div>
@@ -1230,6 +1268,34 @@ function QueryEditor() {
           >
             <Code2 size={12} />
             {t('editor.snippetShort')}
+          </button>
+          <button
+            onClick={() => useAppStore.getState().toggleAIPanel()}
+            className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors"
+            title="AI Assistant"
+          >
+            <Brain size={12} />
+            AI
+          </button>
+          <button
+            onClick={async () => {
+              const sql = editorRef.current?.getValue() || '';
+              if (sql) {
+                useAppStore.getState().toggleAIPanel();
+                // Set AI input to optimize the SQL
+                setTimeout(() => {
+                  const aiInput = document.querySelector('.ai-input');
+                  if (aiInput) {
+                    (aiInput as HTMLTextAreaElement).value = `帮我优化这个SQL: ${sql}`;
+                  }
+                }, 100);
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors"
+            title="AI Optimize SQL"
+          >
+            <Lightbulb size={12} />
+            AI 优化
           </button>
           <button
             onClick={() => handleExecute()}

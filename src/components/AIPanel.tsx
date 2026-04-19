@@ -13,6 +13,12 @@ import {
   Minus,
   Square,
   GripHorizontal,
+  Lightbulb,
+  Code,
+  Database,
+  BarChart2,
+  Zap,
+  Brain,
 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
@@ -552,7 +558,7 @@ function AIPanel() {
 
   return (
     <div
-      className="fixed z-30 flex flex-col bg-background border-l border-border shadow-xl"
+      className="ai-panel fixed z-30 flex flex-col bg-background border-l border-border shadow-xl"
       style={{
         right: 0,
         top: "36px", // below toolbar
@@ -652,6 +658,54 @@ function AIPanel() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Quick Actions */}
+          <div className="border-t border-border px-3 py-2 shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setInput("帮我写一个查询用户表的SQL语句")}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Code size={10} />
+                <span>写SQL</span>
+              </button>
+              <button
+                onClick={() => setInput("帮我分析这个SQL的性能: ")}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Zap size={10} />
+                <span>分析性能</span>
+              </button>
+              <button
+                onClick={() => setInput("帮我根据需求设计表结构")}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Database size={10} />
+                <span>设计表结构</span>
+              </button>
+              <button
+                onClick={() => setInput("帮我分析查询结果")}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <BarChart2 size={10} />
+                <span>分析数据</span>
+              </button>
+              <button
+                onClick={() => setInput("帮我解释这个SQL语句")}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Brain size={10} />
+                <span>解释SQL</span>
+              </button>
+              <button
+                onClick={() => setInput("帮我优化这个SQL: ")}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Lightbulb size={10} />
+                <span>优化SQL</span>
+              </button>
+            </div>
+          </div>
+
           {/* Input Area */}
           <div className="border-t border-border p-2 shrink-0">
             <div className="flex items-end gap-1.5 bg-muted rounded-lg p-1.5">
@@ -661,7 +715,7 @@ function AIPanel() {
                 onKeyDown={handleKeyDown}
                 placeholder={t('ai.inputPlaceholder')}
                 rows={1}
-                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none resize-none min-h-[20px] max-h-[80px]"
+                className="ai-input flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none resize-none min-h-[20px] max-h-[80px]"
                 style={{ lineHeight: "20px" }}
               />
               {isStreaming ? (
