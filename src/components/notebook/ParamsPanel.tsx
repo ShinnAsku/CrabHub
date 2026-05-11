@@ -6,6 +6,7 @@ interface ParamsPanelProps {
 }
 
 const ParamsPanel: React.FC<ParamsPanelProps> = ({ params, onParamsChange }) => {
+  const paramName = "paramName";
   const handleParamChange = (key: string, value: string) => {
     onParamsChange({
       ...params,
@@ -41,7 +42,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({ params, onParamsChange }) => 
                   const newKey = e.target.value;
                   if (newKey && newKey !== key) {
                     const newParams = { ...params };
-                    const paramValue = newParams[key];
+                    const paramValue = newParams[key] || "";
                     delete newParams[key];
                     newParams[newKey] = paramValue;
                     onParamsChange(newParams);
@@ -75,7 +76,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({ params, onParamsChange }) => 
         </button>
       </div>
       <div className="mt-4 text-xs text-muted-foreground">
-        <p>Use parameters in SQL cells with <code className="bg-background px-1 rounded">{{paramName}}</code></p>
+        <p>Use parameters in SQL cells with <code className="bg-background px-1 rounded">{paramName}</code></p>
       </div>
     </div>
   );

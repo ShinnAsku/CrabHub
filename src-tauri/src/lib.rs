@@ -64,6 +64,7 @@ pub async fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_secure_storage::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(manager.clone())
         .invoke_handler(tauri::generate_handler![
             // Connection store commands (SQLite persistence)
@@ -141,9 +142,16 @@ pub async fn run() {
             app.manage(store);
 
             // Initialize PluginManager - use Tabularis-compatible plugin directory
-            let plugins_dir = get_tabularis_plugins_dir()?;
-            let plugin_manager = Arc::new(plugins::manager::PluginManager::new(plugins_dir));
-            app.manage(plugin_manager);
+            match get_tabularis_plugins_dir() {
+                Ok(plugins_dir) => {
+                    let plugin_manager = Arc::new(plugins::manager::PluginManager::new(plugins_dir));
+                    app.manage(plugin_manager);
+                }
+                Err(e) => {
+                    // Log error but continue app startup
+                    eprintln!("Failed to initialize plugin directory: {}", e);
+                }
+            }
 
             // Start the background heartbeat task
             let manager_clone = manager.clone();

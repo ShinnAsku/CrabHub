@@ -120,7 +120,7 @@ const QueryBuilder: React.FC<QueryBuilderProps> = ({
     if (availableTables.length > 0) {
       const newJoin: Join = {
         id: Date.now().toString(),
-        table: availableTables[0],
+        table: availableTables[0] || "",
         type: "INNER",
         condition: ""
       };

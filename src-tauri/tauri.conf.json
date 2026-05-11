@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "",
     "beforeBuildCommand": "npm run build"
   },
   "app": {
@@ -32,6 +32,13 @@
       "secure-storage": {
         "all": true
       }
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/OpenDB/opendb/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dummy-pubkey-for-now"
     }
   },
   "bundle": {

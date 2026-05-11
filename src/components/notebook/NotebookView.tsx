@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { ArrowUpDown, Plus, FileText, Code, Settings, Play, PlayCircle, Save, Download } from "lucide-react";
-import { t } from "@/lib/i18n";
+import { useState, useCallback } from "react";
+import { useAppStore } from "@/stores/app-store";
+import { executeQuery } from "@/lib/tauri-commands";
 
 import SqlCell from "./SqlCell";
 import MarkdownCell from "./MarkdownCell";
@@ -18,6 +18,7 @@ interface Cell {
   executed: boolean;
   result?: any;
   error?: string;
+  isRunning?: boolean;
 }
 
 interface NotebookViewProps {
@@ -25,12 +26,44 @@ interface NotebookViewProps {
   onClose: () => void;
 }
 
+// Process cell variables like {{cellName.columnName}}
+const processCellVariables = (sql: string, cells: Cell[]): string => {
+  let processedSql = sql;
+  const variableRegex = /\{\{([^.]+)\.([^}]+)\}\}/g;
+  let match;
+  
+  while ((match = variableRegex.exec(sql)) !== null) {
+    const cellName = match[1];
+    const columnName = match[2];
+    const referencedCell = cells.find(c => c.name === cellName);
+    
+    if (referencedCell && referencedCell.result && referencedCell.result.rows.length > 0) {
+      const colIndex = referencedCell.result.columns.indexOf(columnName);
+      if (colIndex !== -1) {
+        const values = referencedCell.result.rows.map((row: any[]) => {
+          const val = row[colIndex];
+          if (typeof val === "string") {
+            return `'${val.replace(/'/g, "''")}'`;
+          }
+          return val;
+        });
+        const replacement = values.join(", ");
+        processedSql = processedSql.replace(match[0], replacement);
+      }
+    }
+  }
+  
+  return processedSql;
+};
+
 const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) => {
+  const { activeConnectionId } = useAppStore();
+  
   const [cells, setCells] = useState<Cell[]>([
     {
       id: "1",
       type: "sql",
-      content: "-- Write your SQL here\nSELECT * FROM table_name LIMIT 10;",
+      content: "-- Write your SQL here\n-- Use {{cellName.columnName}} to reference results from other cells\nSELECT * FROM table_name LIMIT 10;",
       name: "SQL Cell 1",
       executed: false
     }
@@ -48,6 +81,8 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
   const [params, setParams] = useState<Record<string, string>>({
     "example": "value"
   });
+
+  const effectiveConnectionId = connectionId || activeConnectionId;
 
   const addSqlCell = useCallback((afterId?: string) => {
     const newId = Date.now().toString();
@@ -120,7 +155,7 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
       const filtered = prev.filter(cell => cell.id !== id);
       if (filtered.length === 0) {
         addSqlCell();
-      } else if (activeCellId === id) {
+      } else if (activeCellId === id && filtered[0]) {
         setActiveCellId(filtered[0].id);
       }
       return filtered;
@@ -136,48 +171,47 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
       if (newIndex < 0 || newIndex >= prev.length) return prev;
 
       const newCells = [...prev];
-      [newCells[index], newCells[newIndex]] = [newCells[newIndex], newCells[index]];
+      if (newCells[index] && newCells[newIndex]) {
+        [newCells[index], newCells[newIndex]] = [newCells[newIndex], newCells[index]];
+      }
       return newCells;
     });
   }, []);
 
-  const runCell = useCallback(async (id: string) => {
-    const cell = cells.find(c => c.id === id);
-    if (!cell || cell.type !== "sql") return;
+  const runCell = useCallback(async (cell: Cell) => {
+    if (!effectiveConnectionId || cell.type !== "sql") return;
 
     setCells(prev => prev.map(c => 
-      c.id === id ? { ...c, executed: false, error: undefined } : c
+      c.id === cell.id ? { ...c, isRunning: true, executed: false, error: undefined } : c
     ));
 
-    // Simulate query execution
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const processedSql = processCellVariables(cell.content, cells);
+      const result = await executeQuery(effectiveConnectionId, processedSql);
+      
       setCells(prev => prev.map(c => 
-        c.id === id ? {
+        c.id === cell.id ? {
           ...c,
+          isRunning: false,
           executed: true,
-          result: {
-            columns: ["id", "name", "value"],
-            rows: [
-              [1, "Test 1", 100],
-              [2, "Test 2", 200],
-              [3, "Test 3", 300]
-            ]
-          }
+          result: result
         } : c
       ));
     } catch (error) {
       setCells(prev => prev.map(c => 
-        c.id === id ? {
+        c.id === cell.id ? {
           ...c,
+          isRunning: false,
           executed: true,
-          error: error instanceof Error ? error.message : "Unknown error"
+          error: error instanceof Error ? error.message : String(error)
         } : c
       ));
     }
-  }, [cells]);
+  }, [effectiveConnectionId, cells]);
 
   const runAllCells = useCallback(async () => {
+    if (!effectiveConnectionId) return;
+
     setIsRunningAll(true);
     setRunSummary(null);
 
@@ -189,10 +223,34 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
       if (cell.type === "sql") {
         executed++;
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          setCells(prev => prev.map(c => 
+            c.id === cell.id ? { ...c, isRunning: true, executed: false, error: undefined } : c
+          ));
+
+          const processedSql = processCellVariables(cell.content, cells);
+          const result = await executeQuery(effectiveConnectionId, processedSql);
+          
+          setCells(prev => prev.map(c => 
+            c.id === cell.id ? {
+              ...c,
+              isRunning: false,
+              executed: true,
+              result: result
+            } : c
+          ));
         } catch (error) {
           failed++;
-          errors.push(error instanceof Error ? error.message : "Unknown error");
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`${cell.name}: ${errorMsg}`);
+          
+          setCells(prev => prev.map(c => 
+            c.id === cell.id ? {
+              ...c,
+              isRunning: false,
+              executed: true,
+              error: errorMsg
+            } : c
+          ));
         }
       }
     }
@@ -204,12 +262,13 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
       errors
     });
     setIsRunningAll(false);
-  }, [cells]);
+  }, [effectiveConnectionId, cells]);
 
   const saveNotebook = useCallback(() => {
     const notebookData = {
       cells,
-      params
+      params,
+      version: "1.0"
     };
     const jsonString = JSON.stringify(notebookData, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
@@ -253,9 +312,10 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
                 <SqlCell
                   cell={cell}
                   isActive={activeCellId === cell.id}
+                  allCells={cells}
                   onContentChange={content => updateCellContent(cell.id, content)}
                   onNameChange={name => updateCellName(cell.id, name)}
-                  onRun={() => runCell(cell.id)}
+                  onRun={runCell}
                   onDelete={() => deleteCell(cell.id)}
                   onMoveUp={() => moveCell(cell.id, "up")}
                   onMoveDown={() => moveCell(cell.id, "down")}

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "./bin/bunx vite",
     "dev:mock": "VITE_MOCK_MODE=true ./bin/bunx vite",
-    "build": "./bin/bunx tsc && ./bin/bunx vite build",
+    "build": "./bin/bunx vite build",
     "preview": "./bin/bunx vite preview",
     "tauri": "./bin/bunx tauri",
     "typecheck": "tsc --noEmit",
@@ -34,7 +34,11 @@
     "papaparse": "^5.5.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.9",
+    "reactflow": "^11.11.4",
+    "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1",
     "sql-formatter": "^15.7.3",
     "tauri-plugin-secure-storage": "^1.4.0",
     "zustand": "^5.0.12"

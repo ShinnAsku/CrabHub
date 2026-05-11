@@ -126,7 +126,7 @@ export interface SelectedContext {
 
 export interface Tab {
   id: string;
-  type: 'query' | 'table' | 'er' | 'designer' | 'diff' | 'migration' | 'analyzer';
+  type: 'query' | 'table' | 'er' | 'designer' | 'diff' | 'migration' | 'analyzer' | 'notebook' | 'query-builder';
   title: string;
   content?: string;
   connectionId?: string;
@@ -138,6 +138,8 @@ export interface Tab {
   messages?: string[];
   activeResultTab?: 'results' | 'messages' | 'executionPlan';
   executionPlan?: any[];
+  cells?: any[];
+  activeCellId?: string;
 }
 
 export interface QueryHistoryEntry {

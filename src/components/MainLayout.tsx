@@ -18,6 +18,7 @@ import ErrorBoundary from "./ErrorBoundary";
 import ERSelectorDialog from "./ERSelectorDialog";
 import ImportExportDialog from "./ImportExportDialog";
 import PluginManager from "./PluginManager";
+import UpdateManager from "./UpdateManager";
 
 function MainLayout() {
   const {
@@ -49,6 +50,7 @@ function MainLayout() {
   const [erSelectorOpen, setERSelectorOpen] = useState(false);
   const [importExportMode, setImportExportMode] = useState<"import" | "export" | null>(null);
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+  const [updateManagerOpen, setUpdateManagerOpen] = useState(false);
 
   const handleOpenConnectionDialog = useCallback(
     (editConnection?: Connection) => {
@@ -163,7 +165,7 @@ function MainLayout() {
             title: `${t('tab.query')} ${queryCount}`,
             type: "query",
             content: "",
-            connectionId: connectedConnections[0].id,
+            connectionId: connectedConnections[0]?.id,
           });
           setTimeout(() => {
             const newActiveId = useTabStore.getState().activeTabId;
@@ -239,11 +241,17 @@ function MainLayout() {
       setPluginManagerOpen(true);
     };
 
+    const handleOpenUpdateManager = () => {
+      setUpdateManagerOpen(true);
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("openPluginManager", handleOpenPluginManager);
+    window.addEventListener("openUpdateManager", handleOpenUpdateManager);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("openPluginManager", handleOpenPluginManager);
+      window.removeEventListener("openUpdateManager", handleOpenUpdateManager);
     };
   }, [addTab, closeTab, activeTabId, tabs.length, toggleSidebar, toggleAIPanel]);
 
@@ -335,7 +343,7 @@ function MainLayout() {
                 title: t('welcome.codeSnippet'),
                 type: "query",
                 content: sql,
-                connectionId: connectedConnections[0].id,
+                connectionId: connectedConnections[0]?.id,
               });
             }
           }
@@ -366,6 +374,13 @@ function MainLayout() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-2xl h-full max-h-[80vh] bg-background rounded-lg shadow-lg overflow-hidden">
             <PluginManager onClose={() => setPluginManagerOpen(false)} />
+          </div>
+        </div>
+      )}
+      {updateManagerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-2xl h-full max-h-[80vh] bg-background rounded-lg shadow-lg overflow-hidden">
+            <UpdateManager onClose={() => setUpdateManagerOpen(false)} />
           </div>
         </div>
       )}

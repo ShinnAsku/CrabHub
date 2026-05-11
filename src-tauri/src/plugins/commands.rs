@@ -29,12 +29,12 @@ pub async fn list_plugins(
 #[tauri::command]
 pub async fn fetch_plugin_registry(
     plugin_manager: State<'_, Arc<PluginManager>>,
-) -> Result<serde_json::Value, String> {
+) -> Result<Vec<super::registry::PluginInfoWithStatus>, String> {
     let registry = PluginRegistry::fetch().await?;
     let installed_plugins = plugin_manager.get_all_plugins().await;
     let enabled_plugins = plugin_manager.get_enabled_plugins().await;
     let plugins_with_status = registry.to_plugins_with_status(&installed_plugins, &enabled_plugins);
-    Ok(serde_json::to_value(plugins_with_status).unwrap())
+    Ok(plugins_with_status)
 }
 
 #[tauri::command]

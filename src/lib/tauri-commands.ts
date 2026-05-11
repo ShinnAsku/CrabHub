@@ -3,6 +3,15 @@ import type { ConnectionConfig, QueryResult, PagedQueryResult, ExecuteResult, Ta
 import { getPassword } from "./secure-storage";
 import { isMockMode, mockInvoke } from "./tauri-commands-mock";
 
+// Update types
+export interface UpdateStatus {
+  available: boolean;
+  version: string;
+  date: string;
+  body: string;
+  url: string;
+}
+
 // Check if we're running in Tauri environment
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -379,4 +388,38 @@ export async function getTableData(
     rowCount: raw.rowCount ?? 0,
     duration: raw.executionTimeMs ?? 0,
   };
+}
+
+// Plugin commands
+export async function fetchPluginRegistry(): Promise<any> {
+  return safeInvoke<any>("fetch_plugin_registry");
+}
+
+export async function listPlugins(): Promise<any> {
+  return safeInvoke<any>("list_plugins");
+}
+
+export async function installPlugin(pluginId: string, version: string): Promise<void> {
+  return safeInvoke<void>("install_plugin", { pluginId, version });
+}
+
+export async function removePlugin(pluginId: string): Promise<void> {
+  return safeInvoke<void>("remove_plugin", { pluginId });
+}
+
+export async function enablePlugin(pluginId: string): Promise<void> {
+  return safeInvoke<void>("enable_plugin", { pluginId });
+}
+
+export async function disablePlugin(pluginId: string): Promise<void> {
+  return safeInvoke<void>("disable_plugin", { pluginId });
+}
+
+// Update commands
+export async function checkForUpdates(): Promise<UpdateStatus> {
+  return safeInvoke<UpdateStatus>("updater:check");
+}
+
+export async function installUpdate(): Promise<void> {
+  return safeInvoke<void>("updater:install");
 }

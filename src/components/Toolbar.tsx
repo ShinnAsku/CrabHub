@@ -14,9 +14,9 @@ import {
   BarChart3,
   ArrowLeftRight,
   FileText,
-  Database,
   Package,
-} from "lucide-react";
+} from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { useAppStore, useTabStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 import * as dialog from "@tauri-apps/plugin-dialog";
@@ -43,6 +43,21 @@ function Toolbar({
   connections: any[];
 }) {
   const { theme, toggleTheme, aiPanelOpen, toggleAIPanel, addTab, tabs, activeConnectionId, language, setLanguage, setViewModeType } = useAppStore();
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
+        setSettingsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleDragStart = useCallback((_e: React.MouseEvent) => {
     try {
@@ -201,16 +216,6 @@ function Toolbar({
           <FileText size={13} />
           <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[60px]">{t('toolbar.notebook')}</span>
         </ToolbarButton>
-        <ToolbarButton
-          onClick={(e) => {
-            e.stopPropagation();
-            handleNewQueryBuilder();
-          }}
-          title={t('toolbar.newQueryBuilder')}
-        >
-          <Database size={13} />
-          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[80px]">{t('toolbar.queryBuilder')}</span>
-        </ToolbarButton>
       </div>
 
       {/* Divider */}
@@ -295,16 +300,7 @@ function Toolbar({
           <ArrowLeftRight size={13} />
           <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">{t('migration.titleShort')}</span>
         </ToolbarButton>
-        <ToolbarButton
-          onClick={(e) => {
-            e.stopPropagation();
-            window.dispatchEvent(new CustomEvent('openPluginManager'));
-          }}
-          title="Plugin Manager"
-        >
-          <Package size={13} />
-          <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[40px]">Plugins</span>
-        </ToolbarButton>
+
       </div>
 
       {/* Divider */}
@@ -349,14 +345,43 @@ function Toolbar({
           <Globe size={13} />
           <span className="text-ellipsis whitespace-nowrap overflow-hidden max-w-[30px]">{language === 'zh' ? 'EN' : '中'}</span>
         </ToolbarButton>
-        <ToolbarButton
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-          title={t('toolbar.settings')}
-        >
-          <Settings size={13} />
-        </ToolbarButton>
+        <div className="relative" ref={settingsMenuRef}>
+          <ToolbarButton
+            onClick={(e) => {
+              e.stopPropagation();
+              setSettingsMenuOpen(!settingsMenuOpen);
+            }}
+            title={t('toolbar.settings')}
+          >
+            <Settings size={13} />
+          </ToolbarButton>
+          {settingsMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-48 bg-background border border-border rounded-md shadow-lg z-50">
+              <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('openPluginManager'));
+                setSettingsMenuOpen(false);
+              }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              <Package size={12} className="inline mr-2" />
+              {t('plugin.title')}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('openUpdateManager'));
+                setSettingsMenuOpen(false);
+              }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              <Download size={12} className="inline mr-2" />
+              {t('update.title')}
+            </button>
+          </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ import ERDiagram from "./ERDiagram";
 import TableDesigner from "./TableDesigner";
 import QueryAnalyzer from "./QueryAnalyzer";
 import NotebookView from "./notebook/NotebookView";
-import QueryBuilder from "./query-builder/QueryBuilder";
+import VisualQueryBuilder from "./query-builder/VisualQueryBuilder";
 
 // SQL keywords for autocompletion
 const SQL_KEYWORDS = [
@@ -223,7 +223,6 @@ function splitSqlStatements(sql: string): string[] {
 
   // Also filter out any standalone '/' statements in the array
   return statements.filter(s => s !== '/');
-  return statements;
 }
 
 function EditorPanel() {
@@ -298,7 +297,7 @@ function EditorPanel() {
       <div className="flex-1 min-h-0">
         <NotebookView
           connectionId={activeTab.connectionId || ""}
-          onClose={() => closeTab(activeTabId)}
+          onClose={() => activeTabId && closeTab(activeTabId)}
         />
       </div>
     );
@@ -307,9 +306,9 @@ function EditorPanel() {
   if (activeTab.type === "query-builder") {
     return (
       <div className="flex-1 min-h-0">
-        <QueryBuilder
+        <VisualQueryBuilder
           connectionId={activeTab.connectionId || ""}
-          onClose={() => closeTab(activeTabId)}
+          onClose={() => activeTabId && closeTab(activeTabId)}
           onQueryGenerated={(sql) => {
             // Create a new query tab with the generated SQL
             const queryCount = tabs.filter((t) => t.type === "query").length + 1;

@@ -65,7 +65,7 @@ interface CombinedAppState {
   setTransactionActive: (connectionId: string, active: boolean) => void;
 
   // Tab actions
-  addTab: (tab: Omit<Tab, "id">) => void;
+  addTab: (tab: Omit<Tab, "id">) => string;
   closeTab: (id: string) => void;
   setActiveTab: (id: string | null) => void;
   updateTabContent: (id: string, content: string) => void;

@@ -57,7 +57,7 @@ impl PluginRegistry {
             return Ok(cached);
         }
 
-        let url = "https://raw.githubusercontent.com/debba/tabularis/main/plugins/registry.json";
+        let url = "https://raw.githubusercontent.com/TabularisDB/tabularis/main/plugins/registry.json";
         let response = reqwest::get(url)
             .await
             .map_err(|e| format!("Failed to fetch registry: {}", e))?;
