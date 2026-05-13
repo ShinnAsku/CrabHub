@@ -22,6 +22,19 @@ import UpdateManager from "./UpdateManager";
 import MessageDialog, { showMessage } from "./MessageDialog";
 
 function MainLayout() {
+  // Responsive scaling: adjust root font-size based on window width
+  useEffect(() => {
+    const BASE_WIDTH = 1280;
+    const BASE_FONT = 16;
+    const handleResize = () => {
+      const scale = Math.max(0.75, Math.min(1.5, window.innerWidth / BASE_WIDTH));
+      document.documentElement.style.fontSize = `${BASE_FONT * scale}px`;
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const {
     aiPanelOpen,
     sidebarOpen,
