@@ -39,9 +39,9 @@ impl PluginRpcServerImpl {
 impl PluginRpcServer for PluginRpcServerImpl {
     async fn plugin_info(&self) -> RpcResult<PluginInfo> {
         Ok(PluginInfo {
-            name: "opendb-core".to_string(),
+            name: "crabhub-core".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            description: "OpenDB core plugin".to_string(),
+            description: "CrabHub core plugin".to_string(),
             driver_types: vec![
                 "postgres".to_string(),
                 "mysql".to_string(),

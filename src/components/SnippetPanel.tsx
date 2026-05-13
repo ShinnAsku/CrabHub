@@ -70,7 +70,7 @@ function SnippetPanel({ isOpen, onClose, onInsert }: SnippetPanelProps) {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("opendb-custom-snippets");
+      const saved = localStorage.getItem("crabhub-custom-snippets");
       if (saved) {
         const custom: Snippet[] = JSON.parse(saved).map((s: any, i: number) => ({
           ...s,
@@ -87,7 +87,7 @@ function SnippetPanel({ isOpen, onClose, onInsert }: SnippetPanelProps) {
   const saveCustomSnippets = useCallback((updated: Snippet[]) => {
     const custom = updated.filter((s) => s.isCustom);
     try {
-      localStorage.setItem("opendb-custom-snippets", JSON.stringify(custom));
+      localStorage.setItem("crabhub-custom-snippets", JSON.stringify(custom));
     } catch {
       // ignore
     }
@@ -164,7 +164,7 @@ function SnippetPanel({ isOpen, onClose, onInsert }: SnippetPanelProps) {
             <button
               onClick={handleAdd}
               disabled={!newName.trim() || !newSql.trim()}
-              className="px-2.5 py-1 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+              className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
             >
               {t('common.save')}
             </button>

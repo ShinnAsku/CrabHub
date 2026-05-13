@@ -388,7 +388,38 @@ export function generateAlterTable(
     return result.join('\n\n');
   }
 
-  // For other databases (MySQL, MSSQL, etc.) - single ALTER TABLE with comma-separated clauses
+  // SQLite: each ALTER must be its own statement; MODIFY/DROP not supported
+  if (dbType === 'sqlite') {
+    const statements: string[] = [];
+    for (const change of changes) {
+      switch (change.type) {
+        case 'add': {
+          if (!change.column) break;
+          const colName = quote(change.column.name, dbType);
+          const colType = buildColumnType(change.column, dbType);
+          const constraints = buildColumnConstraints(change.column, dbType);
+          statements.push(`ALTER TABLE ${fullTableName} ADD COLUMN ${[colName, colType, ...constraints].join(' ')};`);
+          break;
+        }
+        case 'rename': {
+          if (!change.oldName || !change.column) break;
+          statements.push(`ALTER TABLE ${fullTableName} RENAME COLUMN ${quote(change.oldName, dbType)} TO ${quote(change.column.name, dbType)};`);
+          break;
+        }
+        case 'modify':
+        case 'drop': {
+          statements.push(`-- SQLite does not support ${change.type === 'modify' ? 'MODIFY' : 'DROP'} COLUMN directly.`);
+          if (change.oldName) {
+            statements.push(`-- Column '${change.oldName}' requires manual migration (recreate table).`);
+          }
+          break;
+        }
+      }
+    }
+    return statements.join('\n');
+  }
+
+  // For other databases (MySQL, ClickHouse, etc.) - single ALTER TABLE with comma-separated clauses
   const lines: string[] = [];
 
   for (const change of changes) {

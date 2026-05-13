@@ -15,7 +15,6 @@ function StatusBar() {
     mssql: "MSSQL",
     clickhouse: "ClickHouse",
     gaussdb: "GaussDB",
-    opengauss: "openGauss",
   };
 
   return (

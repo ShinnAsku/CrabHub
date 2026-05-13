@@ -34,14 +34,7 @@ pub fn inject_limit_offset(
     let trimmed = sql.trim().trim_end_matches(';').trim();
 
     match db_type {
-        DatabaseType::MSSQL => {
-            format!(
-                "SELECT * FROM ({}) AS _opendb_paged ORDER BY (SELECT NULL) OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
-                trimmed, offset, limit
-            )
-        }
         _ => {
-            // PostgreSQL, MySQL, SQLite, ClickHouse, GaussDB, OpenGauss
             format!("{} LIMIT {} OFFSET {}", trimmed, limit, offset)
         }
     }
@@ -104,22 +97,4 @@ mod tests {
         assert_eq!(result, "SELECT * FROM t LIMIT 500 OFFSET 100");
     }
 
-    #[test]
-    fn test_inject_mssql() {
-        let result = inject_limit_offset("SELECT * FROM t", &DatabaseType::MSSQL, 1000, 0);
-        assert_eq!(
-            result,
-            "SELECT * FROM (SELECT * FROM t) AS _opendb_paged ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"
-        );
-    }
-
-    #[test]
-    fn test_inject_mssql_with_offset() {
-        let result =
-            inject_limit_offset("SELECT * FROM t", &DatabaseType::MSSQL, 1000, 2000);
-        assert_eq!(
-            result,
-            "SELECT * FROM (SELECT * FROM t) AS _opendb_paged ORDER BY (SELECT NULL) OFFSET 2000 ROWS FETCH NEXT 1000 ROWS ONLY"
-        );
-    }
 }

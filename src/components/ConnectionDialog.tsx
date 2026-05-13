@@ -19,6 +19,7 @@ import type { Connection, ConnectionConfig } from "@/types";
 import { connectDatabase, disconnectDatabase, testConnection } from "@/lib/tauri-commands";
 import { storePassword, getPassword, removePassword } from "@/lib/secure-storage";
 import { t } from "@/lib/i18n";
+import { showMessage } from "./MessageDialog";
 
 interface ConnectionDialogProps {
   isOpen: boolean;
@@ -31,9 +32,8 @@ const BUILTIN_DB_TYPES: { value: string; label: string; port: number; color: str
   { value: "postgresql", label: "PostgreSQL", port: 5432, color: "#336791" },
   { value: "mysql", label: "MySQL", port: 3306, color: "#4479A1" },
   { value: "sqlite", label: "SQLite", port: 0, color: "#44A05E" },
-  { value: "mssql", label: "MSSQL", port: 1433, color: "#CC2927" },
   { value: "clickhouse", label: "ClickHouse", port: 8123, color: "#FFCC00" },
-  { value: "gaussdb", label: "GaussDB", port: 5432, color: "#FF6B00" },
+  { value: "gaussdb", label: "GaussDB (GaussDB/openGauss)", port: 5432, color: "#FF6B00" },
 ];
 
 // 插件数据库类型接口
@@ -122,8 +122,8 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
       }
     };
 
-    loadPluginDbTypes();
-  }, []);
+    if (isOpen) loadPluginDbTypes();
+  }, [isOpen]);
 
   // 获取所有数据库类型（内置 + 插件）
   const getAllDbTypes = (): Array<{ value: string; label: string; port: number; color: string }> => {
@@ -285,9 +285,9 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
       
       // 弹窗提示测试结果
       if (success) {
-        alert('连接测试成功！可以连接到数据库。');
+        await showMessage(t('connection.testSuccessMsg'));
       } else {
-        alert('连接测试失败，请检查连接配置。');
+        await showMessage(t('connection.testFailedMsg'));
       }
       
       setTestResult({
@@ -303,8 +303,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
       console.error("Connection test error:", err);
       const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
       
-      // 弹窗提示错误信息
-      alert(`连接测试失败：${errorMessage || t('connection.testError')}`);
+      await showMessage(`${t('connection.testError')}: ${errorMessage}`);
       
       setTestResult({
         success: false,
@@ -360,23 +359,23 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
     
     // Validate connection name - must be filled
     if (!name.trim()) {
-      alert(t('connection.nameRequired'));
+      await showMessage(t('connection.nameRequired'));
       return;
     }
-    
+
     // PostgreSQL-like databases require a database name
     if ((type === "postgresql" || type === "gaussdb") && !database.trim()) {
-      alert('PostgreSQL 类型的数据库必须指定初始数据库名称');
+      await showMessage(t('connection.databaseRequired'));
       return;
     }
-    
+
     // Check for duplicate connection name
     const existingConnections = useConnectionStore.getState().connections;
     const duplicateName = existingConnections.find(
       (c) => c.name.toLowerCase() === name.trim().toLowerCase() && c.id !== editConnection?.id
     );
     if (duplicateName) {
-      alert(t('connection.nameExists'));
+      await showMessage(t('connection.nameExists'));
       return;
     }
     
@@ -697,7 +696,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 <button
                   onClick={() => setAutoReconnect(!autoReconnect)}
                   className={`relative w-8 h-4 rounded-full transition-colors ${
-                    autoReconnect ? "bg-[hsl(var(--tab-active))]" : "bg-muted border border-border"
+                    autoReconnect ? "bg-blue-600" : "bg-muted border border-border"
                   }`}
                 >
                   <span
@@ -735,7 +734,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               <button
                 onClick={() => setSslEnabled(!sslEnabled)}
                 className={`relative w-8 h-4 rounded-full transition-colors ${
-                  sslEnabled ? "bg-[hsl(var(--tab-active))]" : "bg-muted border border-border"
+                  sslEnabled ? "bg-blue-600" : "bg-muted border border-border"
                 }`}
               >
                 <span
@@ -791,7 +790,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               <button
                 onClick={() => setSshEnabled(!sshEnabled)}
                 className={`relative w-8 h-4 rounded-full transition-colors ${
-                  sshEnabled ? "bg-[hsl(var(--tab-active))]" : "bg-muted border border-border"
+                  sshEnabled ? "bg-blue-600" : "bg-muted border border-border"
                 }`}
               >
                 <span
@@ -953,7 +952,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors disabled:opacity-40"
           >
             {saving ? (
               <Loader2 size={12} className="animate-spin" />

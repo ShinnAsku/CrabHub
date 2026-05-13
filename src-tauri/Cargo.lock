@@ -990,6 +990,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "crabhub"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dirs 5.0.1",
+ "futures",
+ "futures-util",
+ "ipnetwork",
+ "jsonrpsee",
+ "keyring 2.3.3",
+ "log",
+ "mac_address",
+ "native-tls",
+ "pbkdf2 0.12.2",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "rmcp",
+ "rusqlite",
+ "russh",
+ "russh-keys",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-log",
+ "tauri-plugin-secure-storage",
+ "tauri-plugin-updater",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tiberius",
+ "tokio",
+ "tokio-gaussdb",
+ "tokio-native-tls",
+ "tokio-opengauss",
+ "tokio-util 0.7.18",
+ "urlencoding",
+ "uuid",
+ "zip 0.6.6",
+]
+
+[[package]]
 name = "crc"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2817,19 +2869,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-tls"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
-dependencies = [
- "bytes",
- "hyper 0.14.32",
- "native-tls",
- "tokio",
- "tokio-native-tls",
-]
-
-[[package]]
 name = "hyper-util"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4171,58 +4210,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
-name = "opendb"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "async-trait",
- "base64 0.21.7",
- "chrono",
- "dirs 5.0.1",
- "futures",
- "futures-util",
- "ipnetwork",
- "jsonrpsee",
- "keyring 2.3.3",
- "log",
- "mac_address",
- "native-tls",
- "pbkdf2 0.12.2",
- "rand 0.8.5",
- "regex",
- "reqwest 0.11.27",
- "rmcp",
- "rusqlite",
- "russh",
- "russh-keys",
- "rust_decimal",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-log",
- "tauri-plugin-secure-storage",
- "tauri-plugin-updater",
- "tempfile",
- "thiserror 2.0.18",
- "tiberius",
- "tokio",
- "tokio-gaussdb",
- "tokio-native-tls",
- "tokio-opengauss",
- "tokio-util 0.7.18",
- "urlencoding",
- "uuid",
- "zip 0.6.6",
-]
-
-[[package]]
 name = "opengauss-protocol"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5410,15 +5397,16 @@ dependencies = [
  "http 0.2.12",
  "http-body 0.4.6",
  "hyper 0.14.32",
- "hyper-tls",
+ "hyper-rustls 0.24.2",
  "ipnet",
  "js-sys",
  "log",
  "mime",
- "native-tls",
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
+ "rustls 0.21.12",
+ "rustls-native-certs 0.6.3",
  "rustls-pemfile 1.0.4",
  "serde",
  "serde_json",
@@ -5426,7 +5414,7 @@ dependencies = [
  "sync_wrapper 0.1.2",
  "system-configuration",
  "tokio",
- "tokio-native-tls",
+ "tokio-rustls 0.24.1",
  "tower-service",
  "url",
  "wasm-bindgen",

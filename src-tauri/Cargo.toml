@@ -1,15 +1,15 @@
 [package]
-name = "opendb"
+name = "crabhub"
 version = "0.1.0"
-description = "OpenDB - A lightweight database management tool with AI assistance"
-authors = ["OpenDB"]
+description = "CrabHub - A lightweight database management tool with AI assistance"
+authors = ["CrabHub"]
 license = "MIT"
 repository = ""
 edition = "2021"
 rust-version = "1.77.2"
 
 [lib]
-name = "opendb_lib"
+name = "crabhub_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -37,7 +37,7 @@ tokio-gaussdb = "0.1.0"
 tokio-opengauss = "0.1"
 native-tls = "0.2"
 tokio-native-tls = "0.3"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 dirs = "5.0.1"
 tiberius = { version = "0.12", features = ["chrono"] }
 tokio-util = { version = "0.7", features = ["compat"] }

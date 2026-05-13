@@ -56,28 +56,41 @@ fn default_true() -> bool {
 }
 
 /// Database type enum
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DbType {
     PostgreSQL,
     MySql,
     SQLite,
-    MsSQL,
     ClickHouse,
     GaussDB,
-    OpenGauss,
+    Plugin(String),
+}
+
+impl Serialize for DbType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            DbType::Plugin(id) => serializer.serialize_str(&format!("plugin:{}", id)),
+            other => serializer.serialize_str(other.as_str()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DbType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        DbType::from_str(&s).ok_or_else(|| serde::de::Error::custom(format!("unknown db type: {}", s)))
+    }
 }
 
 impl DbType {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             DbType::PostgreSQL => "postgresql",
             DbType::MySql => "mysql",
             DbType::SQLite => "sqlite",
-            DbType::MsSQL => "mssql",
             DbType::ClickHouse => "clickhouse",
             DbType::GaussDB => "gaussdb",
-            DbType::OpenGauss => "opengauss",
+            DbType::Plugin(_) => "plugin",
         }
     }
 
@@ -86,10 +99,11 @@ impl DbType {
             "postgresql" => Some(DbType::PostgreSQL),
             "mysql" => Some(DbType::MySql),
             "sqlite" => Some(DbType::SQLite),
-            "mssql" => Some(DbType::MsSQL),
             "clickhouse" => Some(DbType::ClickHouse),
-            "gaussdb" => Some(DbType::GaussDB),
-            "opengauss" => Some(DbType::OpenGauss),
+            "gaussdb" | "opengauss" => Some(DbType::GaussDB),
+            other if other.starts_with("plugin:") => {
+                Some(DbType::Plugin(other[7..].to_string()))
+            }
             _ => None,
         }
     }

@@ -378,11 +378,7 @@ impl GaussDBConnection {
     pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
         let host = config.host.as_deref().unwrap_or("localhost");
         let port = config.port.unwrap_or(5432);
-        let default_username = if config.db_type == DatabaseType::OpenGauss {
-            "omm"
-        } else {
-            "gaussdb"
-        };
+        let default_username = "gaussdb";
         let username = config.username.as_deref().unwrap_or(default_username);
         let password = config.password.as_deref().unwrap_or("");
         let database = config.database.as_deref().unwrap_or("");
@@ -523,7 +519,7 @@ impl GaussDBConnection {
                                 "Server version: {} -> detected as openGauss",
                                 version_str
                             );
-                            return DatabaseType::OpenGauss;
+                            return DatabaseType::GaussDB;
                         } else if lower.contains("gaussdb") {
                             log::info!(
                                 "Server version: {} -> detected as GaussDB",

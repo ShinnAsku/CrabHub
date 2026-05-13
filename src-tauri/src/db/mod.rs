@@ -4,7 +4,6 @@ pub mod postgres;
 pub mod mysql;
 pub mod sqlite;
 pub mod gaussdb;
-pub mod mssql;
 pub mod clickhouse;
 pub mod manager;
 pub mod commands;

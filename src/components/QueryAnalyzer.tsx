@@ -1010,7 +1010,7 @@ export default function QueryAnalyzer({
     const { slowQueryLog: current } = useAppStore.getState();
     const updated = current.filter(q => q.id !== id);
     try {
-      localStorage.setItem('opendb-slow-queries', JSON.stringify(updated));
+      localStorage.setItem('crabhub-slow-queries', JSON.stringify(updated));
     } catch {}
     useAppStore.setState({ slowQueryLog: updated });
   }, []);

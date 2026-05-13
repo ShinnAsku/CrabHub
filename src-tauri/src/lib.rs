@@ -17,9 +17,9 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // Use Tabularis-compatible plugin directory
     #[cfg(target_os = "macos")]
     {
-        // macOS: ~/Library/Application Support/com.opendb.app/plugins/
+        // macOS: ~/Library/Application Support/com.crabhub.app/plugins/
         if let Some(home) = dirs::home_dir() {
-            let path = home.join("Library").join("Application Support").join("com.opendb.app").join("plugins");
+            let path = home.join("Library").join("Application Support").join("com.crabhub.app").join("plugins");
             std::fs::create_dir_all(&path)?;
             return Ok(path);
         }
@@ -27,9 +27,9 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
     #[cfg(target_os = "linux")]
     {
-        // Linux: ~/.local/share/opendb/plugins/
+        // Linux: ~/.local/share/crabhub/plugins/
         if let Some(home) = dirs::home_dir() {
-            let path = home.join(".local").join("share").join("opendb").join("plugins");
+            let path = home.join(".local").join("share").join("crabhub").join("plugins");
             std::fs::create_dir_all(&path)?;
             return Ok(path);
         }
@@ -37,9 +37,9 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
     #[cfg(target_os = "windows")]
     {
-        // Windows: %APPDATA%\com.opendb.app\plugins\
-        if let Some(app_data) = std::env::var("APPDATA") {
-            let path = PathBuf::from(app_data).join("com.opendb.app").join("plugins");
+        // Windows: %APPDATA%\com.crabhub.app\plugins\
+        if let Ok(app_data) = std::env::var("APPDATA") {
+            let path = PathBuf::from(app_data).join("com.crabhub.app").join("plugins");
             std::fs::create_dir_all(&path)?;
             return Ok(path);
         }
@@ -47,7 +47,7 @@ fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
     // Fallback to app data dir if specific app directory
     if let Some(app_dir) = dirs::config_dir() {
-        let path = app_dir.join("opendb").join("plugins");
+        let path = app_dir.join("crabhub").join("plugins");
         std::fs::create_dir_all(&path)?;
         Ok(path)
     } else {
@@ -107,6 +107,7 @@ pub async fn run() {
             plugins::commands::reload_plugins,
             plugins::commands::enable_plugin,
             plugins::commands::disable_plugin,
+            plugins::commands::get_available_drivers,
         ])
         .setup(move |app| {
             // Build native Edit menu for macOS keyboard shortcuts (Cmd+Z/C/V/X/A)
@@ -145,6 +146,7 @@ pub async fn run() {
             match get_tabularis_plugins_dir() {
                 Ok(plugins_dir) => {
                     let plugin_manager = Arc::new(plugins::manager::PluginManager::new(plugins_dir));
+                    manager.set_plugin_manager(plugin_manager.clone());
                     app.manage(plugin_manager);
                 }
                 Err(e) => {
@@ -183,5 +185,5 @@ pub async fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running OpenDB application");
+        .expect("error while running CrabHub application");
 }

@@ -4,7 +4,7 @@ import type { QueryHistoryEntry, SlowQueryEntry } from '@/types';
 // Load query history from localStorage
 function loadQueryHistory(): QueryHistoryEntry[] {
   try {
-    const saved = localStorage.getItem("opendb-query-history");
+    const saved = localStorage.getItem("crabhub-query-history");
     if (saved) {
       return JSON.parse(saved);
     }
@@ -17,7 +17,7 @@ function loadQueryHistory(): QueryHistoryEntry[] {
 // Save query history to localStorage
 function saveQueryHistory(history: QueryHistoryEntry[]) {
   try {
-    localStorage.setItem("opendb-query-history", JSON.stringify(history));
+    localStorage.setItem("crabhub-query-history", JSON.stringify(history));
   } catch {
     // ignore
   }
@@ -26,7 +26,7 @@ function saveQueryHistory(history: QueryHistoryEntry[]) {
 // Load slow query log from localStorage
 function loadSlowQueryLog(): SlowQueryEntry[] {
   try {
-    const saved = localStorage.getItem("opendb-slow-queries");
+    const saved = localStorage.getItem("crabhub-slow-queries");
     if (saved) {
       return JSON.parse(saved);
     }
@@ -39,7 +39,7 @@ function loadSlowQueryLog(): SlowQueryEntry[] {
 // Save slow query log to localStorage
 function saveSlowQueryLog(log: SlowQueryEntry[]) {
   try {
-    localStorage.setItem("opendb-slow-queries", JSON.stringify(log));
+    localStorage.setItem("crabhub-slow-queries", JSON.stringify(log));
   } catch {
     // ignore
   }
@@ -48,7 +48,7 @@ function saveSlowQueryLog(log: SlowQueryEntry[]) {
 // Load slow query threshold from localStorage
 function loadSlowQueryThreshold(): number {
   try {
-    const saved = localStorage.getItem("opendb-slow-query-threshold");
+    const saved = localStorage.getItem("crabhub-slow-query-threshold");
     if (saved) {
       const val = parseInt(saved, 10);
       if (!isNaN(val) && val >= 0) return val;
@@ -113,7 +113,7 @@ export const useHistoryStore = create<HistoryState>((set) => ({
 
   setSlowQueryThreshold: (ms) =>
     set(() => {
-      try { localStorage.setItem("opendb-slow-query-threshold", String(ms)); } catch {}
+      try { localStorage.setItem("crabhub-slow-query-threshold", String(ms)); } catch {}
       return { slowQueryThreshold: ms };
     }),
 }));

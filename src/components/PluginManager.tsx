@@ -1,634 +1,379 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { t } from "@/lib/i18n";
 import {
-  fetchPluginRegistry,
-  listPlugins,
-  installPlugin,
-  removePlugin,
-  enablePlugin,
-  disablePlugin,
+  fetchPluginRegistry, listPlugins, installPlugin, removePlugin,
+  enablePlugin, disablePlugin, getAvailableDrivers, type DriverTypeInfo,
 } from "@/lib/tauri-commands";
-import * as dialog from "@tauri-apps/plugin-dialog";
-
+import { showMessage } from "./MessageDialog";
 import {
-  RefreshCw,
-  Loader2,
-  AlertTriangle,
-  X,
-  Search,
-  Download,
-  Trash2,
-  Power,
-  PowerOff,
-  CheckCircle,
-  Package,
-  ChevronDown,
-  ExternalLink,
-  RotateCcw
+  RefreshCw, Loader2, AlertTriangle, Download, RotateCcw, Check,
+  ExternalLink, Settings as SettingsIcon, Trash2, ChevronDown,
+  CheckCircle2, Plug, PackageCheck, Power, Boxes, Search, X,
 } from "lucide-react";
 
-// Types
-interface RegistryRelease {
-  version: string;
-  min_tabularis_version: string | null;
-  assets: Record<string, string>;
-  platform_supported?: boolean;
-}
-
+/* ── Types ── */
 interface RegistryPlugin {
-  id: string;
-  name: string;
-  description: string;
-  author: string;
-  homepage: string;
-  latest_version: string;
-  releases: RegistryRelease[];
-  installed_version?: string;
-  update_available?: boolean;
-  platform_supported?: boolean;
-  enabled?: boolean;
+  id: string; name: string; description: string; author: string;
+  homepage: string; latest_version: string;
+  releases: { version: string; min_opendb_version: string; assets: Record<string, string> }[];
+  installed_version?: string; update_available?: boolean; enabled?: boolean;
+}
+type AvailableFilter = "all" | "installed" | "updates";
+type CardAccent = "green" | "amber" | "blue" | null;
+
+/* ── Band palette ── */
+const BANDS = [
+  { bg: "bg-blue-500/10", text: "text-blue-400/40" },
+  { bg: "bg-purple-500/10", text: "text-purple-400/40" },
+  { bg: "bg-emerald-500/10", text: "text-emerald-400/40" },
+  { bg: "bg-rose-500/10", text: "text-rose-400/40" },
+  { bg: "bg-cyan-500/10", text: "text-cyan-400/40" },
+  { bg: "bg-orange-500/10", text: "text-orange-400/40" },
+  { bg: "bg-teal-500/10", text: "text-teal-400/40" },
+  { bg: "bg-indigo-500/10", text: "text-indigo-400/40" },
+];
+function band(name: string) { let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff; return BANDS[h % BANDS.length]!; }
+
+/* ── PluginCard ── */
+function PluginCard({ name, description, version, author, homepage, status, actions, accent, pulse, showBand }: {
+  name: string; description: string; version?: string; author?: string;
+  homepage?: string; status?: React.ReactNode; actions: React.ReactNode;
+  accent?: CardAccent; pulse?: boolean; showBand?: boolean;
+}) {
+  const b = band(name);
+  const authorName = author ? author.split("<")[0]?.trim() ?? author : null;
+  const authorUrl = author ? (author.match(/<(https?:\/\/[^>]+)>/) || [])[1] : null;
+
+  return (
+    <div className={`group relative flex h-full flex-col rounded-lg bg-card overflow-hidden transition-all duration-200 ease-out hover:-translate-y-px
+      ${!accent ? "border border-border hover:border-accent hover:shadow-md" : ""}
+      ${accent === "green" ? "border border-border border-l-[3px] border-l-green-500/80 hover:border-accent hover:shadow-lg" : ""}
+      ${accent === "amber" ? "border border-border border-l-[3px] border-l-amber-500/80 hover:border-accent hover:shadow-lg" : ""}
+      ${accent === "blue" ? "border border-border border-l-[3px] border-l-blue-600/80 hover:border-accent hover:shadow-lg" : ""}`}>
+      {showBand && (
+        <div className={`flex h-12 shrink-0 items-center justify-center ${b.bg}`}>
+          <span className={`select-none text-4xl font-bold leading-none ${b.text}`}>{name.trim().charAt(0).toUpperCase()}</span>
+        </div>
+      )}
+      {pulse && (
+        <div className={`absolute z-10 flex h-2 w-2 ${showBand ? "top-1.5 right-1.5" : "top-2.5 right-2.5"}`}>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+        </div>
+      )}
+      <div className="flex flex-1 flex-col p-4 gap-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              {homepage ? (
+                <a href={homepage} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex min-w-0 items-center gap-1 text-left text-sm font-semibold text-primary hover:underline underline-offset-2">
+                  <span className="truncate">{name}</span>
+                  <ExternalLink size={11} className="shrink-0 text-muted-foreground" />
+                </a>
+              ) : (
+                <span className="block truncate text-sm font-semibold text-primary">{name}</span>
+              )}
+              {version && <span className="shrink-0 rounded border border-border bg-muted px-1.5 py-px font-mono text-[10px] text-muted-foreground">v{version}</span>}
+            </div>
+            {authorName && (
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                {t('plugin.by')}{" "}
+                {authorUrl || homepage ? (
+                  <a href={authorUrl || homepage} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">{authorName}</a>
+                ) : authorName}
+              </p>
+            )}
+          </div>
+          {status && <div className="shrink-0 mt-0.5">{status}</div>}
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2 flex-1">{description}</p>
+      </div>
+      <div className="flex min-h-11 items-center justify-end gap-2 border-t border-border bg-muted/50 px-4 py-2.5">{actions}</div>
+    </div>
+  );
 }
 
-interface Plugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  enabled: boolean;
+/* ── StatCard ── */
+function StatCard({ icon, value, label, colorClass, bgClass, valueColorClass }: {
+  icon: React.ReactNode; value: number; label: string; colorClass: string; bgClass: string; valueColorClass?: string;
+}) {
+  return (
+    <div className="p-4 flex items-center gap-3">
+      <div className={`p-2.5 rounded-lg shrink-0 ${bgClass} ${colorClass}`}>{icon}</div>
+      <div className="min-w-0">
+        <div className={`text-2xl font-bold leading-none tabular-nums ${valueColorClass ?? "text-foreground"}`}>{value}</div>
+        <div className="text-[10px] text-muted-foreground mt-1 leading-tight truncate">{label}</div>
+      </div>
+    </div>
+  );
 }
 
-// Tabs
-type TabType = "available" | "installed" | "updates";
+/* ── PluginToggle ── */
+function PluginToggle({ enabled, onToggle, disabled }: { enabled: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onToggle} disabled={disabled}
+      className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${enabled ? "bg-blue-600" : "bg-muted"} ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
+      <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform duration-200 ${enabled ? "translate-x-4" : "translate-x-0"}`} />
+    </button>
+  );
+}
 
-// Main plugin manager component
+/* ── Main Component ── */
 const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [availablePlugins, setAvailablePlugins] = useState<RegistryPlugin[]>([]);
-  const [installedPlugins, setInstalledPlugins] = useState<Plugin[]>([]);
+  const [registryPlugins, setRegistryPlugins] = useState<RegistryPlugin[]>([]);
+  const [installedPlugins, setInstalledPlugins] = useState<any[]>([]);
+  const [builtinDrivers, setBuiltinDrivers] = useState<DriverTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [installing, setInstalling] = useState<string | null>(null);
-  const [toggling, setToggling] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [registryError, setRegistryError] = useState<string | null>(null);
+  const [installingId, setInstallingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<TabType>("available");
+  const [activeFilter, setActiveFilter] = useState<AvailableFilter>("all");
 
-  // Load plugins function
-  const loadPlugins = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Fetch plugin registry
-      const registryData = await fetchPluginRegistry();
-      const registry = Array.isArray(registryData) ? registryData : (registryData?.plugins || []);
-      setAvailablePlugins(registry);
-      
-      // Load installed plugins
-      const installed = await listPlugins();
-      const installedPluginsData = Array.isArray(installed) 
-        ? installed 
-        : (typeof installed === 'object' && installed && 'plugins' in installed 
-          ? (installed as any).plugins 
-          : []);
-      setInstalledPlugins(installedPluginsData);
-    } catch (err) {
-      console.error("Failed to load plugins:", err);
-      setError(t('plugin.loadError') || "Failed to load plugins");
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(async () => {
+    try { setLoading(true); setRegistryError(null);
+      const data = await fetchPluginRegistry();
+      setRegistryPlugins(Array.isArray(data) ? data : (data?.plugins || []));
+      const inst = await listPlugins();
+      setInstalledPlugins(Array.isArray(inst) ? inst : (inst?.plugins || []));
+      try { const d = await getAvailableDrivers(); setBuiltinDrivers(d.filter(x => x.builtin)); } catch {}
+    } catch (err) { console.error(err); setRegistryError(String(err)); }
+    finally { setLoading(false); }
+  }, []);
 
-  // Install plugin function
-  const handleInstallPlugin = async (plugin: RegistryPlugin, version?: string) => {
-    try {
-      setInstalling(plugin.id);
-      setError(null);
-      await installPlugin(plugin.id, version || plugin.latest_version);
-      await loadPlugins();
-    } catch (err) {
-      console.error("Failed to install plugin:", err);
-      setError(t('plugin.installError') || "Failed to install plugin");
-    } finally {
-      setInstalling(null);
+  useEffect(() => { load(); }, []);
+
+  const installedIds = useMemo(() => new Set(installedPlugins.map(p => p.id)), [installedPlugins]);
+  const isInstalled = (id: string) => installedIds.has(id);
+  const getInstalled = (id: string) => installedPlugins.find(p => p.id === id);
+
+  const filtered = useMemo(() => {
+    let list = registryPlugins;
+    if (activeFilter === "all") list = list.filter(p => !p.installed_version && !isInstalled(p.id));
+    else if (activeFilter === "installed") list = list.filter(p => !!p.installed_version || isInstalled(p.id));
+    else if (activeFilter === "updates") list = list.filter(p => p.update_available);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
     }
+    return list;
+  }, [registryPlugins, activeFilter, searchQuery, installedPlugins]);
+
+  const updateCount = useMemo(() => registryPlugins.filter(p => p.update_available).length, [registryPlugins]);
+
+  const doInstall = async (pluginId: string, version: string) => {
+    try { setInstallingId(pluginId); setRegistryError(null); await installPlugin(pluginId, version); await load(); }
+    catch (err) { console.error(err); setRegistryError(t('plugin.installError') + ': ' + String(err)); }
+    finally { setInstallingId(null); }
   };
 
-  // Remove plugin function
-  const handleRemovePlugin = async (pluginId: string) => {
-    try {
-      setRemoving(pluginId);
-      setError(null);
-      await dialog.message(t('plugin.confirmRemove') || "Are you sure you want to remove this plugin?");
-      await removePlugin(pluginId);
-      await loadPlugins();
-    } catch (err) {
-      console.error("Failed to remove plugin:", err);
-      setError(t('plugin.removeError') || "Failed to remove plugin");
-    } finally {
-      setRemoving(null);
-    }
+  const doRemove = async (pluginId: string) => {
+    try { setRemovingId(pluginId); await showMessage(t('plugin.confirmRemove')); await removePlugin(pluginId); await load(); }
+    catch (err) { console.error(err); }
+    finally { setRemovingId(null); }
   };
 
-  // Toggle plugin function
-  const handleTogglePlugin = async (pluginId: string, enabled: boolean) => {
-    try {
-      setToggling(pluginId);
-      setError(null);
-      if (enabled) {
-        await disablePlugin(pluginId);
-      } else {
-        await enablePlugin(pluginId);
-      }
-      await loadPlugins();
-    } catch (err) {
-      console.error("Failed to toggle plugin:", err);
-      setError(t('plugin.toggleError') || "Failed to toggle plugin");
-    } finally {
-      setToggling(null);
-    }
+  const doToggle = async (pluginId: string, enabled: boolean) => {
+    try { await (enabled ? disablePlugin(pluginId) : enablePlugin(pluginId)); await load(); }
+    catch (err) { console.error(err); }
   };
 
-  // Filter plugins based on search query
-  const filteredAvailablePlugins = availablePlugins.filter(
-    plugin => 
-      (plugin.name && plugin.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (plugin.description && plugin.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (plugin.author && plugin.author.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const filteredInstalledPlugins = installedPlugins.filter(
-    plugin => 
-      (plugin.name && plugin.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (plugin.description && plugin.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const filteredUpdatePlugins = availablePlugins.filter(
-    plugin => {
-      const installed = installedPlugins.find(p => p.id === plugin.id);
-      return installed && installed.version !== plugin.latest_version;
-    }
-  );
-
-  // Load plugins on mount
-  useEffect(() => {
-    loadPlugins();
-  }, [loadPlugins]);
-
-  // Check if plugin is installed
-  const isInstalled = (pluginId: string) => {
-    return installedPlugins.some(p => p.id === pluginId);
-  };
-
-  // Get installed version of plugin
-  const getInstalledVersion = (pluginId: string) => {
-    const plugin = installedPlugins.find(p => p.id === pluginId);
-    return plugin?.version;
-  };
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-3"><Plug size={20} className="text-blue-400" /><h2 className="text-lg font-semibold">{t('plugin.title')}</h2></div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Close"><X size={16} /></button>
+        </div>
+        <div className="flex-1 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground">
       {/* Header */}
-      <div className="bg-muted px-6 py-4 border-b border-border">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Package size={24} className="text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold">{t('plugin.title')}</h1>
-              <p className="text-muted-foreground text-sm">
-                {t('plugin.description') || "Install extensions, manage drivers, and control runtime settings."}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={loadPlugins}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
-              disabled={loading}
-            >
-              <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-              {t('common.refresh') || "Refresh"}
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
-            >
-              <X size={20} />
-            </button>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 shrink-0"><Plug size={18} /></div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold">{t('plugin.title')}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('plugin.description')}</p>
           </div>
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-card p-4 rounded-xl border border-border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                <Package size={20} className="text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{installedPlugins.length + 4}</div>
-                <div className="text-sm text-muted-foreground">{t('plugin.installed') || "Installed"}</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card p-4 rounded-xl border border-border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                <Power size={20} className="text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{installedPlugins.filter(p => p.enabled).length + 4}</div>
-                <div className="text-sm text-muted-foreground">{t('plugin.enabled') || "Enabled"}</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card p-4 rounded-xl border border-border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <Package size={20} className="text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{availablePlugins.length}</div>
-                <div className="text-sm text-muted-foreground">{t('plugin.registry') || "Registry"}</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card p-4 rounded-xl border border-border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-muted rounded-lg">
-                <RefreshCw size={20} className="text-muted-foreground" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{filteredUpdatePlugins.length}</div>
-                <div className="text-sm text-muted-foreground">{t('plugin.updates') || "Updates"}</div>
-              </div>
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          <button onClick={load} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:text-foreground hover:border-accent transition-colors">
+            <RefreshCw size={13} />{t('common.refresh')}
+          </button>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Close">
+            <X size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Search and tabs */}
-        <div className="p-4 border-b border-border bg-background/50">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-2 flex-1 max-w-md">
-              <Search size={16} className="text-muted-foreground" />
-              <input
-                type="text"
-                placeholder={t('plugin.search') || "Search plugins..."}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground"
-              />
+      <div className="flex-1 overflow-y-auto">
+        <div className="space-y-8 p-6">
+          {/* Overview panel */}
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="p-5 border-b border-border bg-muted/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 shrink-0"><Plug size={18} /></div>
+                <div>
+                  <h2 className="text-lg font-semibold">{t('plugin.title')}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('plugin.description')}</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border">
+              <StatCard icon={<PackageCheck size={15} />} value={builtinDrivers.length + installedPlugins.length}
+                label={t('plugin.installed')} colorClass="text-green-400" bgClass="bg-green-500/10" />
+              <StatCard icon={<Power size={15} />} value={builtinDrivers.length + installedPlugins.filter(p => p.enabled !== false).length}
+                label={t('plugin.enabled')} colorClass="text-blue-400" bgClass="bg-blue-500/10" />
+              <StatCard icon={<Boxes size={15} />} value={registryPlugins.length}
+                label={t('plugin.registry')} colorClass="text-purple-400" bgClass="bg-purple-500/10" />
+              <StatCard icon={<RefreshCw size={15} />} value={updateCount}
+                label={t('plugin.updates')} colorClass={updateCount > 0 ? "text-amber-400" : "text-muted-foreground"}
+                bgClass={updateCount > 0 ? "bg-amber-500/10" : "bg-muted"} valueColorClass={updateCount > 0 ? "text-amber-400" : undefined} />
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-4 border-b border-border -mx-4 -mb-4 px-4 pb-0">
-            {[
-              { key: "available", label: t('plugin.all') || "All", count: filteredAvailablePlugins.length },
-              { key: "installed", label: t('plugin.installedTab') || "Installed", count: filteredInstalledPlugins.length + 4 },
-              { key: "updates", label: t('plugin.updatesTab') || "Updates", count: filteredUpdatePlugins.length }
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as TabType)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.key 
-                    ? "text-primary border-primary" 
-                    : "text-muted-foreground border-transparent hover:text-foreground"
-                }`}
-              >
-                {tab.label}
-                <span className="px-2 py-0.5 bg-muted rounded-full text-xs">{tab.count}</span>
+          {/* Error */}
+          {registryError && (
+            <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+              <AlertTriangle size={16} />{registryError}
+            </div>
+          )}
+
+          {/* Available section */}
+          <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-3">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('plugin.all')}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('plugin.description')}</p>
+              </div>
+              <div className="relative shrink-0">
+                <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input type="text" placeholder={t('plugin.search')} value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-44 rounded-lg border border-border bg-card py-1.5 pl-7 pr-3 text-xs placeholder:text-muted-foreground focus:w-56 focus:border-blue-500 focus:outline-none transition-all" />
+              </div>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex items-center justify-between border-b border-border">
+              <div className="flex items-center gap-0.5">
+                {([
+                  { id: "all" as const, label: t('plugin.all'), count: registryPlugins.filter(p => !p.installed_version && !isInstalled(p.id)).length },
+                  { id: "installed" as const, label: t('plugin.installedTab'), count: builtinDrivers.length + installedPlugins.filter(p => !builtinDrivers.some(d => d.id === p.id)).length },
+                  { id: "updates" as const, label: t('plugin.updatesTab'), count: updateCount },
+                ]).map(({ id, label, count }) => (
+                  <button key={id} type="button" onClick={() => setActiveFilter(id)}
+                    className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors -mb-px
+                      ${activeFilter === id ? "border-blue-500 text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                    {label}
+                    {count > 0 && (
+                      <span className={`rounded-full px-1.5 py-px text-[9px] font-semibold
+                        ${id === "updates" && count > 0 ? "bg-amber-500/20 text-amber-400" : "bg-muted text-muted-foreground"}`}>{count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button onClick={load} className="mb-px flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <RefreshCw size={12} />{t('common.refresh')}
               </button>
-            ))}
-            <div className="flex-1" />
-            <button
-              onClick={loadPlugins}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              disabled={loading}
-            >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              {t('common.refresh') || "Refresh"}
-            </button>
-          </div>
-        </div>
-
-        {/* Error display */}
-        {error && (
-          <div className="mx-4 my-4 p-4 bg-destructive/10 border border-destructive rounded-lg">
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={18} className="text-destructive" />
-              <span className="text-destructive">{error}</span>
             </div>
-          </div>
-        )}
 
-        {/* Loading */}
-        {loading && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 size={20} className="animate-spin" />
-              <span>{t('plugin.loading') || "Loading plugins..."}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Plugin list */}
-        {!loading && (
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-2 gap-4">
-              {activeTab === "available" && (
-                <>
-                  {filteredAvailablePlugins.map((plugin) => {
-                    const installed = isInstalled(plugin.id);
-                    const installedVersion = getInstalledVersion(plugin.id);
-                    const hasUpdate = installed && installedVersion !== plugin.latest_version;
-
+            {/* Plugin cards */}
+            <div className="pt-4">
+              {activeFilter === "installed" ? (
+                <div className="grid gap-4 xl:grid-cols-2 lg:grid-cols-2 sm:grid-cols-1">
+                  {/* Built-in drivers */}
+                  {builtinDrivers.filter(d => !searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase())).map(driver => (
+                    <PluginCard key={driver.id} name={driver.name} description={t('plugin.builtin')} showBand
+                      status={<span className="text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-px rounded-md">{t('plugin.builtin')}</span>}
+                      actions={<div className="flex items-center gap-1.5 text-xs text-green-600"><CheckCircle2 size={14} />{t('plugin.enabled')}</div>} />
+                  ))}
+                  {/* Installed plugins */}
+                  {installedPlugins.filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase())).map(plugin => {
+                    const rp = registryPlugins.find(r => r.id === plugin.id);
+                    const enabled = plugin.enabled !== false;
                     return (
-                      <div
-                        key={plugin.id}
-                        className="bg-card border border-border rounded-xl overflow-hidden hover:border-border/80 transition-colors"
-                      >
-                        <div className="h-12 bg-gradient-to-r from-primary/20 to-primary/5 border-b border-border" />
-                        <div className="p-5">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-lg">{plugin.name}</h3>
-                                {plugin.homepage && (
-                                  <a
-                                    href={plugin.homepage}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-muted-foreground hover:text-foreground"
-                                  >
-                                    <ExternalLink size={14} />
-                                  </a>
-                                )}
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                {t('plugin.by') || "by"} {plugin.author}
-                              </p>
-                            </div>
-                          </div>
-
-                          <p className="text-muted-foreground mb-4 line-clamp-2">
-                            {plugin.description}
-                          </p>
-
-                          <div className="flex items-center gap-2 pt-3 border-t border-border">
-                            {installed ? (
-                              <>
-                                <button
-                                  onClick={() => handleTogglePlugin(plugin.id, !installedPlugins.find(p => p.id === plugin.id)?.enabled)}
-                                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-                                  disabled={toggling === plugin.id}
-                                >
-                                  {toggling === plugin.id ? (
-                                    <RefreshCw size={16} className="animate-spin" />
-                                  ) : installedPlugins.find(p => p.id === plugin.id)?.enabled ? (
-                                    <Power size={16} />
-                                  ) : (
-                                    <PowerOff size={16} />
-                                  )}
-                                  {installedPlugins.find(p => p.id === plugin.id)?.enabled 
-                                    ? (t('plugin.disable') || "Disable") 
-                                    : (t('plugin.enable') || "Enable")}
-                                </button>
-                                {hasUpdate && (
-                                  <button
-                                    onClick={() => handleInstallPlugin(plugin)}
-                                    className="flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                                    disabled={installing === plugin.id}
-                                  >
-                                    {installing === plugin.id ? (
-                                      <RefreshCw size={16} className="animate-spin" />
-                                    ) : (
-                                      <Download size={16} />
-                                    )}
-                                    {t('plugin.update') || "Update"}
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleRemovePlugin(plugin.id)}
-                                  className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                                  disabled={removing === plugin.id}
-                                >
-                                  {removing === plugin.id ? (
-                                    <Loader2 size={16} className="animate-spin" />
-                                  ) : (
-                                    <Trash2 size={16} />
-                                  )}
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => handleInstallPlugin(plugin)}
-                                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                                  disabled={installing === plugin.id}
-                                >
-                                  {installing === plugin.id ? (
-                                    <RefreshCw size={16} className="animate-spin" />
-                                  ) : (
-                                    <Download size={16} />
-                                  )}
-                                  {t('plugin.install') || "Install"} v{plugin.latest_version}
-                                </button>
-                                {/* Version dropdown placeholder */}
-                                <button
-                                  className="flex items-center gap-1 px-3 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                  <RotateCcw size={14} />
-                                  v{plugin.latest_version}
-                                  <ChevronDown size={14} />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      <PluginCard key={plugin.id} name={plugin.name} description={plugin.description || (rp?.description ?? "")}
+                        version={plugin.version} author={rp?.author} homepage={rp?.homepage}
+                        accent={enabled ? "blue" : null} showBand
+                        status={<PluginToggle enabled={enabled} onToggle={() => doToggle(plugin.id, enabled)} />}
+                        actions={
+                          <button onClick={() => doRemove(plugin.id)} disabled={removingId === plugin.id}
+                            className="p-1.5 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                            title={t('plugin.remove')}>
+                            {removingId === plugin.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          </button>
+                        } />
                     );
                   })}
-                  {filteredAvailablePlugins.length === 0 && (
-                    <div className="col-span-2 flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <Package size={48} className="mb-4 opacity-50" />
-                      <p>{t('plugin.noResults') || "No plugins found"}</p>
+                  {builtinDrivers.length === 0 && installedPlugins.length === 0 && (
+                    <div className="col-span-2 flex flex-col items-center py-16 text-muted-foreground">
+                      <Plug size={40} className="mb-3 opacity-30" /><p className="text-sm">{t('plugin.noInstalled')}</p>
                     </div>
                   )}
-                </>
-              )}
-
-              {activeTab === "installed" && (
-                <>
-                  {/* Built-in plugins */}
-                  <div className="col-span-2 mb-2 text-sm font-medium text-muted-foreground">
-                    {t('plugin.builtin') || "Built-in"}
-                  </div>
-                  {[
-                    { id: "postgres", name: "PostgreSQL", description: "PostgreSQL databases", version: "1.0.0" },
-                    { id: "mysql", name: "MySQL", description: "MySQL and MariaDB databases", version: "1.0.0" },
-                    { id: "sqlite", name: "SQLite", description: "SQLite file-based databases", version: "1.0.0" },
-                    { id: "gaussdb", name: "GaussDB", description: "GaussDB databases", version: "1.0.0" }
-                  ].map((plugin) => (
-                    <div
-                      key={plugin.id}
-                      className="bg-card border border-border rounded-xl overflow-hidden hover:border-border/80 transition-colors"
-                    >
-                      <div className="h-12 bg-gradient-to-r from-blue-500/20 to-blue-500/5 border-b border-border" />
-                      <div className="p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold text-lg">{plugin.name}</h3>
-                              <span className="text-xs px-2 py-0.5 bg-muted rounded-full">
-                                v{plugin.version}
-                              </span>
-                              <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
-                                Built-in
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <p className="text-muted-foreground mb-4">{plugin.description}</p>
-                        <div className="flex items-center gap-2 pt-3 border-t border-border">
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <CheckCircle size={16} className="text-green-600" />
-                            {t('plugin.enabled') || "Enabled"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Installed plugins */}
-                  {filteredInstalledPlugins.length > 0 && (
-                    <div className="col-span-2 mb-2 mt-4 text-sm font-medium text-muted-foreground">
-                      {t('plugin.installed') || "Installed"}
-                    </div>
-                  )}
-                  {filteredInstalledPlugins.map((plugin) => (
-                    <div
-                      key={plugin.id}
-                      className="bg-card border border-border rounded-xl overflow-hidden hover:border-border/80 transition-colors"
-                    >
-                      <div className="h-12 bg-gradient-to-r from-green-500/20 to-green-500/5 border-b border-border" />
-                      <div className="p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold text-lg">{plugin.name}</h3>
-                              <span className="text-xs px-2 py-0.5 bg-muted rounded-full">
-                                v{plugin.version}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <p className="text-muted-foreground mb-4">{plugin.description}</p>
-                        <div className="flex items-center gap-2 pt-3 border-t border-border">
-                          <button
-                            onClick={() => handleTogglePlugin(plugin.id, plugin.enabled)}
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-                            disabled={toggling === plugin.id}
-                          >
-                            {toggling === plugin.id ? (
-                              <RefreshCw size={16} className="animate-spin" />
-                            ) : plugin.enabled ? (
-                              <Power size={16} />
-                            ) : (
-                              <PowerOff size={16} />
-                            )}
-                            {plugin.enabled 
-                              ? (t('plugin.disable') || "Disable") 
-                              : (t('plugin.enable') || "Enable")}
-                          </button>
-                          <button
-                            onClick={() => handleRemovePlugin(plugin.id)}
-                            className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                            disabled={removing === plugin.id}
-                          >
-                            {removing === plugin.id ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={16} />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {filteredInstalledPlugins.length === 0 && (
-                    <div className="col-span-2 flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <Package size={48} className="mb-4 opacity-50" />
-                      <p>{t('plugin.noInstalled') || "No installed plugins"}</p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {activeTab === "updates" && (
-                <>
-                  {filteredUpdatePlugins.map((plugin) => {
-                    const installedVersion = getInstalledVersion(plugin.id);
+                </div>
+              ) : (
+                <div className="grid gap-4 xl:grid-cols-2 lg:grid-cols-2 sm:grid-cols-1">
+                  {filtered.map(plugin => {
+                    const installed = isInstalled(plugin.id);
+                    const ip = getInstalled(plugin.id);
+                    const hasUpdate = installed && ip?.version !== plugin.latest_version;
+                    const enabled = ip?.enabled !== false;
+                    const accent: CardAccent = installed ? (hasUpdate ? "amber" : "green") : null;
                     return (
-                      <div
-                        key={plugin.id}
-                        className="bg-card border border-border rounded-xl overflow-hidden hover:border-border/80 transition-colors"
-                      >
-                        <div className="h-12 bg-gradient-to-r from-orange-500/20 to-orange-500/5 border-b border-border" />
-                        <div className="p-5">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-lg">{plugin.name}</h3>
-                                <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full">
-                                  {t('plugin.updateAvailable') || "Update available"}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                                <span className="line-through">v{installedVersion}</span>
-                                <span>→</span>
-                                <span className="text-foreground font-medium">v{plugin.latest_version}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <p className="text-muted-foreground mb-4">{plugin.description}</p>
-                          <div className="flex items-center gap-2 pt-3 border-t border-border">
-                            <button
-                              onClick={() => handleInstallPlugin(plugin)}
-                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                              disabled={installing === plugin.id}
-                            >
-                              {installing === plugin.id ? (
-                                <RefreshCw size={16} className="animate-spin" />
-                              ) : (
-                                <Download size={16} />
-                              )}
-                              {t('plugin.updateNow') || "Update now"}
+                      <PluginCard key={plugin.id} name={plugin.name} description={plugin.description}
+                        version={installed ? ip?.version : plugin.latest_version}
+                        author={plugin.author} homepage={plugin.homepage}
+                        accent={accent} pulse={hasUpdate} showBand
+                        status={installed ? (
+                          <PluginToggle enabled={enabled} onToggle={() => doToggle(plugin.id, enabled)} />
+                        ) : null}
+                        actions={installed ? (
+                          <div className="flex items-center justify-end gap-2 w-full">
+                            {hasUpdate && (
+                              <button onClick={() => doInstall(plugin.id, plugin.latest_version)} disabled={installingId === plugin.id}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+                                {installingId === plugin.id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                                {t('plugin.update')} v{plugin.latest_version}
+                              </button>
+                            )}
+                            <button onClick={() => doRemove(plugin.id)} disabled={removingId === plugin.id}
+                              className="p-1.5 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                              title={t('plugin.remove')}>
+                              {removingId === plugin.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                             </button>
                           </div>
-                        </div>
-                      </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-2 w-full">
+                            <button onClick={() => doInstall(plugin.id, plugin.latest_version)} disabled={installingId === plugin.id}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50">
+                              {installingId === plugin.id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                              {t('plugin.install')}
+                            </button>
+                            <div className="flex items-center gap-1 px-2 py-1.5 text-[11px] text-muted-foreground border border-border rounded-lg">
+                              <RotateCcw size={9} />v{plugin.latest_version}
+                            </div>
+                          </div>
+                        )} />
                     );
                   })}
-                  
-                  {filteredUpdatePlugins.length === 0 && (
-                    <div className="col-span-2 flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <CheckCircle size={48} className="mb-4 opacity-50 text-green-600" />
-                      <p>{t('plugin.upToDate') || "All plugins are up to date"}</p>
+                  {filtered.length === 0 && (
+                    <div className="col-span-2 flex flex-col items-center py-16 text-muted-foreground">
+                      <Boxes size={40} className="mb-3 opacity-30" />
+                      <p className="text-sm">{activeFilter === "updates" ? t('plugin.upToDate') : t('plugin.noResults')}</p>
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

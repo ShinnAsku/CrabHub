@@ -390,6 +390,17 @@ export async function getTableData(
   };
 }
 
+// Driver discovery
+export interface DriverTypeInfo {
+  id: string;
+  name: string;
+  builtin: boolean;
+}
+
+export async function getAvailableDrivers(): Promise<DriverTypeInfo[]> {
+  return safeInvoke<DriverTypeInfo[]>("get_available_drivers");
+}
+
 // Plugin commands
 export async function fetchPluginRegistry(): Promise<any> {
   return safeInvoke<any>("fetch_plugin_registry");

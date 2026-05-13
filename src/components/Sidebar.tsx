@@ -830,7 +830,7 @@ function DatabaseTree({
   // Handle table single-click - only highlight and set context (no tab opening)
   const handleTableClick = (table: TreeNode) => {
     console.log('[DatabaseTree] Table single-clicked:', table.name);
-    // Ensure this connection is active so NavicatMainPanel renders
+    useUIStore.getState().setViewModeType("navicat");
     useConnectionStore.getState().setActiveConnection(connectionId);
     if (table.schemaName) {
       useUIStore.getState().setSelectedSchemaName(table.schemaName);
@@ -847,7 +847,7 @@ function DatabaseTree({
   // Handle table double-click - open table data tab in right panel
   const handleTableDoubleClick = (table: TreeNode) => {
     console.log('[DatabaseTree] Table double-clicked:', table.name);
-    // Ensure this connection is active so NavicatMainPanel renders
+    useUIStore.getState().setViewModeType("navicat");
     useConnectionStore.getState().setActiveConnection(connectionId);
     if (table.schemaName) {
       useUIStore.getState().setSelectedSchemaName(table.schemaName);

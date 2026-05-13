@@ -167,7 +167,7 @@ function ERSelectorDialog({ isOpen, onClose, onConfirm }: ERSelectorDialogProps)
           <button
             onClick={handleConfirm}
             disabled={!selectedConnId || (loadingSchemas)}
-            className="px-3 py-1.5 text-xs rounded bg-[hsl(var(--tab-active))] text-white hover:opacity-90 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
           >
             {t('common.ok')}
           </button>

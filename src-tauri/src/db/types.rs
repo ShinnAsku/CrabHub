@@ -10,16 +10,53 @@ fn default_auto_reconnect() -> bool {
 }
 
 /// Supported database types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DatabaseType {
     PostgreSQL,
     MySQL,
     SQLite,
-    MSSQL,
     ClickHouse,
     GaussDB,
-    OpenGauss,
+    Plugin(String),
+}
+
+impl DatabaseType {
+    pub fn is_plugin(&self) -> bool {
+        matches!(self, DatabaseType::Plugin(_))
+    }
+
+    pub fn plugin_id(&self) -> Option<&str> {
+        match self {
+            DatabaseType::Plugin(id) => Some(id.as_str()),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for DatabaseType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            DatabaseType::Plugin(id) => serializer.serialize_str(&format!("plugin:{}", id)),
+            other => serializer.serialize_str(&other.to_string()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DatabaseType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "postgresql" => DatabaseType::PostgreSQL,
+            "mysql" => DatabaseType::MySQL,
+            "sqlite" => DatabaseType::SQLite,
+            "clickhouse" => DatabaseType::ClickHouse,
+            "gaussdb" | "opengauss" => DatabaseType::GaussDB,
+            other if other.starts_with("plugin:") => {
+                DatabaseType::Plugin(other[7..].to_string())
+            }
+            other => return Err(serde::de::Error::custom(format!("unknown database type: {}", other))),
+        })
+    }
 }
 
 /// SSH tunnel configuration
@@ -171,10 +208,9 @@ impl std::fmt::Display for DatabaseType {
             DatabaseType::PostgreSQL => write!(f, "postgresql"),
             DatabaseType::MySQL => write!(f, "mysql"),
             DatabaseType::SQLite => write!(f, "sqlite"),
-            DatabaseType::MSSQL => write!(f, "mssql"),
             DatabaseType::ClickHouse => write!(f, "clickhouse"),
             DatabaseType::GaussDB => write!(f, "gaussdb"),
-            DatabaseType::OpenGauss => write!(f, "opengauss"),
+            DatabaseType::Plugin(id) => write!(f, "plugin:{}", id),
         }
     }
 }

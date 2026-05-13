@@ -188,7 +188,7 @@ function AISettingsDialog({
               onSave(form);
               onClose();
             }}
-            className="px-3 py-1.5 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity"
+            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
           >
             {t('common.save')}
           </button>
@@ -206,7 +206,7 @@ function AIPanel() {
 
   const [settings, setSettings] = useState<AISettings>(() => {
     try {
-      const saved = localStorage.getItem("opendb-ai-settings");
+      const saved = localStorage.getItem("crabhub-ai-settings");
       if (saved) return JSON.parse(saved) as AISettings;
     } catch {
       // Ignore
@@ -237,7 +237,7 @@ function AIPanel() {
 
   // Save settings to localStorage
   useEffect(() => {
-    localStorage.setItem("opendb-ai-settings", JSON.stringify(settings));
+    localStorage.setItem("crabhub-ai-settings", JSON.stringify(settings));
   }, [settings]);
 
   // Auto-scroll to bottom
@@ -490,6 +490,7 @@ function AIPanel() {
       } else {
         addTab({
           title: t('ai.queryTitle'),
+          titleKey: 'ai.queryTitle',
           type: "query",
           content: sql,
 
@@ -501,14 +502,25 @@ function AIPanel() {
 
   const handleExecuteSQL = useCallback(
     (sql: string) => {
-      addTab({
-        title: t('ai.queryTitle'),
-        type: "query",
-        content: sql,
-
-      });
+      // Insert into current editor tab (or create one), then dispatch execute event
+      if (activeTabId) {
+        const currentTab = tabs.find((t) => t.id === activeTabId);
+        const newContent = currentTab ? currentTab.content + "\n" + sql : sql;
+        updateTabContent(activeTabId, newContent);
+      } else {
+        addTab({
+          title: t('tab.query') + ' 1',
+          titleKey: 'tab.query',
+          titleNum: 1,
+          type: "query",
+          content: sql,
+        });
+      }
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("crabhub:execute-query"));
+      }, 100);
     },
-    [addTab]
+    [activeTabId, tabs, addTab, updateTabContent]
   );
 
   // Simple markdown-like rendering
@@ -666,42 +678,42 @@ function AIPanel() {
                 className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Code size={10} />
-                <span>写SQL</span>
+                <span>{t('ai.writeSql')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我分析这个SQL的性能: ")}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Zap size={10} />
-                <span>分析性能</span>
+                <span>{t('ai.analyzePerformance')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我根据需求设计表结构")}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Database size={10} />
-                <span>设计表结构</span>
+                <span>{t('ai.designTable')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我分析查询结果")}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <BarChart2 size={10} />
-                <span>分析数据</span>
+                <span>{t('ai.analyzeData')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我解释这个SQL语句")}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Brain size={10} />
-                <span>解释SQL</span>
+                <span>{t('ai.explainSql')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我优化这个SQL: ")}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Lightbulb size={10} />
-                <span>优化SQL</span>
+                <span>{t('ai.optimizeSql')}</span>
               </button>
             </div>
           </div>

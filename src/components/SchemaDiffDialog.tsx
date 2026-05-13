@@ -199,7 +199,7 @@ function SchemaDiffDialog({ isOpen, onClose }: SchemaDiffDialogProps) {
           <button
             onClick={handleCompare}
             disabled={!sourceId || !targetId || sourceId === targetId || loading}
-            className="w-full py-1.5 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="w-full py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
           >
             {loading ? t('diff.comparing') : t('diff.startCompare')}
           </button>

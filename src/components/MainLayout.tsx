@@ -19,6 +19,7 @@ import ERSelectorDialog from "./ERSelectorDialog";
 import ImportExportDialog from "./ImportExportDialog";
 import PluginManager from "./PluginManager";
 import UpdateManager from "./UpdateManager";
+import MessageDialog, { showMessage } from "./MessageDialog";
 
 function MainLayout() {
   const {
@@ -29,8 +30,10 @@ function MainLayout() {
     snippetPanelOpen,
     toggleSnippetPanel,
     selectedSchemaName,
+    viewModeType,
+    setViewModeType,
   } = useUIStore();
-  
+
   const {
     addTab,
     closeTab,
@@ -72,6 +75,7 @@ function MainLayout() {
   const handleERSelectorConfirm = useCallback((connectionId: string, schemaName?: string) => {
     addTab({
       title: t('layout.erDiagram'),
+      titleKey: 'layout.erDiagram',
       type: "er",
       content: "",
       connectionId,
@@ -89,6 +93,7 @@ function MainLayout() {
   const handleOpenQueryAnalyzer = useCallback(() => {
     addTab({
       title: t('layout.queryAnalyzer'),
+      titleKey: 'layout.queryAnalyzer',
       type: "analyzer",
       content: "",
       connectionId: activeConnectionId || undefined,
@@ -102,10 +107,17 @@ function MainLayout() {
     }, 0);
   }, [activeConnectionId, addTab]);
 
+  // Auto-switch to navicat when no tabs remain
+  useEffect(() => {
+    if (tabs.length === 0 && viewModeType === "query") {
+      setViewModeType("navicat");
+    }
+  }, [tabs.length, viewModeType, setViewModeType]);
+
   // Clear test connection data on startup
   useEffect(() => {
     try {
-      const STORAGE_KEY = "opendb-connections";
+      const STORAGE_KEY = "crabhub-connections";
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -145,24 +157,18 @@ function MainLayout() {
         const connectedConnections = connections.filter(conn => conn.connected);
         
         if (connectedConnections.length === 0) {
-          // No connected database
-          import("@tauri-apps/plugin-dialog").then((dialog) => {
-            dialog.message('Please connect to a database before opening a query.');
-          });
+          showMessage(t('common.noConnectionHint'));
           return;
         } else if (connectedConnections.length > 1) {
-          // Multiple connected databases, show selection dialog
-          // For Tauri v2, we'll use a simple message dialog for now
-          // TODO: Implement proper selection dialog using Tauri v2 API
-          import("@tauri-apps/plugin-dialog").then((dialog) => {
-            dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
-          });
+          showMessage(t('common.multipleConnectionsHint'));
           return;
         } else {
           // Only one connected database
           const queryCount = tabs.filter((t) => t.type === "query").length + 1;
           addTab({
             title: `${t('tab.query')} ${queryCount}`,
+            titleKey: 'tab.query',
+            titleNum: queryCount,
             type: "query",
             content: "",
             connectionId: connectedConnections[0]?.id,
@@ -218,7 +224,7 @@ function MainLayout() {
       // F5: Execute query in active tab
       if (e.key === "F5") {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("opendb:execute-query"));
+        window.dispatchEvent(new CustomEvent("crabhub:execute-query"));
         return;
       }
 
@@ -274,7 +280,7 @@ function MainLayout() {
         connections={connections}
       />
 
-      {/* Main Content: Sidebar + Navicat Panel */}
+      {/* Main Content: Sidebar + Editor/Navicat Panel */}
       <PanelGroup direction="horizontal">
         {/* Left Sidebar (Connection Tree) */}
         {sidebarOpen && (
@@ -284,16 +290,16 @@ function MainLayout() {
         )}
         {sidebarOpen && <PanelResizeHandle className="w-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-col-resize" />}
 
-        {/* Center: Navicat-style Panel */}
+        {/* Center: Editor or Navicat Panel */}
         <Panel>
           <ErrorBoundary>
           {activeConnection ? (
             <OpenDbMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />
           ) : (
-            <div className="flex flex-col h-full">
-              <TabBar />
+            <>
+              {tabs.length > 0 && <TabBar />}
               <EditorPanel />
-            </div>
+            </>
           )}
           </ErrorBoundary>
         </Panel>
@@ -326,21 +332,14 @@ function MainLayout() {
             const connectedConnections = connections.filter(conn => conn.connected);
             
             if (connectedConnections.length === 0) {
-              // No connected database
-              import("@tauri-apps/plugin-dialog").then((dialog) => {
-                dialog.message('Please connect to a database before opening a query.');
-              });
+              showMessage(t('common.noConnectionHint'));
             } else if (connectedConnections.length > 1) {
-              // Multiple connected databases, show selection dialog
-              // For Tauri v2, we'll use a simple message dialog for now
-              // TODO: Implement proper selection dialog using Tauri v2 API
-              import("@tauri-apps/plugin-dialog").then((dialog) => {
-                dialog.message('Multiple connections detected. Please select a connection from the sidebar.');
-              });
+              showMessage(t('common.multipleConnectionsHint'));
             } else {
               // Only one connected database
               addTab({
                 title: t('welcome.codeSnippet'),
+                titleKey: 'welcome.codeSnippet',
                 type: "query",
                 content: sql,
                 connectionId: connectedConnections[0]?.id,
@@ -384,6 +383,7 @@ function MainLayout() {
           </div>
         </div>
       )}
+      <MessageDialog />
     </div>
   );
 }

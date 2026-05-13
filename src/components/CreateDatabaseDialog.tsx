@@ -16,7 +16,7 @@ interface CreateDatabaseDialogProps {
 type DbType = Connection["type"];
 
 const isPgLike = (type: DbType) =>
-  type === "postgresql" || type === "gaussdb" || type === "opengauss";
+  type === "postgresql" || type === "gaussdb";
 
 const CLICKHOUSE_ENGINES = ["Atomic", "Lazy", "Ordinary", "Memory"];
 
@@ -579,7 +579,7 @@ function CreateDatabaseDialog({
           <button
             onClick={handleCreate}
             disabled={creating || !dbName.trim()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
           >
             {creating ? (
               <Loader2 size={12} className="animate-spin" />

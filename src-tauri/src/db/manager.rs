@@ -6,7 +6,6 @@ use tokio::sync::RwLock;
 
 use super::clickhouse::ClickHouseConnection;
 use super::gaussdb::GaussDBConnection;
-use super::mssql::MSSQLConnection;
 use super::mysql::MySqlConnection;
 use super::postgres::PostgresConnection;
 use super::sqlite::SQLiteConnection;
@@ -16,6 +15,8 @@ use super::types::{
     ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, DatabaseType, DbError,
     ExecuteResult, PagedQueryResult, QueryResult, TableInfo,
 };
+use crate::plugins::driver::PluginDriver;
+use crate::plugins::manager::PluginManager;
 
 // ============================================================================
 // Connection Manager
@@ -35,6 +36,7 @@ struct ConnectionEntry {
 /// Manages multiple database connections
 pub struct ConnectionManager {
     connections: RwLock<HashMap<String, ConnectionEntry>>,
+    plugin_manager: std::sync::Mutex<Option<Arc<PluginManager>>>,
 }
 
 impl ConnectionManager {
@@ -42,7 +44,17 @@ impl ConnectionManager {
     pub fn new() -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
+            plugin_manager: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Inject the plugin manager (called during app setup)
+    pub fn set_plugin_manager(&self, pm: Arc<PluginManager>) {
+        *self.plugin_manager.lock().unwrap() = Some(pm);
+    }
+
+    fn get_plugin_manager(&self) -> Option<Arc<PluginManager>> {
+        self.plugin_manager.lock().unwrap().clone()
     }
 
     /// Start the background heartbeat loop
@@ -107,17 +119,26 @@ impl ConnectionManager {
     /// Create a new database connection asynchronously
     async fn create_connection_async(
         config: &ConnectionConfig,
+        plugin_manager: Option<&PluginManager>,
     ) -> Result<Box<dyn DatabaseConnection>, DbError> {
-        match config.db_type {
+        match &config.db_type {
+            DatabaseType::Plugin(plugin_id) => {
+                let pm = plugin_manager
+                    .ok_or_else(|| DbError::ConfigError("Plugin manager not initialized".into()))?;
+                let client = pm.get_plugin_client(plugin_id).await
+                    .map_err(|e| DbError::ConfigError(format!("Failed to start plugin '{}': {}", plugin_id, e)))?;
+                let config_json = serde_json::to_value(config)
+                    .map_err(|e| DbError::ConfigError(e.to_string()))?;
+                Ok(Box::new(PluginDriver::new(client, plugin_id.clone(), config_json).await))
+            }
             DatabaseType::PostgreSQL => {
                 Ok(Box::new(PostgresConnection::new(config).await?))
             }
-            DatabaseType::GaussDB | DatabaseType::OpenGauss => {
+            DatabaseType::GaussDB => {
                 Ok(Box::new(GaussDBConnection::new(config).await?))
             }
             DatabaseType::MySQL => Ok(Box::new(MySqlConnection::new(config).await?)),
             DatabaseType::SQLite => Ok(Box::new(SQLiteConnection::new(config).await?)),
-            DatabaseType::MSSQL => Ok(Box::new(MSSQLConnection::new(config).await?)),
             DatabaseType::ClickHouse => {
                 Ok(Box::new(ClickHouseConnection::new(config).await?))
             }
@@ -126,7 +147,8 @@ impl ConnectionManager {
 
     /// Connect to a database and store the connection
     pub async fn connect(&self, config: ConnectionConfig) -> Result<ConnectResult, DbError> {
-        let connection = Self::create_connection_async(&config).await?;
+        let pm = self.get_plugin_manager();
+        let connection = Self::create_connection_async(&config, pm.as_deref()).await?;
         let detected_type = connection.db_type();
 
         let connection_id = config.id.clone();
@@ -338,7 +360,8 @@ impl ConnectionManager {
             old.close().await;
         }
 
-        match Self::create_connection_async(&config).await {
+        let pm = self.get_plugin_manager();
+        match Self::create_connection_async(&config, pm.as_deref()).await {
             Ok(new_conn) => {
                 let mut connections = self.connections.write().await;
                 if let Some(entry) = connections.get_mut(id) {
@@ -395,7 +418,8 @@ impl ConnectionManager {
 
     /// Test a connection without storing it
     pub async fn test_connection(&self, config: ConnectionConfig) -> Result<bool, DbError> {
-        let connection = Self::create_connection_async(&config).await?;
+        let pm = self.get_plugin_manager();
+        let connection = Self::create_connection_async(&config, pm.as_deref()).await?;
 
         match config.db_type {
             DatabaseType::SQLite => {
@@ -491,7 +515,7 @@ impl ConnectionManager {
         }
 
         Ok(format!(
-            "-- OpenDB Database Export\n-- Generated at: {}\n-- Tables: {}\n\n{}",
+            "-- CrabHub Database Export\n-- Generated at: {}\n-- Tables: {}\n\n{}",
             chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
             tables_to_export.len(),
             sql_parts.join("\n")

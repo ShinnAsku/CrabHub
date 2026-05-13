@@ -1,11 +1,19 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use serde::Serialize;
 
 use tauri::{AppHandle, State};
 
 use super::installer::PluginInstaller;
 use super::manager::PluginManager;
 use super::registry::PluginRegistry;
+
+#[derive(Debug, Serialize)]
+pub struct DriverTypeInfo {
+    pub id: String,
+    pub name: String,
+    pub builtin: bool,
+}
 
 #[tauri::command]
 pub async fn list_plugins(
@@ -95,4 +103,25 @@ pub async fn disable_plugin(
     plugin_id: String,
 ) -> Result<(), String> {
     plugin_manager.disable_plugin(&plugin_id).await
+}
+
+#[tauri::command]
+pub async fn get_available_drivers(
+    plugin_manager: State<'_, Arc<PluginManager>>,
+) -> Result<Vec<DriverTypeInfo>, String> {
+    let mut drivers = vec![
+        DriverTypeInfo { id: "postgresql".into(), name: "PostgreSQL".into(), builtin: true },
+        DriverTypeInfo { id: "mysql".into(), name: "MySQL".into(), builtin: true },
+        DriverTypeInfo { id: "sqlite".into(), name: "SQLite".into(), builtin: true },
+        DriverTypeInfo { id: "clickhouse".into(), name: "ClickHouse".into(), builtin: true },
+        DriverTypeInfo { id: "gaussdb".into(), name: "GaussDB".into(), builtin: true },
+    ];
+    for plugin in plugin_manager.get_enabled_plugins_info().await {
+        drivers.push(DriverTypeInfo {
+            id: format!("plugin:{}", plugin.id),
+            name: plugin.name,
+            builtin: false,
+        });
+    }
+    Ok(drivers)
 }

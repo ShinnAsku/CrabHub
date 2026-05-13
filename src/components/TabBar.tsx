@@ -2,14 +2,24 @@ import { X, Plus } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 
+function getTabTitle(tab: { title: string; titleKey?: string; titleNum?: number }): string {
+  if (tab.titleKey) {
+    const base = t(tab.titleKey);
+    return tab.titleNum ? `${base} ${tab.titleNum}` : base;
+  }
+  return tab.title;
+}
+
 function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, addTab } =
+  const { tabs, activeTabId, setActiveTab, closeTab, addTab, language } =
     useAppStore();
 
   const handleAddTab = () => {
     const queryCount = tabs.filter((t) => t.type === "query").length + 1;
     addTab({
-        title: `${t('tab.newQuery')} ${queryCount}`,
+        title: `${t('tab.query')} ${queryCount}`,
+        titleKey: 'tab.query',
+        titleNum: queryCount,
         type: "query",
         content: "",
       });
@@ -47,7 +57,7 @@ function TabBar() {
 
 
 
-              <span className="truncate max-w-[120px]">{tab.title}</span>
+              <span className="truncate max-w-[120px]">{getTabTitle(tab)}</span>
 
               <button
                 onClick={(e) => {

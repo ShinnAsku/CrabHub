@@ -3,5 +3,5 @@
 
 #[tokio::main]
 async fn main() {
-    opendb_lib::run().await;
+    crabhub_lib::run().await;
 }

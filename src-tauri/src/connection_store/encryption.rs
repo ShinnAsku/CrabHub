@@ -20,12 +20,12 @@ pub fn init_master_key() -> Result<(), String> {
     }
 
     // Try to get from keyring
-    let keyring = keyring::Entry::new("opendb", "master-key").map_err(|e| e.to_string())?;
+    let keyring = keyring::Entry::new("crabhub", "master-key").map_err(|e| e.to_string())?;
     
     let master_key = match keyring.get_password() {
         Ok(password) => {
             // Use existing password
-            derive_key(&password, b"opendb-salt-v1")
+            derive_key(&password, b"crabhub-salt-v1")
         }
         Err(_) => {
             // Generate new master key
@@ -36,7 +36,7 @@ pub fn init_master_key() -> Result<(), String> {
             let password = base64_encode(&password_bytes);
             keyring.set_password(&password).map_err(|e| e.to_string())?;
             
-            derive_key(&password, b"opendb-salt-v1")
+            derive_key(&password, b"crabhub-salt-v1")
         }
     };
 

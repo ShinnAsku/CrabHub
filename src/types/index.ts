@@ -2,7 +2,7 @@
 export interface ConnectionConfig {
   id: string;
   name: string;
-  type: 'postgresql' | 'mysql' | 'sqlite' | 'mssql' | 'clickhouse' | 'gaussdb' | 'opengauss';
+  type: string; // built-in: postgresql|mysql|sqlite|mssql|clickhouse|gaussdb|opengauss, plugin: plugin:<id>
   host?: string;
   port?: number;
   username?: string;
@@ -128,6 +128,8 @@ export interface Tab {
   id: string;
   type: 'query' | 'table' | 'er' | 'designer' | 'diff' | 'migration' | 'analyzer' | 'notebook' | 'query-builder';
   title: string;
+  titleKey?: string;
+  titleNum?: number;
   content?: string;
   connectionId?: string;
   databaseName?: string;

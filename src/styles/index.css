@@ -13,9 +13,9 @@
   --border: 214 32% 91%;
   --input: 214 32% 91%;
   --table-border: 214 25% 78%;
-  --primary: 221 83% 27%;
-  --primary-glow: 221 83% 35%;
-  --primary-foreground: 210 40% 98%;
+  --primary: 221 83% 53%;
+  --primary-glow: 221 83% 60%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 210 40% 96%;
   --secondary-foreground: 222 47% 11%;
   --accent: 199 89% 48%;
@@ -34,8 +34,8 @@
   --sidebar-foreground: 222 47% 11%;
   --sidebar-border: 214 32% 91%;
   --sidebar-item-hover: 210 40% 92%;
-  --sidebar-item-active: 221 83% 27%;
-  --tab-active: 221 83% 27%;
+  --sidebar-item-active: 221 83% 53%;
+  --tab-active: 221 83% 53%;
   --toolbar-bg: 210 40% 99%;
   --editor-bg: 0 0% 100%;
   --editor-line-number: 215 16% 65%;
@@ -55,9 +55,9 @@
   --border: 217 33% 18%;
   --input: 217 33% 18%;
   --table-border: 217 25% 32%;
-  --primary: 221 83% 35%;
-  --primary-glow: 221 83% 45%;
-  --primary-foreground: 210 40% 98%;
+  --primary: 221 83% 53%;
+  --primary-glow: 221 83% 60%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 217 33% 18%;
   --secondary-foreground: 210 40% 98%;
   --accent: 199 89% 48%;
@@ -76,8 +76,8 @@
   --sidebar-foreground: 210 40% 98%;
   --sidebar-border: 217 33% 15%;
   --sidebar-item-hover: 217 33% 15%;
-  --sidebar-item-active: 221 83% 35%;
-  --tab-active: 221 83% 35%;
+  --sidebar-item-active: 221 83% 53%;
+  --tab-active: 221 83% 53%;
   --toolbar-bg: 222 47% 10%;
   --editor-bg: 222 47% 8%;
   --editor-line-number: 215 20% 50%;

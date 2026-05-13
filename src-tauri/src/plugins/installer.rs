@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use reqwest::Client;
+use reqwest::{Client, redirect};
 use tempfile;
 use zip::ZipArchive;
 
@@ -16,7 +16,8 @@ pub struct PluginInstaller {
 impl PluginInstaller {
     pub fn new(plugins_dir: PathBuf) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(300))
+            .redirect(redirect::Policy::limited(5))
             .build()
             .unwrap();
 

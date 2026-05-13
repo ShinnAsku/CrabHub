@@ -1,4 +1,4 @@
-use opendb_lib::connection_store::ConnectionStore;
+use crabhub_lib::connection_store::ConnectionStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{
@@ -70,7 +70,7 @@ async fn init(state: State<'_, ConnectionStoreState>) -> Result<(), String> {
     // Get app data directory
     let app_data_dir = dirs::data_local_dir()
         .ok_or("Failed to get app data directory")?
-        .join("opendb");
+        .join("crabhub");
 
     // Create directory if it doesn't exist
     std::fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
@@ -156,13 +156,13 @@ async fn update_connection_stats(
 
 // ===== Helper Functions =====
 
-fn convert_dto_to_model(dto: ConnectionDto) -> Result<opendb_lib::connection_store::models::Connection, String> {
-    use opendb_lib::connection_store::models::DbType;
+fn convert_dto_to_model(dto: ConnectionDto) -> Result<crabhub_lib::connection_store::models::Connection, String> {
+    use crabhub_lib::connection_store::models::DbType;
 
     let db_type = DbType::from_str(&dto.db_type)
         .ok_or(format!("Invalid database type: {}", dto.db_type))?;
 
-    Ok(opendb_lib::connection_store::models::Connection {
+    Ok(crabhub_lib::connection_store::models::Connection {
         id: dto.id,
         name: dto.name,
         db_type,
@@ -193,7 +193,7 @@ fn convert_dto_to_model(dto: ConnectionDto) -> Result<opendb_lib::connection_sto
 }
 
 fn convert_model_to_dto(
-    model: opendb_lib::connection_store::models::Connection,
+    model: crabhub_lib::connection_store::models::Connection,
 ) -> Result<ConnectionDto, String> {
     let ssh_tunnel = if model.ssh_tunnel_enabled {
         Some(SshTunnelDto {

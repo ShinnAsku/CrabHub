@@ -42,7 +42,7 @@ interface AIState {
   deleteConversation: (conversationId: string) => void;
 }
 
-const STORAGE_KEY_PREFIX = "opendb-ai-conversations-";
+const STORAGE_KEY_PREFIX = "crabhub-ai-conversations-";
 
 function loadConversations(connectionId: string): Conversation[] {
   try {

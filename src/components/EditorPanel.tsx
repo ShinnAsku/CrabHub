@@ -623,14 +623,14 @@ function QueryEditor() {
       handleExecute();
     };
 
-    window.addEventListener("opendb:export", handleExportEvent);
-    window.addEventListener("opendb:import", handleImportEvent);
-    window.addEventListener("opendb:execute-query", handleExecuteEvent);
+    window.addEventListener("crabhub:export", handleExportEvent);
+    window.addEventListener("crabhub:import", handleImportEvent);
+    window.addEventListener("crabhub:execute-query", handleExecuteEvent);
 
     return () => {
-      window.removeEventListener("opendb:export", handleExportEvent);
-      window.removeEventListener("opendb:import", handleImportEvent);
-      window.removeEventListener("opendb:execute-query", handleExecuteEvent);
+      window.removeEventListener("crabhub:export", handleExportEvent);
+      window.removeEventListener("crabhub:import", handleImportEvent);
+      window.removeEventListener("crabhub:execute-query", handleExecuteEvent);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, effectiveConnectionId, result]);
@@ -1291,15 +1291,15 @@ function QueryEditor() {
               }
             }}
             className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors"
-            title="AI Optimize SQL"
+            title={t('ai.optimizeSql')}
           >
             <Lightbulb size={12} />
-            AI 优化
+            {t('ai.optimizeSql')}
           </button>
           <button
             onClick={() => handleExecute()}
             disabled={isExecuting || !effectiveConnectionId}
-            className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
             title={t('editor.executeQuery')}
           >
             {isExecuting ? (
@@ -1326,6 +1326,9 @@ function QueryEditor() {
               onChange={handleEditorChange}
               onMount={handleEditorMount}
               options={{
+                cursorStyle: "line",
+                cursorBlinking: "smooth",
+                cursorSmoothCaretAnimation: "on",
                 minimap: { enabled: false },
                 fontSize: 13,
                 lineHeight: 20,
@@ -1460,7 +1463,7 @@ function QueryEditor() {
                 <button
                   onClick={handleConfirmImport}
                   disabled={isExecuting || !importTableName.trim()}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
                 >
                   <CheckCircle2 size={10} />
                   {t('editor.confirmImport')}
@@ -1677,27 +1680,9 @@ function WelcomeScreen() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
       <div className="flex flex-col items-center gap-3">
-        {/* Butterfly Logo */}
-        <svg
-          width="48"
-          height="48"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="opacity-20"
-        >
-          <path d="M12 12 C8 8, 2 6, 3 10 C4 14, 10 14, 12 12" />
-          <path d="M12 12 C8 16, 2 18, 3 14 C4 10, 10 10, 12 12" />
-          <path d="M12 12 C16 8, 22 6, 21 10 C20 14, 14 14, 12 12" />
-          <path d="M12 12 C16 16, 22 18, 21 14 C20 10, 14 10, 12 12" />
-          <line x1="12" y1="6" x2="12" y2="18" />
-          <path d="M12 6 C11 4, 9 3, 8 2" />
-          <path d="M12 6 C13 4, 15 3, 16 2" />
-        </svg>
-        <h2 className="text-base font-medium text-foreground/60">OpenDB</h2>
+        {/* Crab Logo */}
+        <svg width="72" height="72" viewBox="0 0 32 32" fill="none" className="opacity-50"><circle cx="16" cy="16" r="15" fill="white" /><g transform="translate(3,3) scale(0.95)"><ellipse cx="13" cy="16" rx="8" ry="6" fill="#EF4444" stroke="#DC2626" strokeWidth="0.8" /><circle cx="10" cy="13" r="1.8" fill="white" /><circle cx="16" cy="13" r="1.8" fill="white" /><circle cx="10" cy="12.8" r="0.9" fill="#1a1a1a" /><circle cx="16" cy="12.8" r="0.9" fill="#1a1a1a" /><path d="M11 17.5 Q13 19, 15 17.5" stroke="#991B1B" strokeWidth="0.6" fill="none" /><path d="M5 15 C5 15, -1 10, -2 6 C-3 3, 0 3, 1 6 L3 10" fill="#EF4444" stroke="#DC2626" strokeWidth="0.8" /><path d="M-2 6 C-2 6, -4 4, -3 2 C-2 0, -1 2, 0 4" fill="#DC2626" stroke="#991B1B" strokeWidth="0.5" /><path d="M21 15 C21 15, 27 10, 28 6 C29 3, 26 3, 25 6 L23 10" fill="#EF4444" stroke="#DC2626" strokeWidth="0.8" /><path d="M28 6 C28 6, 30 4, 29 2 C28 0, 27 2, 26 4" fill="#DC2626" stroke="#991B1B" strokeWidth="0.5" /><path d="M7 17 L2 19 L1 21" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M7 18 L3 21 L2 23" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M8 19 L4 22 L3 24" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M19 17 L24 19 L25 21" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M19 18 L23 21 L24 23" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M18 19 L22 22 L23 24" stroke="#DC2626" strokeWidth="0.7" fill="none" /></g></svg>
+        <h2 className="text-base font-medium text-foreground/60">CrabHub</h2>
         <p className="text-xs text-muted-foreground/60 text-center max-w-[240px]">
           {t('welcome.description')}{" "}
           <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Ctrl+N</kbd>{" "}
@@ -1826,24 +1811,24 @@ function EditorContextMenu({
         }}
       >
         {hasSelection
-          ? menuItem("运行已选择的", onRunSelected, <Play size={12} />, undefined, false, true)
-          : menuItem("运行", onRunAll, <Play size={12} />, `${modKey}Enter`, false, true)
+          ? menuItem(t("contextMenu.runSelected"), onRunSelected, <Play size={12} />, undefined, false, true)
+          : menuItem(t("contextMenu.run"), onRunAll, <Play size={12} />, `${modKey}Enter`, false, true)
         }
 
         <div className="border-t border-border my-1" />
 
-        {menuItem("剪切", onCut, <Scissors size={12} />, `${modKey}X`, !hasSelection)}
-        {menuItem("复制", onCopy, <Copy size={12} />, `${modKey}C`, !hasSelection)}
-        {menuItem("粘贴", onPaste, <ClipboardPaste size={12} />, `${modKey}V`)}
+        {menuItem(t("contextMenu.cut"), onCut, <Scissors size={12} />, `${modKey}X`, !hasSelection)}
+        {menuItem(t("contextMenu.copy"), onCopy, <Copy size={12} />, `${modKey}C`, !hasSelection)}
+        {menuItem(t("contextMenu.paste"), onPaste, <ClipboardPaste size={12} />, `${modKey}V`)}
 
         <div className="border-t border-border my-1" />
 
-        {menuItem("格式化 SQL", onFormat, <AlignLeft size={12} />)}
+        {menuItem(t("contextMenu.formatSql"), onFormat, <AlignLeft size={12} />)}
 
         <div className="border-t border-border my-1" />
 
-        {menuItem("选择当前语句", onSelectCurrentStatement, <TextCursorInput size={12} />)}
-        {menuItem("全选", onSelectAll, <MousePointerClick size={12} />, `${modKey}A`)}
+        {menuItem(t("contextMenu.selectCurrentStatement"), onSelectCurrentStatement, <TextCursorInput size={12} />)}
+        {menuItem(t("contextMenu.selectAll"), onSelectAll, <MousePointerClick size={12} />, `${modKey}A`)}
       </div>
     </>
   );

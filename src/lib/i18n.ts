@@ -26,6 +26,10 @@ const translations: Record<Language, Record<string, string>> = {
     'common.executing': '执行中...',
     'common.transactionActive': '事务中',
     'common.name': '名',
+    'common.collapse': '收起',
+    'common.expand': '展开',
+    'common.noConnectionHint': '请先连接数据库',
+    'common.multipleConnectionsHint': '检测到多个已连接数据库，请从左侧面板中选择一个',
 
     // ===== Toolbar =====
     'toolbar.newConnection': '新建连接 (Ctrl+N)',
@@ -63,6 +67,21 @@ const translations: Record<Language, Record<string, string>> = {
     'navicat.backups': '备份',
     'navicat.objects': '对象',
     'navicat.ddl': 'DDL',
+    // Table types
+    'tableType.view': '视图',
+    'tableType.materializedView': '物化视图',
+    'tableType.partitionedTable': '分区表',
+    'tableType.foreignTable': '外部表',
+    'tableType.regular': '常规',
+    // Right-click context menu
+    'contextMenu.run': '运行',
+    'contextMenu.runSelected': '运行已选择的',
+    'contextMenu.cut': '剪切',
+    'contextMenu.copy': '复制',
+    'contextMenu.paste': '粘贴',
+    'contextMenu.formatSql': '格式化 SQL',
+    'contextMenu.selectCurrentStatement': '选择当前语句',
+    'contextMenu.selectAll': '全选',
 
     // ===== Sidebar =====
     'sidebar.connections': '连接',
@@ -77,6 +96,12 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.queryData': '查询数据',
     'sidebar.exportSql': '导出 SQL',
     'sidebar.newQuery': '新建查询',
+    'sidebar.categoryTables': '表',
+    'sidebar.categoryViews': '视图',
+    'sidebar.categoryFunctions': '函数',
+    'sidebar.categoryEvents': '事件',
+    'sidebar.categoryProcedures': '存储过程',
+    'sidebar.categoryTriggers': '触发器',
     'query.untitled': '无标题',
 
     // ===== TabBar =====
@@ -185,6 +210,9 @@ const translations: Record<Language, Record<string, string>> = {
     'connection.tabDatabase': '数据库',
     'connection.nameRequired': '连接名称不能为空',
     'connection.nameExists': '已存在同名连接，请使用不同的名称',
+    'connection.databaseRequired': '数据库名不能为空，请输入要连接的数据库名称',
+    'connection.testSuccessMsg': '连接测试成功！可以连接到数据库。',
+    'connection.testFailedMsg': '连接测试失败，请检查连接配置。',
 
     // ===== AI Panel =====
     'ai.title': 'AI 助手',
@@ -217,6 +245,12 @@ const translations: Record<Language, Record<string, string>> = {
     'ai.expand': '展开',
     'ai.minimize': '最小化',
     'ai.queryTitle': 'AI 查询',
+    'ai.writeSql': '写SQL',
+    'ai.analyzePerformance': '分析性能',
+    'ai.designTable': '设计表结构',
+    'ai.analyzeData': '分析数据',
+    'ai.explainSql': '解释SQL',
+    'ai.optimizeSql': '优化SQL',
 
     // ===== Status Bar =====
     'status.notConnected': '未连接',
@@ -421,6 +455,31 @@ const translations: Record<Language, Record<string, string>> = {
     'layout.tableDesigner': '表设计',
     'layout.schemaDiffHint': '结构对比功能请使用工具栏按钮打开',
     'layout.queryAnalyzer': '性能分析',
+    'layout.selectTable': '选择 {schema} 中的一个表',
+    'layout.clickSchema': '点击左侧的 schema 或表',
+    'layout.copyName': '复制名称',
+
+    // Table column headers (object list)
+    'tableHeader.rows': '行',
+    'tableHeader.dataLength': '数据长度',
+    'tableHeader.engine': '引擎',
+    'tableHeader.createdDate': '创建日期',
+    'tableHeader.modifiedDate': '修改日期',
+    'tableHeader.collation': '排序规则',
+    'tableHeader.comment': '注释',
+    'tableHeader.oid': 'OID',
+    'tableHeader.owner': '所有者',
+    'tableHeader.acl': 'ACL',
+    'tableHeader.tableType': '表类型',
+    'tableHeader.partitionOf': '分区属于',
+    'tableHeader.primaryKey': '主键',
+
+    // Column preview headers
+    'columnHeader.name': '名称',
+    'columnHeader.type': '类型',
+    'columnHeader.pk': 'PK',
+    'columnHeader.nn': 'NN',
+    'columnHeader.defaultValue': '默认值',
 
     // ===== Query Builder =====
     'builder.title': '可视化查询构建器',
@@ -474,6 +533,14 @@ const translations: Record<Language, Record<string, string>> = {
     'notebook.addParam': '添加参数',
     'notebook.removeParam': '移除参数',
     'notebook.paramHint': '在 SQL 单元格中使用参数：{paramName}',
+    'notebook.chartView': '图表视图',
+    'notebook.tableView': '表格视图',
+    'notebook.barChart': '柱状图',
+    'notebook.lineChart': '折线图',
+    'notebook.pieChart': '饼图',
+    'notebook.xAxis': 'X 轴',
+    'notebook.yAxis': 'Y 轴',
+    'notebook.showingPartial': '仅显示前 {count} 个数据点',
 
     // ===== Query Analyzer =====
     'analyzer.title': '性能分析',
@@ -649,6 +716,10 @@ const translations: Record<Language, Record<string, string>> = {
     'common.executing': 'Executing...',
     'common.transactionActive': 'In Transaction',
     'common.name': 'Name',
+    'common.collapse': 'Collapse',
+    'common.expand': 'Expand',
+    'common.noConnectionHint': 'Please connect to a database first',
+    'common.multipleConnectionsHint': 'Multiple connections detected. Please select one from the sidebar.',
 
     // ===== Toolbar =====
     'toolbar.newConnection': 'New Connection (Ctrl+N)',
@@ -686,6 +757,21 @@ const translations: Record<Language, Record<string, string>> = {
     'navicat.backups': 'Backups',
     'navicat.objects': 'Objects',
     'navicat.ddl': 'DDL',
+    // Table types
+    'tableType.view': 'View',
+    'tableType.materializedView': 'Materialized View',
+    'tableType.partitionedTable': 'Partitioned Table',
+    'tableType.foreignTable': 'Foreign Table',
+    'tableType.regular': 'Regular',
+    // Right-click context menu
+    'contextMenu.run': 'Run',
+    'contextMenu.runSelected': 'Run Selected',
+    'contextMenu.cut': 'Cut',
+    'contextMenu.copy': 'Copy',
+    'contextMenu.paste': 'Paste',
+    'contextMenu.formatSql': 'Format SQL',
+    'contextMenu.selectCurrentStatement': 'Select Current Statement',
+    'contextMenu.selectAll': 'Select All',
 
     // ===== Sidebar =====
     'sidebar.connections': 'Connections',
@@ -700,6 +786,12 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.queryData': 'Query Data',
     'sidebar.exportSql': 'Export SQL',
     'sidebar.newQuery': 'New Query',
+    'sidebar.categoryTables': 'Tables',
+    'sidebar.categoryViews': 'Views',
+    'sidebar.categoryFunctions': 'Functions',
+    'sidebar.categoryEvents': 'Events',
+    'sidebar.categoryProcedures': 'Procedures',
+    'sidebar.categoryTriggers': 'Triggers',
     'query.untitled': 'Untitled',
     'tab.newQuery': 'New Query',
     'tab.query': 'Query',
@@ -803,6 +895,11 @@ const translations: Record<Language, Record<string, string>> = {
     'connection.healthUnhealthy': 'Unhealthy',
     'connection.tabGeneral': 'General',
     'connection.tabAdvanced': 'Advanced',
+    'connection.nameRequired': 'Connection name is required',
+    'connection.nameExists': 'A connection with this name already exists. Please use a different name.',
+    'connection.databaseRequired': 'Database name is required. Please enter a database name to connect to.',
+    'connection.testSuccessMsg': 'Connection test successful! You can connect to the database.',
+    'connection.testFailedMsg': 'Connection test failed. Please check the connection settings.',
     'connection.tabDatabase': 'Database',
 
     // ===== AI Panel =====
@@ -836,6 +933,12 @@ const translations: Record<Language, Record<string, string>> = {
     'ai.expand': 'Expand',
     'ai.minimize': 'Minimize',
     'ai.queryTitle': 'AI Query',
+    'ai.writeSql': 'Write SQL',
+    'ai.analyzePerformance': 'Analyze Performance',
+    'ai.designTable': 'Design Table',
+    'ai.analyzeData': 'Analyze Data',
+    'ai.explainSql': 'Explain SQL',
+    'ai.optimizeSql': 'Optimize SQL',
 
     // ===== Status Bar =====
     'status.notConnected': 'Not Connected',
@@ -1037,6 +1140,31 @@ const translations: Record<Language, Record<string, string>> = {
     'layout.tableDesigner': 'Table Designer',
     'layout.schemaDiffHint': 'Use the toolbar button to open Schema Diff',
     'layout.queryAnalyzer': 'Performance Analysis',
+    'layout.selectTable': 'Select a table in {schema}',
+    'layout.clickSchema': 'Click a schema or table on the left',
+    'layout.copyName': 'Copy Name',
+
+    // Table column headers (object list)
+    'tableHeader.rows': 'Rows',
+    'tableHeader.dataLength': 'Data Length',
+    'tableHeader.engine': 'Engine',
+    'tableHeader.createdDate': 'Created',
+    'tableHeader.modifiedDate': 'Updated',
+    'tableHeader.collation': 'Collation',
+    'tableHeader.comment': 'Comment',
+    'tableHeader.oid': 'OID',
+    'tableHeader.owner': 'Owner',
+    'tableHeader.acl': 'ACL',
+    'tableHeader.tableType': 'Type',
+    'tableHeader.partitionOf': 'Partition',
+    'tableHeader.primaryKey': 'Primary Key',
+
+    // Column preview headers
+    'columnHeader.name': 'Name',
+    'columnHeader.type': 'Type',
+    'columnHeader.pk': 'PK',
+    'columnHeader.nn': 'NN',
+    'columnHeader.defaultValue': 'Default',
 
     // ===== Query Builder =====
     'builder.title': 'Visual Query Builder',
@@ -1090,6 +1218,14 @@ const translations: Record<Language, Record<string, string>> = {
     'notebook.addParam': 'Add Parameter',
     'notebook.removeParam': 'Remove Parameter',
     'notebook.paramHint': 'Use parameters in SQL cells: {paramName}',
+    'notebook.chartView': 'Chart View',
+    'notebook.tableView': 'Table View',
+    'notebook.barChart': 'Bar Chart',
+    'notebook.lineChart': 'Line Chart',
+    'notebook.pieChart': 'Pie Chart',
+    'notebook.xAxis': 'X Axis',
+    'notebook.yAxis': 'Y Axis',
+    'notebook.showingPartial': 'Showing first {count} data points',
 
     // ===== Query Analyzer =====
     'analyzer.title': 'Performance Analysis',
@@ -1262,7 +1398,7 @@ export function setLanguage(lang: Language): void {
   currentLanguage = lang;
   // Persist to localStorage
   try {
-    localStorage.setItem('opendb-language', lang);
+    localStorage.setItem('crabhub-language', lang);
   } catch {}
 }
 
@@ -1274,7 +1410,7 @@ export function getLanguage(): Language {
 // Initialize from localStorage
 export function initLanguage(): Language {
   try {
-    const saved = localStorage.getItem('opendb-language');
+    const saved = localStorage.getItem('crabhub-language');
     if (saved === 'en' || saved === 'zh') {
       currentLanguage = saved;
     }

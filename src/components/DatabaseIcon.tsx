@@ -15,14 +15,10 @@ export default function DatabaseIcon({ type, connected, size = 14, isActive = fa
       return <MySQLIcon size={size} color={color} />;
     case "sqlite":
       return <SQLiteIcon size={size} color={color} />;
-    case "mssql":
-      return <MSSQLIcon size={size} color={color} />;
     case "clickhouse":
       return <ClickHouseIcon size={size} color={color} />;
     case "gaussdb":
       return <GaussDBIcon size={size} color={color} />;
-    case "opengauss":
-      return <OpenGaussIcon size={size} color={color} />;
     default:
       return <DefaultDBIcon size={size} color={color} />;
   }
@@ -33,10 +29,8 @@ function getBrandColor(type: string): string {
     case "postgresql": return "#336791";
     case "mysql": return "#00758F";
     case "sqlite": return "#003B57";
-    case "mssql": return "#CC2927";
     case "clickhouse": return "#FFCC00";
     case "gaussdb": return "#CF0A2C";
-    case "opengauss": return "#34A853";
     default: return "#6b7280";
   }
 }

@@ -5,7 +5,7 @@ import type { SchemaNode, QueryResult, TableInfo, SelectedContext } from '@/type
 // Load theme from localStorage
 function loadTheme(): "light" | "dark" {
   try {
-    const saved = localStorage.getItem("opendb-theme");
+    const saved = localStorage.getItem("crabhub-theme");
     if (saved === "light" || saved === "dark") return saved;
   } catch {}
   return "dark";
@@ -91,7 +91,7 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => {
       const newTheme = state.theme === "dark" ? "light" : "dark";
       applyThemeClass(newTheme);
-      try { localStorage.setItem("opendb-theme", newTheme); } catch {}
+      try { localStorage.setItem("crabhub-theme", newTheme); } catch {}
       return { theme: newTheme };
     }),
 

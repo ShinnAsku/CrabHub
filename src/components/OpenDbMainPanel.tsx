@@ -26,7 +26,6 @@ import {
   Copy,
   ChevronRight,
 } from "lucide-react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useUIStore, useTabStore } from "@/stores/app-store";
 import type { SchemaNode, Connection, ColumnInfo, TableInfo } from "@/types";
 import { t } from "@/lib/i18n";
@@ -989,33 +988,30 @@ function OpenDbMainPanel({ activeConnection, selectedSchemaName: propsSelectedSc
         </div>
       ) : (
         /* Navicat mode: two panels (Main Content | DDL) */
-        <div className="flex-1 overflow-hidden">
-          <PanelGroup direction="horizontal" autoSaveId="navicat-main-panels">
-            {/* Left Panel: Main Content (switches between objects and data) */}
-            <Panel defaultSize={75} minSize={40}>
+        <div className="flex-1 overflow-hidden flex flex-col">
               {showObjectsView ? (
                 /* Objects View */
                 <div className="h-full flex flex-col">
-                  {/* Object List Toolbar */}
-                  <div className="flex items-center justify-between px-2 py-1 border-b border-border">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-medium text-foreground">{t('navicat.objects')}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
-                        <Info size={14} />
-                      </button>
-                      <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
-                        <List size={14} />
-                      </button>
-                      <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
-                        <Grid3X3 size={14} />
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* Object List Action Buttons */}
+                  {/* Toolbar: tabs + actions + search in one row */}
                   <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
+                    {/* Inline query tabs (same as TabBar but compact) */}
+                    {globalTabs.map((tab) => (
+                      <div key={tab.id}
+                        className={`flex items-center gap-1 px-2 h-6 rounded text-[11px] whitespace-nowrap shrink-0 cursor-pointer border border-border transition-colors ${
+                          globalActiveTabId === tab.id
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                        onClick={() => { setGlobalActiveTab(tab.id); setActiveView(`query:${tab.id}`); }}>
+                        <span className="truncate max-w-[80px]">{tab.title}</span>
+                        <button onClick={(e) => { e.stopPropagation(); closeGlobalTab(tab.id); }}
+                          className="p-0.5 rounded hover:bg-white/20 transition-colors">
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                    {globalTabs.length > 0 && <div className="w-px h-4 bg-border mx-1" />}
                     <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Create New Schema">
                       <Folder size={14} />
                     </button>
@@ -1284,7 +1280,19 @@ function OpenDbMainPanel({ activeConnection, selectedSchemaName: propsSelectedSc
                         </table>
                       ) : (
                         <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                          点击表查看列信息
+                          {t('layout.clickSchema')}
+                        </div>
+                      )}
+
+                      {/* DDL Preview */}
+                      {displayDDL && (
+                        <div className="border-t border-border mt-2">
+                          <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('navicat.ddl')}</span>
+                          </div>
+                          <pre className="text-xs font-mono whitespace-pre-wrap text-blue-500 p-3 max-h-[200px] overflow-auto">
+                            {displayDDL}
+                          </pre>
                         </div>
                       )}
                     </div>
@@ -1623,45 +1631,6 @@ function OpenDbMainPanel({ activeConnection, selectedSchemaName: propsSelectedSc
                     : "点击左侧的 schema 或表"}
                 </div>
               )}
-            </Panel>
-
-            <PanelResizeHandle className="w-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-col-resize" />
-
-            {/* Right Panel: DDL */}
-            <Panel defaultSize={25} minSize={15} maxSize={40}>
-              <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-2 py-1 border-b border-border">
-                  <span className="text-xs font-medium text-foreground">{t('navicat.ddl')}</span>
-                  <div className="flex items-center gap-1">
-                    <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
-                      <Info size={14} />
-                    </button>
-                    <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
-                      <List size={14} />
-                    </button>
-                    <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
-                      <Grid3X3 size={14} />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-auto p-2 bg-muted/10">
-                  {ddlLoading ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                      <div className="w-4 h-4 border-2 border-muted-foreground border-t-[hsl(var(--tab-active))] rounded-full animate-spin"></div>
-                    </div>
-                  ) : displayDDL ? (
-                    <pre className="text-xs font-mono whitespace-pre-wrap text-blue-500">
-                      {displayDDL}
-                    </pre>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                      点击表查看 DDL
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Panel>
-          </PanelGroup>
         </div>
       )}
 
