@@ -83,7 +83,7 @@ crabhub/
 │   │   ├── Sidebar.tsx           # 侧边栏（连接树 + 查询历史）
 │   │   ├── TabBar.tsx            # 标签栏
 │   │   ├── EditorPanel.tsx       # SQL 编辑器 (Monaco)
-│   │   ├── OpenDbMainPanel.tsx   # 数据库浏览器（Navicat 风格）
+│   │   ├── CrabHubMainPanel.tsx   # 数据库浏览器（Navicat 风格）
 │   │   ├── AIPanel.tsx           # AI 助手浮动面板
 │   │   ├── PluginManager.tsx     # 插件管理（Tabularis 风格）
 │   │   ├── ConnectionDialog.tsx  # 新建/编辑连接
@@ -158,6 +158,76 @@ Windows: %APPDATA%/com.crabhub.app/plugins/
 macOS:   ~/Library/Application Support/com.crabhub.app/plugins/
 Linux:   ~/.local/share/crabhub/plugins/
 ```
+
+## 架构
+
+```
+┌─────────────────────────────────────────────┐
+│                 CrabHub                      │
+├──────────────┬──────────────────────────────┤
+│  React 19    │  Tauri v2 (Rust)             │
+│  TypeScript  │                              │
+│  Tailwind 4  │  ┌────────────────────────┐  │
+│  Zustand 5   │  │  ConnectionManager     │  │
+│  Monaco      │  │  ┌──────┬──────┬─────┐│  │
+│              │  │  │ PG   │MySQL │SQLite││  │
+│  ┌────────┐  │  │  ├──────┼──────┼─────┤│  │
+│  │TabBar  │  │  │  │GaussDB│Click │Plugin││  │
+│  │Toolbar │  │  │  └──────┴──────┴─────┘│  │
+│  │Sidebar │  │  └────────────────────────┘  │
+│  │Editor  │  │  ┌────────────────────────┐  │
+│  │AI      │  │  │  PluginManager         │  │
+│  └────────┘  │  │  JSON-RPC 2.0 stdio    │  │
+│              │  │  Tabularis Compatible   │  │
+│  IPC ────────│──│  Registry (local+remote)│  │
+│              │  └────────────────────────┘  │
+└──────────────┴──────────────────────────────┘
+```
+
+## 快捷键
+
+| 快捷键 | 操作 |
+|------|------|
+| `Ctrl+N` | 新建连接 |
+| `Ctrl+Shift+N` | 新建查询 |
+| `Ctrl+W` | 关闭当前标签 |
+| `Ctrl+S` | 保存当前查询 |
+| `Ctrl+Enter` | 执行 SQL |
+| `Ctrl+B` | 切换侧边栏 |
+| `Ctrl+J` | 切换 AI 面板 |
+| `F5` | 执行查询 |
+
+## 插件开发
+
+插件遵循 [Tabularis 插件协议](https://github.com/TabularisDB/tabularis/blob/main/plugins/PLUGIN_GUIDE.md)，通过 stdin/stdout 进行 JSON-RPC 2.0 通信。
+
+### 插件结构
+
+```
+my-plugin/
+├── manifest.json    # 插件元数据
+└── my-plugin.exe    # 可执行文件（任意语言）
+```
+
+### manifest.json
+
+```json
+{
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "version": "1.0.0",
+  "executable": "my-plugin.exe",
+  "capabilities": {
+    "schemas": true,
+    "views": true
+  },
+  "data_types": [
+    { "name": "STRING", "category": "string" }
+  ]
+}
+```
+
+插件使用 [@tabularis/create-plugin](https://www.npmjs.com/package/@tabularis/create-plugin) 脚手架快速创建。
 
 ## License
 
