@@ -83,64 +83,25 @@ function mapRawQueryResult(raw: any): QueryResult {
     nullable: c.nullable,
     isPrimaryKey: c.isPrimaryKey,
   }));
-  
-  // Helper function to get the actual value from serde_json::Value
-  const getActualValue = (value: any): any => {
-    if (value === null || value === undefined) {
-      return "";
+
+  // Tauri v2 serializes serde_json::Value as plain JSON — no wrapper unwrapping needed.
+  // null stays null for SQL NULL display; empty string would lose the distinction.
+  const rows = (raw.rows || []).map((row: any) => {
+    if (Array.isArray(row) && columns.length > 0) {
+      const mapped: Record<string, any> = {};
+      row.forEach((value: any, index: number) => {
+        if (index < columns.length) {
+          mapped[columns[index].name] = value;
+        }
+      });
+      return mapped;
     }
-    
-    // Check if value is a serde_json::Value object
-    if (typeof value === 'object' && value !== null) {
-      // Check for serde_json::Value types
-      if (value.hasOwnProperty('type') && value.hasOwnProperty('value')) {
-        // This is a serde_json::Value wrapper
-        return getActualValue(value.value);
-      }
-      
-      // Check if it's a string value
-      if (value.hasOwnProperty('String')) {
-        return value.String;
-      }
-      
-      // Check if it's a number value
-      if (value.hasOwnProperty('Number')) {
-        return value.Number;
-      }
-      
-      // Check if it's a boolean value
-      if (value.hasOwnProperty('Bool')) {
-        return value.Bool;
-      }
-    }
-    
-    return value;
-  };
-  
-  // Map camelCase from Rust to our frontend format
+    return { ...row };
+  });
+
   return {
     columns,
-    rows: (raw.rows || []).map((row: any) => {
-      const newRow: Record<string, any> = {};
-      
-      // Check if row is an array (index-based) or object (key-based)
-      if (Array.isArray(row) && columns.length > 0) {
-        // Array-based rows (common in some database drivers)
-        row.forEach((value: any, index: number) => {
-          if (index < columns.length) {
-            const columnName = columns[index].name;
-            newRow[columnName] = getActualValue(value);
-          }
-        });
-      } else {
-        // Object-based rows
-        for (const [key, value] of Object.entries(row)) {
-          newRow[key] = getActualValue(value);
-        }
-      }
-      
-      return newRow;
-    }),
+    rows,
     rowCount: raw.rowCount ?? 0,
     duration: raw.executionTimeMs ?? 0,
   };

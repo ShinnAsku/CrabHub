@@ -635,10 +635,14 @@ function QueryEditor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, effectiveConnectionId, result]);
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
       if (activeTabId && value !== undefined) {
-        updateTabContent(activeTabId, value);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          updateTabContent(activeTabId, value);
+        }, 300);
       }
     },
     [activeTabId, updateTabContent]
@@ -801,6 +805,8 @@ function QueryEditor() {
   }, [activeTabId, effectiveConnectionId, activeConnection, setQueryResult, setIsExecuting, addQueryHistory]);
 
   // Load more rows for a specific result index
+  const MAX_DISPLAY_ROWS = 50000;
+
   const handleLoadMore = useCallback(async (resultIdx: number) => {
     if (isLoadingMore || !effectiveConnectionId) return;
     const state = loadMoreState[resultIdx];
@@ -819,12 +825,19 @@ function QueryEditor() {
         const updated = [...prev];
         if (updated[resultIdx]) {
           const existing = updated[resultIdx];
-          updated[resultIdx] = {
-            ...existing,
-            rows: [...existing.rows, ...pagedResult.rows],
-            rowCount: existing.rows.length + pagedResult.rows.length,
-          };
-          // Update the store if this is the active result
+          const newTotal = existing.rows.length + pagedResult.rows.length;
+          if (newTotal > MAX_DISPLAY_ROWS) {
+            updated[resultIdx] = {
+              ...existing,
+              rowCount: Math.min(newTotal, MAX_DISPLAY_ROWS),
+            };
+          } else {
+            updated[resultIdx] = {
+              ...existing,
+              rows: [...existing.rows, ...pagedResult.rows],
+              rowCount: newTotal,
+            };
+          }
           if (activeTabId && activeResultIdx === resultIdx) {
             setQueryResult(activeTabId, updated[resultIdx]);
           }
@@ -836,7 +849,7 @@ function QueryEditor() {
         ...prev,
         [resultIdx]: {
           ...state,
-          hasMore: pagedResult.hasMore,
+          hasMore: state.currentOffset + pagedResult.rows.length < MAX_DISPLAY_ROWS && pagedResult.hasMore,
           currentOffset: state.currentOffset + pagedResult.rows.length,
         },
       }));
