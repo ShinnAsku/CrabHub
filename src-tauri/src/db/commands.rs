@@ -113,6 +113,19 @@ pub async fn get_schemas(
         .map_err(|e| e.to_string())
 }
 
+/// Get schemas for a specific database (creates sub-connection to target database)
+#[tauri::command]
+pub async fn get_schemas_for_database(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+    database_name: String,
+) -> Result<Vec<String>, String> {
+    state
+        .get_schemas_for_database(&id, &database_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Get all databases for a connection (when no specific database is configured)
 #[tauri::command]
 pub async fn get_databases(
@@ -120,10 +133,11 @@ pub async fn get_databases(
     id: String,
 ) -> Result<Vec<String>, String> {
     let sql = match state.get_db_type(&id).await {
-        Some(t) => match t {
-            DatabaseType::MySQL => "SHOW DATABASES".to_string(),
-            _ => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
-        },
+        Some(DatabaseType::MySQL) => "SHOW DATABASES".to_string(),
+        Some(DatabaseType::SQLite) => return Ok(vec!["main".to_string()]),
+        Some(DatabaseType::ClickHouse) => "SELECT name FROM system.databases ORDER BY name".to_string(),
+        Some(DatabaseType::PostgreSQL | DatabaseType::GaussDB | DatabaseType::Plugin(_)) =>
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
         None => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
     };
     let result = state.query(&id, &sql).await.map_err(|e| e.to_string())?;

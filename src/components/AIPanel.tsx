@@ -235,6 +235,11 @@ function AIPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Drag state
+  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 36 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 });
+
   // Save settings to localStorage
   useEffect(() => {
     localStorage.setItem("crabhub-ai-settings", JSON.stringify(settings));
@@ -244,6 +249,37 @@ function AIPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Drag handlers
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = dragStartRef.current.mouseX - e.clientX;
+      const deltaY = e.clientY - dragStartRef.current.mouseY;
+
+      let newX = dragStartRef.current.startX + deltaX;
+      let newY = dragStartRef.current.startY + deltaY;
+
+      const MIN_VISIBLE = 80;
+      const maxX = window.innerWidth - MIN_VISIBLE;
+      newX = Math.max(0, Math.min(maxX, newX));
+
+      const maxY = window.innerHeight - 24 - MIN_VISIBLE;
+      newY = Math.max(0, Math.min(maxY, newY));
+
+      setPanelOffset({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
 
   // Build system prompt with database context
   const buildSystemPrompt = useCallback(() => {
@@ -572,19 +608,27 @@ function AIPanel() {
     <div
       className="ai-panel fixed z-30 flex flex-col bg-background border-l border-border shadow-xl"
       style={{
-        right: 0,
-        top: "36px", // below toolbar
-        bottom: "24px", // above status bar
+        right: panelOffset.x,
+        top: panelOffset.y,
+        bottom: "24px",
         width: "380px",
         borderRadius: "6px 0 0 6px",
+        userSelect: isDragging ? "none" : undefined,
       }}
     >
       {/* Drag Handle + Header */}
       <div
-        className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0 cursor-move select-none"
+        className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0 select-none"
+        style={{ cursor: isDragging ? "grabbing" : "grab" }}
         onMouseDown={(e) => {
-          // Allow dragging the floating panel (basic implementation)
           e.preventDefault();
+          setIsDragging(true);
+          dragStartRef.current = {
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            startX: panelOffset.x,
+            startY: panelOffset.y,
+          };
         }}
       >
         <div className="flex items-center gap-1.5">

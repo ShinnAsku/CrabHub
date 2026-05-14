@@ -38,7 +38,7 @@ impl SQLiteConnection {
             .create_if_missing(true);
 
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(5)
+            .max_connections(1)
             .idle_timeout(Duration::from_secs(600))
             .max_lifetime(Duration::from_secs(1800))
             .acquire_timeout(Duration::from_secs(10))
@@ -47,6 +47,16 @@ impl SQLiteConnection {
             .map_err(|e| {
                 DbError::ConnectionError(format!("Failed to connect to SQLite: {}", e))
             })?;
+
+        // Enable WAL mode to allow concurrent reads with a single writer
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("PRAGMA busy_timeout=5000")
+            .execute(&pool)
+            .await
+            .ok();
 
         log::info!("Successfully connected to SQLite");
 
@@ -488,9 +498,11 @@ impl DatabaseConnection for SQLiteConnection {
         updates: &[(String, serde_json::Value)],
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
+        crate::db::trait_def::sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
         let set_clauses: Vec<String> = updates
             .iter()
-            .map(|(col, val)| format!("{} = {}", col, json_value_to_sql(val)))
+            .map(|(col, val)| format!("{} = {}", sqlite_quote_table(col), json_value_to_sql(val)))
             .collect();
         let sql = format!(
             "UPDATE {} SET {} WHERE {}",
@@ -507,7 +519,7 @@ impl DatabaseConnection for SQLiteConnection {
         _schema: Option<&str>,
         values: &[(String, serde_json::Value)],
     ) -> Result<ExecuteResult, DbError> {
-        let columns: Vec<&str> = values.iter().map(|(c, _)| c.as_str()).collect();
+        let columns: Vec<String> = values.iter().map(|(c, _)| sqlite_quote_table(c)).collect();
         let value_strs: Vec<String> = values.iter().map(|(_, val)| json_value_to_sql(val)).collect();
         let sql = format!(
             "INSERT INTO {} ({}) VALUES ({})",
@@ -524,6 +536,8 @@ impl DatabaseConnection for SQLiteConnection {
         _schema: Option<&str>,
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
+        crate::db::trait_def::sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
         let sql = format!(
             "DELETE FROM {} WHERE {}",
             sqlite_quote_table(table),

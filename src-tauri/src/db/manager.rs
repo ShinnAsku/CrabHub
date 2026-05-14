@@ -179,9 +179,25 @@ impl ConnectionManager {
         })
     }
 
-    /// Disconnect from a database
+    /// Disconnect from a database and all its sub-connections
     pub async fn disconnect(&self, id: &str) -> Result<(), DbError> {
         let mut connections = self.connections.write().await;
+
+        // Collect and close sub-connections
+        let sub_prefix = format!("{}:sub:", id);
+        let sub_ids: Vec<String> = connections
+            .keys()
+            .filter(|k| k.starts_with(&sub_prefix))
+            .cloned()
+            .collect();
+
+        for sub_id in &sub_ids {
+            if let Some(sub_entry) = connections.remove(sub_id) {
+                sub_entry.connection.close().await;
+                log::info!("Closed sub-connection '{}'", sub_id);
+            }
+        }
+
         if let Some(entry) = connections.remove(id) {
             entry.connection.close().await;
             log::info!("Disconnected from database with id '{}'", id);
@@ -349,23 +365,13 @@ impl ConnectionManager {
         );
         tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
 
-        let old_conn = {
-            let mut connections = self.connections.write().await;
-            connections
-                .get_mut(id)
-                .map(|e| std::mem::replace(&mut e.connection, Box::new(DummyConnection)))
-        };
-
-        if let Some(old) = old_conn {
-            old.close().await;
-        }
-
         let pm = self.get_plugin_manager();
         match Self::create_connection_async(&config, pm.as_deref()).await {
             Ok(new_conn) => {
                 let mut connections = self.connections.write().await;
                 if let Some(entry) = connections.get_mut(id) {
-                    entry.connection = new_conn;
+                    let old = std::mem::replace(&mut entry.connection, new_conn);
+                    tokio::spawn(async move { old.close().await; });
                     entry.last_heartbeat = Instant::now();
                     entry.is_healthy = true;
                     log::info!(
@@ -477,6 +483,55 @@ impl ConnectionManager {
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
         entry.connection.get_schemas().await
+    }
+
+    /// Get schemas for a specific database by creating a cached sub-connection.
+    /// Sub-connections use key pattern `{parent_id}:sub:{database_name}`.
+    pub async fn get_schemas_for_database(
+        &self,
+        id: &str,
+        database_name: &str,
+    ) -> Result<Vec<String>, DbError> {
+        let sub_id = format!("{}:sub:{}", id, database_name);
+
+        // Return cached if sub-connection already exists
+        {
+            let connections = self.connections.read().await;
+            if let Some(entry) = connections.get(&sub_id) {
+                return entry.connection.get_schemas().await;
+            }
+        }
+
+        // Clone parent config, swapping the target database
+        let sub_config = {
+            let connections = self.connections.read().await;
+            let entry = connections
+                .get(id)
+                .ok_or_else(|| DbError::NotFound(format!("Parent connection '{}' not found", id)))?;
+            let mut cfg = entry.config.clone();
+            cfg.database = Some(database_name.to_string());
+            cfg.id = sub_id.clone();
+            cfg.keepalive_interval = 0;
+            cfg.auto_reconnect = false;
+            cfg
+        };
+
+        let pm = self.get_plugin_manager();
+        let connection = Self::create_connection_async(&sub_config, pm.as_deref()).await?;
+        let schemas = connection.get_schemas().await?;
+
+        let sub_entry = ConnectionEntry {
+            connection,
+            config: sub_config,
+            last_heartbeat: Instant::now(),
+            is_healthy: true,
+            reconnect_count: 0,
+        };
+
+        self.connections.write().await.insert(sub_id.clone(), sub_entry);
+        log::info!("Sub-connection '{}': {} schemas in database '{}'", sub_id, schemas.len(), database_name);
+
+        Ok(schemas)
     }
 
     pub async fn export_table_sql(

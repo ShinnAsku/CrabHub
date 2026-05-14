@@ -88,10 +88,14 @@ impl ClickHouseConnection {
 }
 
 /// Build full table reference for ClickHouse
+fn ch_quote_ident(ident: &str) -> String {
+    format!("`{}`", ident.replace('`', "``"))
+}
+
 fn ch_full_table(table: &str, schema: Option<&str>) -> String {
     match schema {
-        Some(s) if !s.is_empty() => format!("{}.{}", s, table),
-        _ => table.to_string(),
+        Some(s) if !s.is_empty() => format!("{}.{}", ch_quote_ident(s), ch_quote_ident(table)),
+        _ => ch_quote_ident(table),
     }
 }
 
@@ -543,10 +547,12 @@ impl DatabaseConnection for ClickHouseConnection {
         updates: &[(String, serde_json::Value)],
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
+        crate::db::trait_def::sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
         let full_table = ch_full_table(table, schema);
         let set_clauses: Vec<String> = updates
             .iter()
-            .map(|(col, val)| format!("{} = {}", col, json_value_to_sql(val)))
+            .map(|(col, val)| format!("{} = {}", ch_quote_ident(col), json_value_to_sql(val)))
             .collect();
         let sql = format!(
             "ALTER TABLE {} UPDATE {} WHERE {}",
@@ -564,7 +570,7 @@ impl DatabaseConnection for ClickHouseConnection {
         values: &[(String, serde_json::Value)],
     ) -> Result<ExecuteResult, DbError> {
         let full_table = ch_full_table(table, schema);
-        let columns: Vec<&str> = values.iter().map(|(c, _)| c.as_str()).collect();
+        let columns: Vec<String> = values.iter().map(|(c, _)| ch_quote_ident(c)).collect();
         let value_strs: Vec<String> = values.iter().map(|(_, val)| json_value_to_sql(val)).collect();
         let sql = format!(
             "INSERT INTO {} ({}) VALUES ({})",
@@ -581,6 +587,8 @@ impl DatabaseConnection for ClickHouseConnection {
         schema: Option<&str>,
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
+        crate::db::trait_def::sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
         let full_table = ch_full_table(table, schema);
         let sql = format!(
             "ALTER TABLE {} DELETE WHERE {}",

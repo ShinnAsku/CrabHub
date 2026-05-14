@@ -25,10 +25,9 @@ import {
 import { useConnectionStore, useUIStore, useTabStore } from "@/stores/app-store";
 import type { Connection } from "@/types";
 import { t } from "@/lib/i18n";
-import { 
-  connectDatabase, 
-  disconnectDatabase, 
-  getSchemas,
+import {
+  connectDatabase,
+  disconnectDatabase,
   getDatabases,
   getTables,
   getViews,
@@ -90,28 +89,28 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   const loadSchemaData = async (connectionId: string) => {
     console.log('[Sidebar] Loading schema data for connection:', connectionId);
     try {
-      // Check if connection has no database configured → load databases instead
       const conn = connections.find(c => c.id === connectionId);
-      const hasNoDatabase = conn && !conn.database;
+      if (!conn) return;
 
+      const isSQLite = conn.type === 'sqlite';
       let nodes: TreeNode[];
-      if (hasNoDatabase) {
+
+      if (isSQLite) {
+        nodes = [{
+          id: `${connectionId}-db-main`,
+          name: 'main',
+          type: 'database' as const,
+          connectionId,
+          loaded: false,
+        }];
+      } else {
+        // Always load databases first (DBeaver-style)
         const dbNames = await getDatabases(connectionId);
         console.log('[Sidebar] Loaded databases:', dbNames);
         nodes = dbNames.map((name) => ({
           id: `${connectionId}-db-${name}`,
           name,
           type: 'database' as const,
-          connectionId,
-          loaded: false,
-        }));
-      } else {
-        const schemaNames = await getSchemas(connectionId);
-        console.log('[Sidebar] Loaded schemas:', schemaNames);
-        nodes = schemaNames.map((name) => ({
-          id: `${connectionId}-schema-${name}`,
-          name,
-          type: 'schema' as const,
           connectionId,
           loaded: false,
         }));
@@ -512,19 +511,35 @@ function ConnectionList({
   const loadSchemaData = async (connectionId: string) => {
     console.log('[ConnectionList] Loading schema data for connection:', connectionId);
     try {
-      const schemaNames = await getSchemas(connectionId);
-      console.log('[ConnectionList] Loaded schemas:', schemaNames);
-      
-      const schemaNodes = schemaNames.map((name) => ({
-        id: `${connectionId}-schema-${name}`,
-        name,
-        type: 'schema' as const,
-        connectionId,
-        loaded: false,
-      }));
-      
-      setSchemaData(connectionId, schemaNodes);
-      console.log('[ConnectionList] Schema data loaded:', schemaNodes.length, 'schemas');
+      const conn = connections.find(c => c.id === connectionId);
+      if (!conn) return;
+
+      const isSQLite = conn.type === 'sqlite';
+      let nodes: any[];
+
+      if (isSQLite) {
+        nodes = [{
+          id: `${connectionId}-db-main`,
+          name: 'main',
+          type: 'database',
+          connectionId,
+          loaded: false,
+        }];
+      } else {
+        // Always load databases first (DBeaver-style)
+        const dbNames = await getDatabases(connectionId);
+        console.log('[ConnectionList] Loaded databases:', dbNames);
+        nodes = dbNames.map((name) => ({
+          id: `${connectionId}-db-${name}`,
+          name,
+          type: 'database',
+          connectionId,
+          loaded: false,
+        }));
+      }
+
+      setSchemaData(connectionId, nodes);
+      console.log('[ConnectionList] Schema data loaded:', nodes.length, 'databases');
     } catch (error) {
       console.error('[ConnectionList] Failed to load schema data:', error);
     }
@@ -785,7 +800,6 @@ function DatabaseTree({
   const { schemaData } = useUIStore();
   const schemas = schemaData[connectionId] || [];
 
-  const isMySQL = connection.type === 'mysql';
   const supportedCategories = getSupportedCategories(connection.type);
 
   const handleToggleNode = async (node: TreeNode, e: React.MouseEvent) => {
@@ -1003,20 +1017,46 @@ function DatabaseTree({
       let children: TreeNode[] = [];
       
       // 根据节点类型加载不同的子节点
-      if (node.type === 'database' && isMySQL) {
-        // MySQL database node: create category folders based on supported types
-        console.log('[DatabaseTree] Creating MySQL category folders for database:', node.name);
-        children = supportedCategories.map(cat => ({
-          id: `${node.id}-${cat}`,
-          type: cat,
-          name: categoryNames[cat] || cat,
-          connectionId: node.connectionId,
-          databaseName: node.name,
-          schemaName: node.name,
-          children: [],
-          loaded: false,
-        }));
-        console.log('[DatabaseTree] Created', children.length, 'MySQL category folders');
+      if (node.type === 'database') {
+        const dbType = connection.type;
+        const needsSchemas = dbType === 'postgresql' || dbType === 'gaussdb' || dbType === 'opengauss' || dbType === 'mssql';
+
+        if (needsSchemas) {
+          // PostgreSQL/GaussDB/MSSQL: load schemas via sub-connection
+          console.log('[DatabaseTree] Loading schemas for database:', node.name);
+          try {
+            const { getSchemasForDatabase } = await import("@/lib/tauri-commands");
+            const schemaNames = await getSchemasForDatabase(connectionId, node.name);
+            console.log('[DatabaseTree] Loaded', schemaNames.length, 'schemas for database', node.name);
+            children = schemaNames.map((name) => ({
+              id: `${node.id}-schema-${name}`,
+              type: 'schema' as TreeNodeType,
+              name,
+              connectionId: node.connectionId,
+              databaseName: node.name,
+              children: [],
+              loaded: false,
+            }));
+          } catch (err) {
+            console.error('[DatabaseTree] Failed to load schemas for database:', node.name, err);
+            children = [];
+          }
+        } else {
+          // MySQL/ClickHouse/SQLite: database IS schema - category folders directly
+          console.log('[DatabaseTree] Creating category folders for database:', node.name);
+          const cats = getSupportedCategories(connection.type);
+          children = cats.map(cat => ({
+            id: `${node.id}-${cat}`,
+            type: cat,
+            name: categoryNames[cat] || cat,
+            connectionId: node.connectionId,
+            databaseName: node.name,
+            schemaName: node.name,
+            children: [],
+            loaded: false,
+          }));
+          console.log('[DatabaseTree] Created', children.length, 'category folders');
+        }
       } else if (node.type === 'schema') {
         // Schema 节点下创建分类文件夹：表、视图、函数、存储过程、触发器
         console.log('[DatabaseTree] Creating category folders for schema:', node.name);
@@ -1222,71 +1262,19 @@ function DatabaseTree({
     }
   };
 
-  // Build tree nodes from schemas - different strategy for MySQL vs PG
-  const dbName = connection.database || "default";
-  const dbNodeId = `${connectionId}-db-${dbName}`;
-
-  // Sync schema children into treeData and auto-expand via useEffect
-  useEffect(() => {
-    if (schemas.length === 0) return;
-
-    if (isMySQL) {
-      // MySQL: each schema from getSchemas is a database - no wrapping needed.
-      // treeData for each database node will be loaded lazily on expand.
-      // No need to pre-populate treeData here.
-    } else {
-      // PG/others: wrap schemas in a single database node
-      const schemaChildren: TreeNode[] = schemas.map((schema) => ({
-        id: `${connectionId}-schema-${schema.name}`,
-        type: 'schema',
-        name: schema.name,
-        connectionId,
-        databaseName: dbName,
-        children: [],
-        loaded: false,
-      }));
-
-      const currentChildren = treeData[dbNodeId];
-      if (!currentChildren || currentChildren.length !== schemaChildren.length) {
-        const newTreeData = { ...treeData, [dbNodeId]: schemaChildren };
-        setTreeData(newTreeData);
-      }
-
-      if (!expandedNodes.has(dbNodeId)) {
-        const newExpanded = new Set(expandedNodes);
-        newExpanded.add(dbNodeId);
-        setExpandedNodes(newExpanded);
-      }
-    }
-  }, [schemas, dbNodeId, isMySQL]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Build top-level tree nodes
-  let treeNodes: TreeNode[] = [];
-  if (schemas.length > 0) {
-    if (isMySQL) {
-      // MySQL: each schema is a database node directly
-      treeNodes = schemas.map((schema) => ({
-        id: `${connectionId}-db-${schema.name}`,
+  // All database types now use DBeaver-style: top-level nodes are database nodes.
+  // The store's schemaData entries are already database nodes from loadSchemaData.
+  const treeNodes: TreeNode[] = schemas.length > 0
+    ? (schemas as any[]).map((db: any) => ({
+        id: db.id,
         type: 'database' as TreeNodeType,
-        name: schema.name,
+        name: db.name,
         connectionId,
-        databaseName: schema.name,
+        databaseName: db.name,
         children: [],
-        loaded: false,
-      }));
-    } else {
-      // PG/others: single database wrapper node
-      treeNodes = [{
-        id: dbNodeId,
-        type: 'database',
-        name: dbName,
-        connectionId,
-        databaseName: dbName,
-        children: [],
-        loaded: true,
-      }];
-    }
-  }
+        loaded: db.loaded ?? false,
+      }))
+    : [];
 
   return (
     <div className="pl-4">

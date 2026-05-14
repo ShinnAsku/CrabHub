@@ -846,6 +846,8 @@ impl DatabaseConnection for MySqlConnection {
         updates: &[(String, serde_json::Value)],
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
+        crate::db::trait_def::sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
         let full_table = mysql_full_table(table, schema);
         let set_clauses: Vec<String> = updates
             .iter()
@@ -886,6 +888,8 @@ impl DatabaseConnection for MySqlConnection {
         schema: Option<&str>,
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
+        crate::db::trait_def::sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
         let full_table = mysql_full_table(table, schema);
         let sql = format!("DELETE FROM {} WHERE {}", full_table, where_clause);
         self.execute_sql(&sql).await

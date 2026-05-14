@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
-use tokio::time::{sleep, Duration};
+use tokio::sync::{Mutex, oneshot};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
@@ -28,12 +28,13 @@ pub struct JsonRpcError {
     pub message: String,
 }
 
+type PendingCall = oneshot::Sender<Result<Value, JsonRpcError>>;
+
 pub struct RpcClient {
     writer: Arc<Mutex<BufWriter<std::process::ChildStdin>>>,
     reader: Arc<Mutex<BufReader<std::process::ChildStdout>>>,
     request_id: Arc<Mutex<u32>>,
-    response_tx: Arc<mpsc::Sender<Result<Value, JsonRpcError>>>,
-    response_rx: Arc<Mutex<mpsc::Receiver<Result<Value, JsonRpcError>>>>,
+    pending: Arc<Mutex<HashMap<u32, PendingCall>>>,
 }
 
 impl RpcClient {
@@ -51,22 +52,18 @@ impl RpcClient {
         let reader = Arc::new(Mutex::new(BufReader::new(stdout)));
         let writer = Arc::new(Mutex::new(BufWriter::new(stdin)));
         let request_id = Arc::new(Mutex::new(1u32));
-
-        let (response_tx, response_rx) = mpsc::channel(100);
-        let response_tx = Arc::new(response_tx);
-        let response_rx = Arc::new(Mutex::new(response_rx));
+        let pending: Arc<Mutex<HashMap<u32, PendingCall>>> = Arc::new(Mutex::new(HashMap::new()));
 
         let client = Self {
             writer,
             reader,
             request_id,
-            response_tx,
-            response_rx,
+            pending,
         };
 
         // Spawn a task to read responses from the plugin
         let reader_clone = client.reader.clone();
-        let response_tx_clone = client.response_tx.clone();
+        let pending_clone = client.pending.clone();
         tokio::spawn(async move {
             let mut reader = reader_clone.lock().await;
             let mut line = String::new();
@@ -81,10 +78,14 @@ impl RpcClient {
                         }
                         match serde_json::from_str::<JsonRpcResponse>(line) {
                             Ok(response) => {
-                                if let Some(error) = response.error {
-                                    let _ = response_tx_clone.send(Err(error)).await;
-                                } else if let Some(result) = response.result {
-                                    let _ = response_tx_clone.send(Ok(result)).await;
+                                let response_id = response.id;
+                                let mut pending = pending_clone.lock().await;
+                                if let Some(sender) = pending.remove(&response_id) {
+                                    if let Some(error) = response.error {
+                                        let _ = sender.send(Err(error));
+                                    } else {
+                                        let _ = sender.send(Ok(response.result.unwrap_or(Value::Null)));
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -111,6 +112,14 @@ impl RpcClient {
             current_id
         };
 
+        let (tx, mut rx) = oneshot::channel();
+
+        // Register pending call before writing request
+        {
+            let mut pending = self.pending.lock().await;
+            pending.insert(id, tx);
+        }
+
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id,
@@ -127,13 +136,20 @@ impl RpcClient {
         writer.flush()
             .map_err(|e| format!("Failed to flush writer: {}", e))?;
 
-        // Wait for response
-        let mut response_rx = self.response_rx.lock().await;
-        match tokio::time::timeout(Duration::from_secs(30), response_rx.recv()).await {
-            Ok(Some(Ok(result))) => Ok(result),
-            Ok(Some(Err(error))) => Err(format!("Plugin error: {} (code: {})", error.message, error.code)),
-            Ok(None) => Err("Plugin closed the connection".to_string()),
-            Err(_) => Err("Request timed out".to_string()),
+        // Wait for response via oneshot channel
+        match tokio::time::timeout(std::time::Duration::from_secs(30), &mut rx).await {
+            Ok(Ok(Ok(result))) => Ok(result),
+            Ok(Ok(Err(error))) => {
+                // Clean up pending entry on error
+                Err(format!("Plugin error: {} (code: {})", error.message, error.code))
+            }
+            Ok(Err(_)) => Err("Plugin closed the connection".to_string()),
+            Err(_) => {
+                // Clean up pending entry on timeout
+                let mut pending = self.pending.lock().await;
+                pending.remove(&id);
+                Err("Request timed out".to_string())
+            }
         }
     }
 

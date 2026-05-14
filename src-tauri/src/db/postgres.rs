@@ -106,6 +106,14 @@ fn pg_full_table(table: &str, schema: Option<&str>) -> String {
     }
 }
 
+fn pg_full_table_quoted(table: &str, schema: Option<&str>) -> String {
+    let tbl = format!("\"{}\"", table.replace('"', "\"\""));
+    match schema {
+        Some(s) if !s.is_empty() => format!("\"{}\".{}", s.replace('"', "\"\""), tbl),
+        _ => tbl,
+    }
+}
+
 #[async_trait]
 impl DatabaseConnection for PostgresConnection {
     async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError> {
@@ -1171,10 +1179,14 @@ impl DatabaseConnection for PostgresConnection {
         updates: &[(String, serde_json::Value)],
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
-        let full_table = pg_full_table(table, schema);
+        use crate::db::trait_def::{escape_identifier, sanitize_where_clause};
+        use crate::db::types::DatabaseType;
+        sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
+        let full_table = pg_full_table_quoted(table, schema);
         let set_clauses: Vec<String> = updates
             .iter()
-            .map(|(col, val)| format!("{} = {}", col, json_value_to_sql(val)))
+            .map(|(col, val)| format!("{} = {}", escape_identifier(col, &DatabaseType::PostgreSQL), json_value_to_sql(val)))
             .collect();
         let sql = format!(
             "UPDATE {} SET {} WHERE {}",
@@ -1191,8 +1203,12 @@ impl DatabaseConnection for PostgresConnection {
         schema: Option<&str>,
         values: &[(String, serde_json::Value)],
     ) -> Result<ExecuteResult, DbError> {
-        let full_table = pg_full_table(table, schema);
-        let columns: Vec<&str> = values.iter().map(|(c, _)| c.as_str()).collect();
+        use crate::db::trait_def::escape_identifier;
+        use crate::db::types::DatabaseType;
+        let full_table = pg_full_table_quoted(table, schema);
+        let columns: Vec<String> = values.iter()
+            .map(|(c, _)| escape_identifier(c, &DatabaseType::PostgreSQL))
+            .collect();
         let value_strs: Vec<String> = values.iter().map(|(_, val)| json_value_to_sql(val)).collect();
         let sql = format!(
             "INSERT INTO {} ({}) VALUES ({})",
@@ -1209,7 +1225,10 @@ impl DatabaseConnection for PostgresConnection {
         schema: Option<&str>,
         where_clause: &str,
     ) -> Result<ExecuteResult, DbError> {
-        let full_table = pg_full_table(table, schema);
+        use crate::db::trait_def::sanitize_where_clause;
+        sanitize_where_clause(where_clause)
+            .map_err(|e| DbError::QueryError(e))?;
+        let full_table = pg_full_table_quoted(table, schema);
         let sql = format!("DELETE FROM {} WHERE {}", full_table, where_clause);
         self.execute_sql(&sql).await
     }
