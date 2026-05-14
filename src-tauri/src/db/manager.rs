@@ -388,6 +388,12 @@ impl ConnectionManager {
         }
     }
 
+    /// Get database type for a connection
+    pub async fn get_db_type(&self, id: &str) -> Option<DatabaseType> {
+        let connections = self.connections.read().await;
+        connections.get(id).map(|e| e.connection.db_type())
+    }
+
     /// Get connection health status
     pub async fn get_connection_status(&self, id: &str) -> Result<ConnectionStatus, DbError> {
         let connections = self.connections.read().await;

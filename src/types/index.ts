@@ -108,7 +108,7 @@ export interface SchemaNode {
   id: string;
   name: string;
   type: 'schema' | 'table' | 'view' | 'materialized_view' | 'function' | 'role'
-      | 'tables' | 'views' | 'functions' | 'procedures' | 'triggers';
+      | 'tables' | 'views' | 'functions' | 'procedures' | 'triggers' | 'database';
   parentId?: string;
   children?: SchemaNode[];
   schemaName?: string;

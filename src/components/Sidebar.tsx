@@ -29,6 +29,7 @@ import {
   connectDatabase, 
   disconnectDatabase, 
   getSchemas,
+  getDatabases,
   getTables,
   getViews,
 } from "@/lib/tauri-commands";
@@ -89,20 +90,35 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   const loadSchemaData = async (connectionId: string) => {
     console.log('[Sidebar] Loading schema data for connection:', connectionId);
     try {
-      const schemaNames = await getSchemas(connectionId);
-      console.log('[Sidebar] Loaded schemas:', schemaNames);
-      
-      // Only create schema-level nodes (lazy loading - children loaded on expand)
-      const schemaNodes = schemaNames.map((name) => ({
-        id: `${connectionId}-schema-${name}`,
-        name,
-        type: 'schema' as const,
-        connectionId,
-        loaded: false,
-      }));
-      
-      setSchemaData(connectionId, schemaNodes);
-      console.log('[Sidebar] Schema data loaded:', schemaNodes.length, 'schemas');
+      // Check if connection has no database configured → load databases instead
+      const conn = connections.find(c => c.id === connectionId);
+      const hasNoDatabase = conn && !conn.database;
+
+      let nodes: TreeNode[];
+      if (hasNoDatabase) {
+        const dbNames = await getDatabases(connectionId);
+        console.log('[Sidebar] Loaded databases:', dbNames);
+        nodes = dbNames.map((name) => ({
+          id: `${connectionId}-db-${name}`,
+          name,
+          type: 'database' as const,
+          connectionId,
+          loaded: false,
+        }));
+      } else {
+        const schemaNames = await getSchemas(connectionId);
+        console.log('[Sidebar] Loaded schemas:', schemaNames);
+        nodes = schemaNames.map((name) => ({
+          id: `${connectionId}-schema-${name}`,
+          name,
+          type: 'schema' as const,
+          connectionId,
+          loaded: false,
+        }));
+      }
+
+      setSchemaData(connectionId, nodes as any);
+      console.log('[Sidebar] Data loaded:', nodes.length, 'nodes');
     } catch (error) {
       console.error('[Sidebar] Failed to load schema data:', error);
     }

@@ -377,7 +377,7 @@ pub struct GaussDBConnection {
 impl GaussDBConnection {
     pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
         let host = config.host.as_deref().unwrap_or("localhost");
-        let port = config.port.unwrap_or(5432);
+        let port = config.port.unwrap_or(8000);
         let default_username = "gaussdb";
         let username = config.username.as_deref().unwrap_or(default_username);
         let password = config.password.as_deref().unwrap_or("");
@@ -554,8 +554,8 @@ impl GaussDBConnection {
 
 fn gaussdb_full_table(table: &str, schema: Option<&str>) -> String {
     match schema {
-        Some(s) if !s.is_empty() => format!("{}.{}", s, table),
-        _ => table.to_string(),
+        Some(s) if !s.is_empty() => format!("\"{}\".\"{}\"", s, table),
+        _ => format!("\"{}\"", table),
     }
 }
 

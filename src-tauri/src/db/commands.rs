@@ -3,7 +3,7 @@ use tauri::State;
 
 use super::manager::ConnectionManager;
 use super::types::{
-    ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, ExecuteResult,
+    ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, DatabaseType, ExecuteResult,
     PagedQueryResult, QueryResult, TableInfo,
 };
 
@@ -111,6 +111,25 @@ pub async fn get_schemas(
         .get_schemas(&id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Get all databases for a connection (when no specific database is configured)
+#[tauri::command]
+pub async fn get_databases(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+) -> Result<Vec<String>, String> {
+    let sql = match state.get_db_type(&id).await {
+        Some(t) => match t {
+            DatabaseType::MySQL => "SHOW DATABASES".to_string(),
+            _ => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
+        },
+        None => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
+    };
+    let result = state.query(&id, &sql).await.map_err(|e| e.to_string())?;
+    Ok(result.rows.iter()
+        .filter_map(|row| row.values().next().and_then(|v| v.as_str().map(|s| s.to_string())))
+        .collect())
 }
 
 /// Test a database connection

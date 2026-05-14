@@ -9,7 +9,6 @@ import CrabHubMainPanel from "./CrabHubMainPanel";
 import TabBar from "./TabBar";
 import EditorPanel from "./EditorPanel";
 import AIPanel from "./AIPanel";
-import StatusBar from "./StatusBar";
 import ConnectionDialog from "./ConnectionDialog";
 import SnippetPanel from "./SnippetPanel";
 import SchemaDiffDialog from "./SchemaDiffDialog";
@@ -318,9 +317,6 @@ function MainLayout() {
           </ErrorBoundary>
         </Panel>
       </PanelGroup>
-
-      {/* Bottom Status Bar */}
-      <StatusBar />
 
       {/* Floating AI Panel */}
       {aiPanelOpen && <AIPanel />}

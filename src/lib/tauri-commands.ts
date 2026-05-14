@@ -205,6 +205,10 @@ export async function getSchemas(id: string): Promise<string[]> {
   return safeInvoke<string[]>("get_schemas", { id });
 }
 
+export async function getDatabases(id: string): Promise<string[]> {
+  return safeInvoke<string[]>("get_databases", { id });
+}
+
 export async function testConnection(config: ConnectionConfig): Promise<boolean> {
   // Convert frontend ConnectionConfig to backend format (camelCase)
   const backendConfig = {

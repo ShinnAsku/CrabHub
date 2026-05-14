@@ -214,30 +214,6 @@ const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
       <div className="flex-1 overflow-y-auto">
         <div className="space-y-8 p-6">
-          {/* Overview panel */}
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="p-5 border-b border-border bg-muted/50">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 shrink-0"><Plug size={18} /></div>
-                <div>
-                  <h2 className="text-lg font-semibold">{t('plugin.title')}</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('plugin.description')}</p>
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border">
-              <StatCard icon={<PackageCheck size={15} />} value={builtinDrivers.length + installedPlugins.length}
-                label={t('plugin.installed')} colorClass="text-green-400" bgClass="bg-green-500/10" />
-              <StatCard icon={<Power size={15} />} value={builtinDrivers.length + installedPlugins.filter(p => p.enabled !== false).length}
-                label={t('plugin.enabled')} colorClass="text-blue-400" bgClass="bg-blue-500/10" />
-              <StatCard icon={<Boxes size={15} />} value={registryPlugins.length}
-                label={t('plugin.registry')} colorClass="text-purple-400" bgClass="bg-purple-500/10" />
-              <StatCard icon={<RefreshCw size={15} />} value={updateCount}
-                label={t('plugin.updates')} colorClass={updateCount > 0 ? "text-amber-400" : "text-muted-foreground"}
-                bgClass={updateCount > 0 ? "bg-amber-500/10" : "bg-muted"} valueColorClass={updateCount > 0 ? "text-amber-400" : undefined} />
-            </div>
-          </div>
-
           {/* Error */}
           {registryError && (
             <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">

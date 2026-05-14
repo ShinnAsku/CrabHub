@@ -81,6 +81,7 @@ pub async fn run() {
             db::commands::get_tables,
             db::commands::get_columns,
             db::commands::get_schemas,
+            db::commands::get_databases,
             db::commands::test_connection_cmd,
             db::commands::export_table_sql,
             db::commands::export_database,
