@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::StreamExt;
 use sqlx::{Column, Row, TypeInfo};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -369,6 +370,23 @@ impl DatabaseConnection for SQLiteConnection {
             table,
             col_defs.join(",\n")
         ))
+    }
+
+    async fn query_sql_paged(
+        &self,
+        sql: &str,
+        limit: u64,
+        _offset: u64,
+    ) -> Result<(QueryResult, bool), DbError> {
+        // SQL already has LIMIT limit+1 injected — fetch_all is safe (bounded)
+        let result = self.query_sql(sql).await?;
+        let has_more = result.rows.len() as u64 > limit;
+        let rows = if has_more {
+            result.rows.into_iter().take(limit as usize).collect()
+        } else {
+            result.rows
+        };
+        Ok((QueryResult { rows, ..result }, has_more))
     }
 
     async fn close(&self) {

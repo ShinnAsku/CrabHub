@@ -300,16 +300,11 @@ impl ConnectionManager {
             });
         }
 
-        // Inject LIMIT+1 to detect whether more rows exist
+        // Use streaming paged query that fetches at most limit+1 rows
         let db_type = entry.connection.db_type();
         let modified_sql =
             sql_limiter::inject_limit_offset(sql, &db_type, limit + 1, offset);
-        let mut result = entry.connection.query_sql(&modified_sql).await?;
-
-        let has_more = result.rows.len() as u64 > limit;
-        if has_more {
-            result.rows.truncate(limit as usize);
-        }
+        let (result, has_more) = entry.connection.query_sql_paged(&modified_sql, limit, offset).await?;
 
         let row_count = result.rows.len() as u64;
         Ok(PagedQueryResult {
@@ -722,6 +717,16 @@ impl DatabaseConnection for DummyConnection {
         ))
     }
     async fn get_tables(&self) -> Result<Vec<TableInfo>, DbError> {
+        Err(DbError::ConnectionError(
+            "Connection is being reconnected".to_string(),
+        ))
+    }
+    async fn query_sql_paged(
+        &self,
+        _sql: &str,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<(QueryResult, bool), DbError> {
         Err(DbError::ConnectionError(
             "Connection is being reconnected".to_string(),
         ))

@@ -9,6 +9,25 @@ pub trait DatabaseConnection: Send + Sync {
     // --- Core operations ---
     async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError>;
     async fn query_sql(&self, sql: &str) -> Result<QueryResult, DbError>;
+
+    /// Streamed query that fetches at most `limit + 1` rows (to detect has_more).
+    /// Default impl falls back to fetch_all + truncation.
+    async fn query_sql_paged(
+        &self,
+        sql: &str,
+        limit: u64,
+        _offset: u64,
+    ) -> Result<(QueryResult, bool), DbError> {
+        let result = self.query_sql(sql).await?;
+        let has_more = result.rows.len() as u64 > limit;
+        let rows = if has_more {
+            result.rows.into_iter().take(limit as usize).collect()
+        } else {
+            result.rows
+        };
+        Ok((QueryResult { rows, ..result }, has_more))
+    }
+
     #[allow(dead_code)]
     fn db_type(&self) -> DatabaseType;
     async fn close(&self);

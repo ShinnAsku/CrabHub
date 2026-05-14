@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::StreamExt;
 use rust_decimal::Decimal;
 use sqlx::{Column, Row, TypeInfo};
 use std::time::{Duration, Instant};
@@ -1231,6 +1232,23 @@ impl DatabaseConnection for PostgresConnection {
         let full_table = pg_full_table_quoted(table, schema);
         let sql = format!("DELETE FROM {} WHERE {}", full_table, where_clause);
         self.execute_sql(&sql).await
+    }
+
+    async fn query_sql_paged(
+        &self,
+        sql: &str,
+        limit: u64,
+        _offset: u64,
+    ) -> Result<(QueryResult, bool), DbError> {
+        // SQL already has LIMIT limit+1 injected — fetch_all is safe (bounded to ~1001 rows)
+        let result = self.query_sql(sql).await?;
+        let has_more = result.rows.len() as u64 > limit;
+        let rows = if has_more {
+            result.rows.into_iter().take(limit as usize).collect()
+        } else {
+            result.rows
+        };
+        Ok((QueryResult { rows, ..result }, has_more))
     }
 }
 
