@@ -205,18 +205,17 @@ fn text_to_json_value(text: &str, type_name: &str) -> serde_json::Value {
         "bool" => serde_json::Value::Bool(text == "t" || text == "true"),
         "int2" | "int4" | "int8" | "int1" | "oid" | "smallint" | "integer" | "bigint"
         | "smallserial" | "serial" | "bigserial" => {
-            serde_json::Value::String(text.to_string())
+            text.parse::<i64>()
+                .map(|n| serde_json::json!(n))
+                .unwrap_or_else(|_| serde_json::Value::String(text.to_string()))
         }
-        "float4" | "float8" | "real" | "double precision" => {
-            if let Ok(f) = text.parse::<f64>() {
-                serde_json::Number::from_f64(f)
-                    .map(serde_json::Value::Number)
-                    .unwrap_or_else(|| serde_json::Value::String(text.to_string()))
-            } else {
-                serde_json::Value::String(text.to_string())
-            }
+        "float4" | "float8" | "real" | "double precision" | "numeric" | "money" => {
+            text.parse::<f64>()
+                .ok()
+                .and_then(|f| serde_json::Number::from_f64(f))
+                .map(serde_json::Value::Number)
+                .unwrap_or_else(|| serde_json::Value::String(text.to_string()))
         }
-        "numeric" | "money" => serde_json::Value::String(text.to_string()),
         "json" | "jsonb" => serde_json::from_str(text)
             .unwrap_or_else(|_| serde_json::Value::String(text.to_string())),
         // Everything else: text, varchar, bpchar, bytea, date, time, timetz,
@@ -238,20 +237,8 @@ fn text_to_json_value(text: &str, type_name: &str) -> serde_json::Value {
 /// This avoids binary FromSql limitations while preserving column type info.
 macro_rules! simple_query_to_results {
     ($client:expr, $sql:expr, $sqm_row:path) => {{
-        // Phase 1: Get column type metadata via prepare (extended protocol).
-        // prepare() only parses/describes, doesn't execute. If it fails
-        // (e.g. multi-statement SQL), we fall back to "text" as data_type.
-        let col_types: Vec<(String, String)> = match $client.prepare($sql).await {
-            Ok(stmt) => stmt
-                .columns()
-                .iter()
-                .map(|c| (c.name().to_string(), c.type_().name().to_string()))
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-
-        // Phase 2: Get data via simple_query (text protocol).
-        // All values come back as Option<&str>, no FromSql needed.
+        // Use simple_query only — skip prepare() to avoid an extra network roundtrip.
+        // All column types are reported as "text" since simple_query returns text values.
         let messages = $client
             .simple_query($sql)
             .await
@@ -265,39 +252,27 @@ macro_rules! simple_query_to_results {
                     columns = row
                         .columns()
                         .iter()
-                        .enumerate()
-                        .map(|(i, c)| {
-                            let data_type = col_types
-                                .get(i)
-                                .map(|(_, t)| t.clone())
-                                .unwrap_or_else(|| "text".to_string());
-                            ColumnInfo {
-                                name: c.name().to_string(),
-                                data_type,
-                                nullable: true,
-                                is_primary_key: false,
-                                default_value: None,
-                                comment: None,
-                                character_maximum_length: None,
-                                numeric_precision: None,
-                                numeric_scale: None,
-                            }
+                        .map(|c| ColumnInfo {
+                            name: c.name().to_string(),
+                            data_type: "text".to_string(),
+                            nullable: true,
+                            is_primary_key: false,
+                            default_value: None,
+                            comment: None,
+                            character_maximum_length: None,
+                            numeric_precision: None,
+                            numeric_scale: None,
                         })
                         .collect();
                     cols_extracted = true;
                 }
                 let mut map = serde_json::Map::new();
-                for (idx, _col) in row.columns().iter().enumerate() {
-                    let col_name = row.columns()[idx].name();
-                    let type_name = col_types
-                        .get(idx)
-                        .map(|(_, t)| t.as_str())
-                        .unwrap_or("text");
+                for (idx, col) in row.columns().iter().enumerate() {
                     let value = match row.get(idx) {
-                        Some(text) => text_to_json_value(text, type_name),
+                        Some(text) => text_to_json_value(text, "text"),
                         None => serde_json::Value::Null,
                     };
-                    map.insert(col_name.to_string(), value);
+                    map.insert(col.name().to_string(), value);
                 }
                 rows.push(map);
             }

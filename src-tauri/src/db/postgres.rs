@@ -169,58 +169,58 @@ impl DatabaseConnection for PostgresConnection {
                     }
                     "INT2" => {
                         if let Ok(Some(v)) = row.try_get::<Option<i16>, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<i16, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else {
                             serde_json::Value::Null
                         }
                     }
                     "INT4" | "OID" => {
                         if let Ok(Some(v)) = row.try_get::<Option<i32>, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<i32, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else {
                             serde_json::Value::Null
                         }
                     }
                     "INT8" => {
                         if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else {
                             serde_json::Value::Null
                         }
                     }
                     "FLOAT4" => {
                         if let Ok(Some(v)) = row.try_get::<Option<f32>, _>(col.name()) {
-                            serde_json::Value::from(v as f64)
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<f32, _>(col.name()) {
-                            serde_json::Value::from(v as f64)
+                            serde_json::json!(v)
                         } else {
                             serde_json::Value::Null
                         }
                     }
                     "FLOAT8" => {
                         if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
-                            serde_json::Value::from(v)
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<f64, _>(col.name()) {
-                            serde_json::Value::from(v)
+                            serde_json::json!(v)
                         } else {
                             serde_json::Value::Null
                         }
                     }
                     "NUMERIC" | "MONEY" => {
                         if let Ok(Some(v)) = row.try_get::<Option<Decimal>, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<Decimal, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else {
                             serde_json::Value::Null
                         }

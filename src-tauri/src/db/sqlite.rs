@@ -115,9 +115,9 @@ impl DatabaseConnection for SQLiteConnection {
                 let value = match type_name {
                     "INTEGER" | "INT" | "BIGINT" => {
                         if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
-                            serde_json::Value::String(v.to_string())
+                            serde_json::json!(v)
                         } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
                             serde_json::Value::String(v)
                         } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
@@ -128,9 +128,9 @@ impl DatabaseConnection for SQLiteConnection {
                     }
                     "REAL" | "FLOAT" | "DOUBLE" => {
                         if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
-                            serde_json::Value::from(v)
+                            serde_json::json!(v)
                         } else if let Ok(v) = row.try_get::<f64, _>(col.name()) {
-                            serde_json::Value::from(v)
+                            serde_json::json!(v)
                         } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
                             serde_json::Value::String(v)
                         } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
