@@ -22,15 +22,14 @@ import UpdateManager from "./UpdateManager";
 import MessageDialog, { showMessage } from "./MessageDialog";
 
 function MainLayout() {
-  // Responsive scaling: zoom entire UI proportionally based on window size
+  // Responsive scaling via root font-size (affects all rem-based Tailwind units)
   useEffect(() => {
     const BASE_WIDTH = 1280;
-    const BASE_HEIGHT = 800;
+    const BASE_FONT = 16;
     const handleResize = () => {
-      const scaleW = window.innerWidth / BASE_WIDTH;
-      const scaleH = window.innerHeight / BASE_HEIGHT;
-      const zoom = Math.max(0.7, Math.min(1.5, Math.min(scaleW, scaleH)));
-      (document.body.style as any).zoom = zoom;
+      const ratio = window.innerWidth / BASE_WIDTH;
+      const clamped = Math.max(0.75, Math.min(1.4, ratio));
+      document.documentElement.style.fontSize = `${BASE_FONT * clamped}px`;
     };
     handleResize();
     window.addEventListener("resize", handleResize);
