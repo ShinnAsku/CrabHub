@@ -5,7 +5,7 @@ import type { Connection } from "@/types";
 import { t } from "@/lib/i18n";
 import Toolbar from "./Toolbar";
 import Sidebar from "./Sidebar";
-import OpenDbMainPanel from "./OpenDbMainPanel";
+import CrabHubMainPanel from "./CrabHubMainPanel";
 import TabBar from "./TabBar";
 import EditorPanel from "./EditorPanel";
 import AIPanel from "./AIPanel";
@@ -309,7 +309,7 @@ function MainLayout() {
         <Panel>
           <ErrorBoundary>
           {activeConnection ? (
-            <OpenDbMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />
+            <CrabHubMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />
           ) : (
             <>
               {tabs.length > 0 && <TabBar />}
