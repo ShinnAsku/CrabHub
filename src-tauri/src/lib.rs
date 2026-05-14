@@ -4,6 +4,8 @@ mod db;
 mod plugins;
 mod rpc;
 mod ssh;
+#[cfg(any(test, feature = "stress-testing"))]
+mod testing;
 
 use connection_store::ConnectionStore;
 use db::manager::ConnectionManager;
