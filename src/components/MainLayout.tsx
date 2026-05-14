@@ -22,13 +22,15 @@ import UpdateManager from "./UpdateManager";
 import MessageDialog, { showMessage } from "./MessageDialog";
 
 function MainLayout() {
-  // Responsive scaling: adjust root font-size based on window width
+  // Responsive scaling: zoom entire UI proportionally based on window size
   useEffect(() => {
     const BASE_WIDTH = 1280;
-    const BASE_FONT = 16;
+    const BASE_HEIGHT = 800;
     const handleResize = () => {
-      const scale = Math.max(0.75, Math.min(1.5, window.innerWidth / BASE_WIDTH));
-      document.documentElement.style.fontSize = `${BASE_FONT * scale}px`;
+      const scaleW = window.innerWidth / BASE_WIDTH;
+      const scaleH = window.innerHeight / BASE_HEIGHT;
+      const zoom = Math.max(0.7, Math.min(1.5, Math.min(scaleW, scaleH)));
+      (document.body.style as any).zoom = zoom;
     };
     handleResize();
     window.addEventListener("resize", handleResize);
