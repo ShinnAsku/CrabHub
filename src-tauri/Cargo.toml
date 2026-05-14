@@ -39,13 +39,9 @@ native-tls = "0.2"
 tokio-native-tls = "0.3"
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 dirs = "5.0.1"
-tiberius = { version = "0.12", features = ["chrono"] }
-tokio-util = { version = "0.7", features = ["compat"] }
 futures = "0.3"
 futures-util = "0.3"
 urlencoding = "2.1"
-russh = "0.50.0-beta.7"
-russh-keys = "0.50.0-beta.7"
 regex = "1.10"
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
@@ -61,6 +57,4 @@ jsonrpsee = { version = "0.22", features = ["server", "client", "macros"] }
 tempfile = "3.10"
 zip = "0.6"
 
-# MCP server dependencies
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk" }
 anyhow = "1.0"

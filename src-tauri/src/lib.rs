@@ -1,5 +1,4 @@
 mod ai;
-mod commands;
 mod connection_store;
 mod db;
 mod plugins;
