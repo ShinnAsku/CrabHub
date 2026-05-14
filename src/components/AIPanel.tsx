@@ -20,7 +20,7 @@ import {
   Zap,
   Brain,
 } from "lucide-react";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, useUIStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 
 // ===== AI Settings Types =====
@@ -294,7 +294,7 @@ function AIPanel() {
       prompt += `\n${t('ai.database')}${activeConnection.database}`;
 
       // Add table info if available
-      const { schemaData } = useAppStore.getState();
+      const { schemaData } = useUIStore.getState();
       const schema = schemaData[activeConnection.id];
       if (schema && schema.length > 0) {
         prompt += `\n\n${t('ai.dbStructure')}`;

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, useHistoryStore } from "@/stores/app-store";
 import type { SlowQueryEntry } from "@/types";
 import { executeQuery } from '@/lib/tauri-commands';
 import { t } from '@/lib/i18n';
@@ -1007,12 +1007,12 @@ export default function QueryAnalyzer({
   }, [onInsertQuery]);
 
   const handleDeleteSlowQuery = useCallback((id: string) => {
-    const { slowQueryLog: current } = useAppStore.getState();
+    const { slowQueryLog: current } = useHistoryStore.getState();
     const updated = current.filter(q => q.id !== id);
     try {
       localStorage.setItem('crabhub-slow-queries', JSON.stringify(updated));
     } catch {}
-    useAppStore.setState({ slowQueryLog: updated });
+    useHistoryStore.setState({ slowQueryLog: updated });
   }, []);
 
   const handleClearSlowQueries = useCallback(() => {

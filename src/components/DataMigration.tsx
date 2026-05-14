@@ -39,7 +39,7 @@ interface DataMigrationProps {
 
 // ===== Component =====
 function DataMigration({ isOpen, onClose }: DataMigrationProps) {
-  const connections = useAppStore((s) => s.connections);
+  const { connections } = useAppStore();
 
   // Step state
   const [step, setStep] = useState<Step>(1);

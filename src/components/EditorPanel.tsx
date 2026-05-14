@@ -20,7 +20,7 @@ import {
   Brain,
   Lightbulb,
 } from "lucide-react";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
 import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getColumns } from "@/lib/tauri-commands";
@@ -319,7 +319,7 @@ function EditorPanel() {
               connectionId: activeTab.connectionId,
             });
             // Activate the new tab
-            useAppStore.getState().setActiveTab(newTabId);
+            useTabStore.getState().setActiveTab(newTabId);
           }}
         />
       </div>
@@ -436,7 +436,7 @@ function QueryEditor() {
     setSelectedConnId(connId);
     setSelectedDatabase("");
     setDatabaseList([]);
-    useAppStore.getState().setActiveConnection(connId);
+    useConnectionStore.getState().setActiveConnection(connId);
   }, []);
 
   // Handle database change
@@ -1282,7 +1282,7 @@ function QueryEditor() {
             {t('editor.snippetShort')}
           </button>
           <button
-            onClick={() => useAppStore.getState().toggleAIPanel()}
+            onClick={() => useUIStore.getState().toggleAIPanel()}
             className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors"
             title="AI Assistant"
           >
@@ -1293,7 +1293,7 @@ function QueryEditor() {
             onClick={async () => {
               const sql = editorRef.current?.getValue() || '';
               if (sql) {
-                useAppStore.getState().toggleAIPanel();
+                useUIStore.getState().toggleAIPanel();
                 // Set AI input to optimize the SQL
                 setTimeout(() => {
                   const aiInput = document.querySelector('.ai-input');

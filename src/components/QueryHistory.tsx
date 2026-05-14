@@ -5,8 +5,7 @@ import type { QueryHistoryEntry } from "@/types";
 import { t } from "@/lib/i18n";
 
 function QueryHistory() {
-  const { queryHistory, clearQueryHistory, addTab, setActiveTab, tabs } = useAppStore();
-  const language = useAppStore((s) => s.language);
+  const { queryHistory, clearQueryHistory, addTab, setActiveTab, tabs, language } = useAppStore();
   const locale = language === 'zh' ? 'zh-CN' : 'en-US';
   const [searchTerm, setSearchTerm] = useState("");
 
