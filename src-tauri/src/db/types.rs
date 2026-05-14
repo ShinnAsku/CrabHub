@@ -31,6 +31,31 @@ impl DatabaseType {
             _ => None,
         }
     }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            DatabaseType::PostgreSQL => "postgresql",
+            DatabaseType::MySQL => "mysql",
+            DatabaseType::SQLite => "sqlite",
+            DatabaseType::ClickHouse => "clickhouse",
+            DatabaseType::GaussDB => "gaussdb",
+            DatabaseType::Plugin(_) => "plugin",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "postgresql" => Some(DatabaseType::PostgreSQL),
+            "mysql" => Some(DatabaseType::MySQL),
+            "sqlite" => Some(DatabaseType::SQLite),
+            "clickhouse" => Some(DatabaseType::ClickHouse),
+            "gaussdb" | "opengauss" => Some(DatabaseType::GaussDB),
+            other if other.starts_with("plugin:") => {
+                Some(DatabaseType::Plugin(other[7..].to_string()))
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Serialize for DatabaseType {

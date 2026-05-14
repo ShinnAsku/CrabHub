@@ -1,5 +1,6 @@
 pub mod types;
 pub mod trait_def;
+pub mod pool_config;
 pub mod postgres;
 pub mod mysql;
 pub mod sqlite;

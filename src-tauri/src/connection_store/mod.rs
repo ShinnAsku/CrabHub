@@ -3,8 +3,9 @@ mod encryption;
 mod models;
 
 pub use commands::*;
-pub use models::{Connection, DbType};
+pub use models::Connection;
 
+use crate::db::types::DatabaseType;
 use encryption::{decrypt, encrypt, init_master_key};
 use models::{ConnectionGroup, ConnectionGroupMapping, Metadata};
 use chrono::Utc;
@@ -186,8 +187,8 @@ impl ConnectionStore {
                 let mut conn = Connection {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    db_type: DbType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(DbType::PostgreSQL),
+                    db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
+                        .unwrap_or(DatabaseType::PostgreSQL),
                     host: row.get(3)?,
                     port: row.get(4)?,
                     username: row.get(5)?,
@@ -256,8 +257,8 @@ impl ConnectionStore {
                 let mut conn = Connection {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    db_type: DbType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(DbType::PostgreSQL),
+                    db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
+                        .unwrap_or(DatabaseType::PostgreSQL),
                     host: row.get(3)?,
                     port: row.get(4)?,
                     username: row.get(5)?,
@@ -484,8 +485,8 @@ impl ConnectionStore {
                 let mut conn = Connection {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    db_type: DbType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(DbType::PostgreSQL),
+                    db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
+                        .unwrap_or(DatabaseType::PostgreSQL),
                     host: row.get(3)?,
                     port: row.get(4)?,
                     username: row.get(5)?,
