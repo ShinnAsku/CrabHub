@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'bun:test'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Connection } from '@/types'
 
 describe('Connection Store Module', () => {

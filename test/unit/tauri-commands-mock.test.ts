@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test'
+import { describe, it, expect } from 'vitest'
 import { mockConnections, mockTables, mockQueryResult, mockTauriCommands } from '../mock/tauri-commands'
 
 describe('Tauri Commands Mock', () => {

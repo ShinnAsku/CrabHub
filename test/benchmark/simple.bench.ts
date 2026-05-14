@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test'
+import { describe, it, expect } from 'vitest'
 
 describe('Performance Benchmarks', () => {
   it('should measure loop performance', () => {

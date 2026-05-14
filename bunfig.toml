@@ -1,5 +1,0 @@
-[install]
-optional = ["tailwindcss"]
-
-[test]
-preload = ["@testing-library/jest-dom/matchers"]
