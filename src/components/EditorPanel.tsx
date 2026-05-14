@@ -1638,11 +1638,6 @@ interface ResultTableProps {
 function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore }: ResultTableProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // IntersectionObserver for scroll-to-load-more (on last virtual item)
-  const loadMoreSentinelIndex = importPreview
-    ? importPreview.rows.length
-    : result ? result.rows.length : 0;
-
   if (importPreview) {
     const { columns, rows } = importPreview;
     return (
