@@ -76,10 +76,17 @@ function Toolbar({
     }, 0);
   }, [addTab, tabs.length, connections, setViewModeType, t]);
 
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().startDragging();
+    }).catch(() => {});
+  }, []);
+
   return (
     <div
       className="flex items-center h-9 px-2 border-b border-border select-none shrink-0 gap-0.5 relative"
       data-tauri-drag-region
+      onMouseDown={handleDragStart}
     >
       {/* Logo */}
       <div className="flex items-center gap-1.5 mr-2 shrink-0">

@@ -6,7 +6,7 @@ interface TabState {
   activeTabId: string | null;
   queryResults: Record<string, QueryResult>;
   tabCounter: number;
-  isExecuting: boolean;
+  isExecuting: Record<string, boolean>;
 
   // Actions
   addTab: (tab: Omit<Tab, "id">) => string;
@@ -14,7 +14,7 @@ interface TabState {
   setActiveTab: (id: string | null) => void;
   updateTabContent: (id: string, content: string) => void;
   setQueryResult: (tabId: string, result: QueryResult) => void;
-  setIsExecuting: (v: boolean) => void;
+  setIsExecuting: (tabId: string, v: boolean) => void;
 }
 
 let tabCounter = 0;
@@ -24,7 +24,7 @@ export const useTabStore = create<TabState>((set) => ({
   activeTabId: null,
   queryResults: {},
   tabCounter: 0,
-  isExecuting: false,
+  isExecuting: {},
 
   addTab: (tab) => {
     tabCounter++;
@@ -49,10 +49,12 @@ export const useTabStore = create<TabState>((set) => ({
             ? newTabs[Math.min(idx, newTabs.length - 1)]?.id ?? null
             : null;
       }
-      // Clean up query results for closed tab
+      // Clean up query results and executing state for closed tab
       const newQueryResults = { ...state.queryResults };
       delete newQueryResults[id];
-      return { tabs: newTabs, activeTabId: newActiveId, queryResults: newQueryResults };
+      const newExecuting = { ...state.isExecuting };
+      delete newExecuting[id];
+      return { tabs: newTabs, activeTabId: newActiveId, queryResults: newQueryResults, isExecuting: newExecuting };
     }),
 
   setActiveTab: (id) => set({ activeTabId: id }),
@@ -69,5 +71,8 @@ export const useTabStore = create<TabState>((set) => ({
       queryResults: { ...state.queryResults, [tabId]: result },
     })),
 
-  setIsExecuting: (v) => set({ isExecuting: v }),
+  setIsExecuting: (tabId, v) => set((state) => {
+    if (state.isExecuting[tabId] === v) return {};
+    return { isExecuting: { ...state.isExecuting, [tabId]: v } };
+  }),
 }));

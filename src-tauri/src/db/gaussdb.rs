@@ -716,10 +716,12 @@ impl DatabaseConnection for GaussDBConnection {
 
     async fn get_schemas(&self) -> Result<Vec<String>, DbError> {
         let sql = r#"
-            SELECT schema_name
-            FROM information_schema.schemata
-            WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-            ORDER BY schema_name
+            SELECT nspname AS schema_name
+            FROM pg_namespace
+            WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+              AND nspname NOT LIKE 'pg_toast%'
+              AND nspname NOT LIKE 'pg_temp_%'
+            ORDER BY nspname
         "#;
 
         let (_, rows) = self.client.query_to_results(sql).await?;

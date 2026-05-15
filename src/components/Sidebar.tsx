@@ -12,6 +12,7 @@ import {
   Table as TableIcon,
   Eye,
   Folder,
+  Layers,
   FileText,
   Settings,
   Zap,
@@ -1352,7 +1353,7 @@ function TreeNodeItem({
       case 'database':
         return <DatabaseIcon type={connectionType || ''} connected={true} size={12} />;
       case 'schema':
-        return <Folder size={12} className="text-yellow-500" />;
+        return <Layers size={12} className="text-sky-400" />;
       case 'tables':
         return <TableIcon size={12} className="text-green-500" />;
       case 'views':

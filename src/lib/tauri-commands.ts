@@ -400,6 +400,27 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
   return safeInvoke<UpdateStatus>("updater:check");
 }
 
+export async function cancelQuery(id: string): Promise<boolean> {
+  return safeInvoke<boolean>("cancel_query", { id });
+}
+
+export interface DriverCapabilities {
+  supportsSchemas: boolean;
+  supportsManageTables: boolean;
+  supportsViews: boolean;
+  supportsProcedures: boolean;
+  supportsTriggers: boolean;
+  isFileBased: boolean;
+  supportsIndexes: boolean;
+  supportsForeignKeys: boolean;
+  identifierQuote: string;
+  defaultPort: number;
+}
+
+export async function getDriverCapabilities(id: string): Promise<DriverCapabilities> {
+  return safeInvoke<DriverCapabilities>("get_driver_capabilities", { id });
+}
+
 export async function installUpdate(): Promise<void> {
   return safeInvoke<void>("updater:install");
 }

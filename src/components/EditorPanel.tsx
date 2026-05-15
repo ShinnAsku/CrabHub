@@ -24,8 +24,8 @@ import {
 import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getColumns } from "@/lib/tauri-commands";
-import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON } from "@/lib/export";
+import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
 import TableDesigner from "./TableDesigner";
@@ -1316,6 +1316,21 @@ function QueryEditor() {
             <Lightbulb size={12} />
             {t('ai.optimizeSql')}
           </button>
+          {isExecuting[activeTabId!] && (
+            <button
+              onClick={async () => {
+                if (effectiveConnectionId) {
+                  await cancelQuery(effectiveConnectionId);
+                  setMessages(prev => [...prev, 'Query cancelled by user']);
+                }
+              }}
+              className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors"
+              title="Cancel query"
+            >
+              <XCircle size={12} />
+              Cancel
+            </button>
+          )}
           <button
             onClick={() => handleExecute()}
             disabled={!!isExecuting[activeTabId!] || !effectiveConnectionId}
@@ -1432,21 +1447,31 @@ function QueryEditor() {
                     </button>
                   </>
                 ) : (
-                  (["results", "messages"] as ResultTab[]).map((tab) => (
+                  <>
+                    {multiResults.length === 1 && (
+                      <button
+                        onClick={() => setResultTab("results")}
+                        className={`px-2.5 py-1 text-xs transition-colors ${
+                          resultTab === "results"
+                            ? "text-foreground border-b-2 border-[hsl(var(--tab-active))]"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {t('editor.resultCount', { suffix: ` (${multiResults[0]!.rowCount}${loadMoreState[0]?.hasMore ? '+' : ''})` })}
+                      </button>
+                    )}
                     <button
-                      key={tab}
-                      onClick={() => setResultTab(tab)}
+                      onClick={() => setResultTab("messages")}
                       className={`px-2.5 py-1 text-xs transition-colors ${
-                        resultTab === tab
+                        resultTab === "messages"
                           ? "text-foreground border-b-2 border-[hsl(var(--tab-active))]"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      {tab === "results"
-                        ? t('editor.resultCount', { suffix: result ? ` (${result.rowCount})` : "" }) + (importPreview ? ` (${importPreview.rows.length})` : "")
-                        : t('editor.messages')}
+                      {t('editor.messages')}
+                      {messages.length > 0 && ` (${messages.length})`}
                     </button>
-                  ))
+                  </>
                 )}
               </div>
               <div className="flex items-center gap-1">
@@ -1507,6 +1532,56 @@ function QueryEditor() {
                   hasMore={loadMoreState[activeResultIdx]?.hasMore ?? false}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={() => handleLoadMore(activeResultIdx)}
+                  onApplyChanges={async (modifiedCells, columns, rows) => {
+                    if (!activeTab?.tableName || !effectiveConnectionId) return;
+                    const rowGroups = new Map<number, [string, any][]>();
+                    for (const [key, value] of modifiedCells.entries()) {
+                      const parts = key.split(':');
+                      const rowIdxStr = parts[0];
+                      const colName = parts[1];
+                      if (!rowIdxStr || !colName) continue;
+                      const idx = parseInt(rowIdxStr);
+                      if (!rowGroups.has(idx)) rowGroups.set(idx, []);
+                      rowGroups.get(idx)!.push([colName, value]);
+                    }
+                    for (const [rowIdx, updates] of rowGroups.entries()) {
+                      const row = rows[rowIdx];
+                      if (!row) continue;
+                      const whereClause = buildWhereClause(columns, row);
+                      await updateTableRows(effectiveConnectionId, activeTab.tableName, updates, whereClause, activeTab.schemaName);
+                    }
+                    handleExecute();
+                  }}
+                  onDeleteRows={async (rowIndices) => {
+                    if (!activeTab?.tableName || !effectiveConnectionId) return;
+                    const msg = t('table.deleteConfirm', { count: String(rowIndices.length) });
+                    if (!window.confirm(msg)) return;
+                    for (const idx of rowIndices) {
+                      const row = result?.rows[idx];
+                      if (!row) continue;
+                      const whereClause = buildWhereClause(result!.columns, row);
+                      await deleteTableRows(effectiveConnectionId, activeTab.tableName, whereClause, activeTab.schemaName);
+                    }
+                    handleExecute();
+                  }}
+                  onGenerateDeleteSQL={(rowIndices) => {
+                    const statements = rowIndices.map(idx => {
+                      const row = result?.rows[idx];
+                      if (!row) return '';
+                      const whereClause = buildWhereClause(result!.columns, row);
+                      const schemaPrefix = activeTab?.schemaName ? `"${activeTab.schemaName}".` : '';
+                      return `DELETE FROM ${schemaPrefix}"${activeTab?.tableName || 'table'}" WHERE ${whereClause};`;
+                    }).filter(Boolean).join('\n');
+                    if (!statements) return;
+                    const editor = editorRef.current;
+                    if (editor) {
+                      const selection = editor.getSelection();
+                      editor.executeEdits('delete-sql', [{
+                        range: selection || { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+                        text: statements + '\n',
+                      }]);
+                    }
+                  }}
                 />
               )}
               {resultTab === "messages" && (
@@ -1616,6 +1691,13 @@ function TableContextMenu({
 function VirtualTableBody({
   rows, columns, virtualCount, hasMore, isLoadingMore, onLoadMore,
   onSelectionChange,
+  onModifiedCellsChange,
+  onDeleteRows,
+  onGenerateDeleteSQL,
+  discardRef,
+  selectedRowsRef,
+  sortConfig,
+  onSort,
 }: {
   rows: any[];
   columns: any[];
@@ -1624,6 +1706,13 @@ function VirtualTableBody({
   isLoadingMore: boolean;
   onLoadMore: () => void;
   onSelectionChange?: (indices: number[]) => void;
+  onModifiedCellsChange?: (count: number, getCells: () => Map<string, any>) => void;
+  onDeleteRows?: () => void;
+  onGenerateDeleteSQL?: () => void;
+  discardRef?: React.MutableRefObject<(() => void) | null>;
+  selectedRowsRef?: React.MutableRefObject<Set<number> | null>;
+  sortConfig?: { key: string; direction: 'asc' | 'desc' } | null;
+  onSort?: (key: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -1652,6 +1741,25 @@ function VirtualTableBody({
     setEditValue('');
     setContextMenu(null);
   }, [rows]);
+
+  // Notify parent of modified cells changes
+  useEffect(() => {
+    onModifiedCellsChange?.(modifiedCells.size, () => modifiedCells);
+  }, [modifiedCells, onModifiedCellsChange]);
+
+  // Expose discard function to parent
+  if (discardRef) {
+    discardRef.current = () => {
+      setModifiedCells(new Map());
+      setEditingCell(null);
+      setEditValue('');
+    };
+  }
+
+  // Expose selected rows to parent for delete callbacks
+  if (selectedRowsRef) {
+    selectedRowsRef.current = selectedRows;
+  }
 
   const virtualizer = useVirtualizer({
     count: virtualCount,
@@ -1728,11 +1836,15 @@ function VirtualTableBody({
             {columns.map((col: any) => (
               <th
                 key={col.name}
-                className="px-3 py-1.5 text-left font-medium text-white border border-white/30"
+                className="px-3 py-1.5 text-left font-medium text-white border border-white/30 cursor-pointer hover:bg-white/10 transition-colors select-none"
                 style={{ backgroundColor: 'hsl(var(--tab-active))', minWidth: COL_MIN_WIDTH }}
+                onClick={() => onSort?.(col.name)}
               >
                 <div className="flex items-center gap-1 overflow-hidden">
                   <span className="truncate">{col.name}</span>
+                  {sortConfig && sortConfig.key === col.name && (
+                    <span className="text-white shrink-0">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                  )}
                   {col.isPrimaryKey && (
                     <span className="text-[9px] px-0.5 rounded bg-white/20 text-white shrink-0">PK</span>
                   )}
@@ -1959,10 +2071,10 @@ function VirtualTableBody({
             }
           }}
           onDeleteRows={() => {
-            // Will be wired in Task 5
+            onDeleteRows?.();
           }}
           onGenerateDeleteSQL={() => {
-            // Will be wired in Task 5
+            onGenerateDeleteSQL?.();
           }}
         />
       )}
@@ -1978,9 +2090,22 @@ interface ResultTableProps {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  onApplyChanges?: (modifiedCells: Map<string, any>, columns: any[], rows: any[]) => void;
+  onDeleteRows?: (rowIndices: number[]) => void;
+  onGenerateDeleteSQL?: (rowIndices: number[]) => void;
 }
 
-function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore }: ResultTableProps) {
+function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore, onApplyChanges, onDeleteRows, onGenerateDeleteSQL }: ResultTableProps) {
+  const [modifiedCount, setModifiedCount] = useState(0);
+  const modifiedCellsRef = useRef<() => Map<string, any>>(() => new Map());
+  const discardRef = useRef<(() => void) | null>(null);
+  const selectedRowsRef = useRef<Set<number> | null>(new Set());
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const handleModifiedCellsChange = useCallback((count: number, getCells: () => Map<string, any>) => {
+    setModifiedCount(count);
+    modifiedCellsRef.current = getCells;
+  }, []);
   if (importPreview) {
     const { columns, rows } = importPreview;
     return (
@@ -2031,7 +2156,19 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
     );
   }
 
-  const { columns, rows } = result;
+  const { columns, rows: unsortedRows } = result;
+  const rows = sortConfig
+    ? [...unsortedRows].sort((a, b) => {
+        const aVal = a[sortConfig.key];
+        const bVal = b[sortConfig.key];
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
+        if (typeof aVal === 'number' && typeof bVal === 'number') return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+        const aStr = String(aVal);
+        const bStr = String(bVal);
+        return sortConfig.direction === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+      })
+    : unsortedRows;
   const virtualCount = rows.length + (hasMore ? 1 : 0);
 
   return (
@@ -2043,7 +2180,36 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onLoadMore={onLoadMore}
+        onModifiedCellsChange={handleModifiedCellsChange}
+        onDeleteRows={() => onDeleteRows?.(Array.from(selectedRowsRef.current ?? new Set()))}
+        onGenerateDeleteSQL={() => onGenerateDeleteSQL?.(Array.from(selectedRowsRef.current ?? new Set()))}
+        discardRef={discardRef}
+        selectedRowsRef={selectedRowsRef}
+        sortConfig={sortConfig}
+        onSort={(key) => setSortConfig(prev => prev?.key === key && prev.direction === 'asc' ? { key, direction: 'desc' } : prev?.key === key ? null : { key, direction: 'asc' })}
       />
+      {/* Apply Changes toolbar */}
+      {modifiedCount > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border shrink-0 bg-orange-500/10">
+          <span className="text-[11px] text-muted-foreground">
+            {t('table.changesPending', { count: String(modifiedCount) })}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => discardRef.current?.()}
+            className="px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('table.discardChanges')}
+          </button>
+          <button
+            onClick={() => onApplyChanges?.(modifiedCellsRef.current(), columns, rows)}
+            className="px-3 py-0.5 text-[11px] text-white rounded transition-colors"
+            style={{ backgroundColor: 'hsl(var(--tab-active))' }}
+          >
+            {t('table.applyChanges')}
+          </button>
+        </div>
+      )}
       {/* Bottom status bar */}
       <div className="flex items-center px-3 py-1 border-t border-border shrink-0 bg-muted/20 text-[11px] text-muted-foreground gap-2">
         {rows.length > 0 && (

@@ -2,11 +2,13 @@ import { useAppStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 
 function StatusBar() {
-  const { connections, activeConnectionId, isExecuting, queryResults, activeTabId, transactionActive } = useAppStore();
+  const { connections, activeConnectionId, isExecuting, queryResults, activeTabId, transactionActive, tabs } = useAppStore();
   const activeConn = connections.find(c => c.id === activeConnectionId);
   const result = activeTabId ? queryResults[activeTabId] : null;
   const isTxActive = activeConnectionId ? !!transactionActive[activeConnectionId] : false;
   const activeConnections = connections.filter(c => c.connected);
+  // Only check executing state for tabs that still exist (stale entries can persist)
+  const isAnyTabExecuting = Object.entries(isExecuting).some(([id, v]) => v && tabs.some(t => t.id === id));
 
   const typeLabels: Record<string, string> = {
     postgresql: "PostgreSQL",
@@ -39,14 +41,14 @@ function StatusBar() {
 
       {/* Center: Result info */}
       <div className="flex items-center gap-3">
-        {isExecuting && <span className="text-yellow-500">{t('status.executing')}</span>}
-        {result && !isExecuting && result.rowCount > 0 && (
+        {isAnyTabExecuting && <span className="text-yellow-500">{t('status.executing')}</span>}
+        {result && !isExecuting[activeTabId!] && result.rowCount > 0 && (
           <span>{result.rowCount} {t('status.rows')} | {result.duration.toFixed(0)}ms</span>
         )}
-        {result && !isExecuting && result.rowCount === 0 && (
+        {result && !isExecuting[activeTabId!] && result.rowCount === 0 && (
           <span>{result.duration.toFixed(0)}ms</span>
         )}
-        {!result && !isExecuting && <span>{t('status.ready')}</span>}
+        {!isAnyTabExecuting && !result && <span>{t('status.ready')}</span>}
       </div>
 
       {/* Right: Database info */}

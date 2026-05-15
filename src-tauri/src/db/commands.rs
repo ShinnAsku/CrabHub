@@ -3,8 +3,8 @@ use tauri::State;
 
 use super::manager::ConnectionManager;
 use super::types::{
-    ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, DatabaseType, ExecuteResult,
-    PagedQueryResult, QueryResult, TableInfo,
+    ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, DatabaseType, DriverCapabilities,
+    ExecuteResult, PagedQueryResult, QueryResult, TableInfo,
 };
 
 // Re-export for use in command signatures
@@ -140,7 +140,7 @@ pub async fn get_databases(
             "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
         None => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
     };
-    let result = state.query(&id, &sql).await.map_err(|e| e.to_string())?;
+    let result = state.query_metadata(&id, &sql).await.map_err(|e| e.to_string())?;
     Ok(result.rows.iter()
         .filter_map(|row| row.values().next().and_then(|v| v.as_str().map(|s| s.to_string())))
         .collect())
@@ -313,4 +313,23 @@ pub async fn get_table_data(
         .get_table_data(&id, &table, schema.as_deref(), page, page_size, order_by.as_deref())
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Cancel a running query on the given connection
+#[tauri::command]
+pub async fn cancel_query(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+) -> Result<bool, String> {
+    Ok(state.cancel_query(&id).await)
+}
+
+/// Get driver capabilities for a connection
+#[tauri::command]
+pub async fn get_driver_capabilities(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+) -> Result<DriverCapabilities, String> {
+    let db_type = state.get_db_type(&id).await.unwrap_or(DatabaseType::Plugin("unknown".to_string()));
+    Ok(db_type.capabilities())
 }

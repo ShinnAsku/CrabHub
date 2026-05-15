@@ -369,8 +369,8 @@ const SqlCell: React.FC<SqlCellProps> = ({
                       <thead>
                         <tr>
                           {cell.result.columns.map((column: string, index: number) => (
-                            <th key={index} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                              {column}
+                            <th key={index} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider max-w-[300px]">
+                              <span className="truncate block">{column}</span>
                             </th>
                           ))}
                         </tr>

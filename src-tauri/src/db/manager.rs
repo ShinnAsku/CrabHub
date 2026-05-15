@@ -28,7 +28,8 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 3;
 struct ConnectionEntry {
     connection: Box<dyn DatabaseConnection>,
     config: ConnectionConfig,
-    last_heartbeat: Instant,
+    /// Updated by heartbeat AND by every user query, so heartbeat can skip busy conns
+    last_heartbeat: std::sync::Mutex<Instant>,
     is_healthy: bool,
     reconnect_count: u32,
 }
@@ -37,6 +38,8 @@ struct ConnectionEntry {
 pub struct ConnectionManager {
     connections: RwLock<HashMap<String, ConnectionEntry>>,
     plugin_manager: std::sync::Mutex<Option<Arc<PluginManager>>>,
+    /// Per-connection cancel senders. Dropping the sender cancels the active query.
+    cancel_tokens: RwLock<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
 }
 
 impl ConnectionManager {
@@ -45,7 +48,23 @@ impl ConnectionManager {
         Self {
             connections: RwLock::new(HashMap::new()),
             plugin_manager: std::sync::Mutex::new(None),
+            cancel_tokens: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Cancel the currently-running query on the given connection.
+    /// Works by removing and dropping the oneshot sender, which immediately
+    /// resolves the receiver in the `tokio::select!` branch.
+    pub async fn cancel_query(&self, id: &str) -> bool {
+        self.cancel_tokens.write().await.remove(id).is_some()
+    }
+
+    /// Create a fresh cancel channel for a connection and return the receiver.
+    /// The sender is stored; dropping it (via cancel_query) cancels the query.
+    async fn cancel_token(&self, id: &str) -> tokio::sync::oneshot::Receiver<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.cancel_tokens.write().await.insert(id.to_string(), tx);
+        rx
     }
 
     /// Inject the plugin manager (called during app setup)
@@ -57,59 +76,32 @@ impl ConnectionManager {
         self.plugin_manager.lock().unwrap().clone()
     }
 
-    /// Start the background heartbeat loop
+    /// Background loop that checks connection health without running SQL queries.
+    /// Health is determined by whether recent user queries succeeded (last_heartbeat
+    /// is touched on every successful query). This avoids any TCP-level contention
+    /// with user queries on the same connection.
     pub async fn start_heartbeat(manager: Arc<Self>) {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
 
-            let connection_infos: Vec<(String, bool, bool)> = {
+            let to_check: Vec<(String, bool)> = {
                 let connections = manager.connections.read().await;
                 connections
                     .iter()
-                    .map(|(id, entry)| {
-                        (
-                            id.clone(),
-                            entry.config.keepalive_interval == 0,
-                            entry.config.auto_reconnect,
-                        )
+                    .filter(|(_, e)| e.config.keepalive_interval != 0)
+                    .map(|(id, e)| {
+                        let idle_secs = e.last_heartbeat.lock().unwrap().elapsed().as_secs();
+                        (id.clone(), idle_secs > 120)
                     })
                     .collect()
             };
 
-            for (id, skip_keepalive, auto_reconnect) in &connection_infos {
-                if *skip_keepalive {
-                    continue;
-                }
-
-                let result = {
-                    let connections = manager.connections.read().await;
-                    if let Some(entry) = connections.get(id) {
-                        entry.connection.query_sql("SELECT 1").await
-                    } else {
-                        continue;
-                    }
-                };
-
-                match result {
-                    Ok(_) => {
-                        log::debug!("Heartbeat OK for connection '{}'", id);
-                        let mut conns = manager.connections.write().await;
-                        if let Some(e) = conns.get_mut(id) {
-                            e.last_heartbeat = Instant::now();
-                            e.is_healthy = true;
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("Heartbeat failed for connection '{}': {}", id, e);
-                        {
-                            let mut conns = manager.connections.write().await;
-                            if let Some(e) = conns.get_mut(id) {
-                                e.is_healthy = false;
-                            }
-                        }
-                        if *auto_reconnect {
-                            let _ = manager.reconnect(id).await;
-                        }
+            for (id, is_stale) in &to_check {
+                if *is_stale {
+                    log::debug!("Heartbeat: connection '{}' idle for >120s, marking unhealthy", id);
+                    let mut conns = manager.connections.write().await;
+                    if let Some(e) = conns.get_mut(id) {
+                        e.is_healthy = false;
                     }
                 }
             }
@@ -162,7 +154,7 @@ impl ConnectionManager {
         let entry = ConnectionEntry {
             connection,
             config: config.clone(),
-            last_heartbeat: Instant::now(),
+            last_heartbeat: std::sync::Mutex::new(Instant::now()),
             is_healthy: true,
             reconnect_count: 0,
         };
@@ -223,8 +215,22 @@ impl ConnectionManager {
         result
     }
 
-    /// Execute a SQL query with auto-reconnect
+    /// Execute a user-initiated query with cancellation support (for the query editor).
     pub async fn query(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
+        let result = self.query_inner_cancellable(id, sql).await;
+        if let Err(DbError::ConnectionError(_)) = &result {
+            if self.should_reconnect(id).await {
+                if self.reconnect(id).await.is_ok() {
+                    return self.query_inner_cancellable(id, sql).await;
+                }
+            }
+        }
+        result
+    }
+
+    /// Execute a metadata/internal query WITHOUT cancellation support.
+    /// Used by schema loading, database listing, etc. — not user-facing.
+    pub async fn query_metadata(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let result = self.query_inner(id, sql).await;
         if let Err(DbError::ConnectionError(_)) = &result {
             if self.should_reconnect(id).await {
@@ -260,20 +266,52 @@ impl ConnectionManager {
         result
     }
 
-    async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
+    /// Run a query with cancellation support (for user-initiated queries).
+    /// Creates a oneshot cancel token that can be triggered via `cancel_query()`.
+    async fn query_inner_cancellable(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
+        let mut cancel = self.cancel_token(id).await;
         let connections = self.connections.read().await;
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.execute_sql(sql).await
+        let result = tokio::select! {
+            r = entry.connection.query_sql(sql) => r,
+            _ = &mut cancel => {
+                log::info!("Query cancelled for connection '{}'", id);
+                Err(DbError::QueryError("Query cancelled".to_string()))
+            }
+        };
+        if let Ok(ref _r) = result {
+            *entry.last_heartbeat.lock().unwrap() = Instant::now();
+        }
+        result
     }
 
+    /// Run a non-cancellable query (for metadata/internal use).
+    /// Does NOT create a cancel token, so it doesn't interfere with user queries.
     async fn query_inner(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let connections = self.connections.read().await;
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.query_sql(sql).await
+        let result = entry.connection.query_sql(sql).await;
+        if let Ok(ref _r) = result {
+            *entry.last_heartbeat.lock().unwrap() = Instant::now();
+        }
+        result
+    }
+
+    /// Non-cancellable execute (for metadata/internal use).
+    async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
+        let connections = self.connections.read().await;
+        let entry = connections
+            .get(id)
+            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        let result = entry.connection.execute_sql(sql).await;
+        if let Ok(ref _r) = result {
+            *entry.last_heartbeat.lock().unwrap() = Instant::now();
+        }
+        result
     }
 
     async fn query_paged_inner(
@@ -367,7 +405,7 @@ impl ConnectionManager {
                 if let Some(entry) = connections.get_mut(id) {
                     let old = std::mem::replace(&mut entry.connection, new_conn);
                     tokio::spawn(async move { old.close().await; });
-                    entry.last_heartbeat = Instant::now();
+                    *entry.last_heartbeat.lock().unwrap() = Instant::now();
                     entry.is_healthy = true;
                     log::info!(
                         "Successfully reconnected connection '{}' on attempt {}",
@@ -402,7 +440,7 @@ impl ConnectionManager {
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
 
-        let elapsed = entry.last_heartbeat.elapsed();
+        let elapsed = entry.last_heartbeat.lock().unwrap().elapsed();
         let last_heartbeat_str = if elapsed.as_secs() < 60 {
             format!("{}s ago", elapsed.as_secs())
         } else {
@@ -518,7 +556,7 @@ impl ConnectionManager {
         let sub_entry = ConnectionEntry {
             connection,
             config: sub_config,
-            last_heartbeat: Instant::now(),
+            last_heartbeat: std::sync::Mutex::new(Instant::now()),
             is_healthy: true,
             reconnect_count: 0,
         };

@@ -58,6 +58,83 @@ impl DatabaseType {
     }
 }
 
+/// Describes what a database driver can and cannot do.
+/// Sent to the frontend so the UI can conditionally show/hide features.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverCapabilities {
+    pub supports_schemas: bool,
+    pub supports_manage_tables: bool,
+    pub supports_views: bool,
+    pub supports_procedures: bool,
+    pub supports_triggers: bool,
+    pub is_file_based: bool,
+    pub supports_indexes: bool,
+    pub supports_foreign_keys: bool,
+    pub identifier_quote: String,
+    pub default_port: u16,
+}
+
+impl Default for DriverCapabilities {
+    fn default() -> Self {
+        Self {
+            supports_schemas: false,
+            supports_manage_tables: true,
+            supports_views: true,
+            supports_procedures: false,
+            supports_triggers: false,
+            is_file_based: false,
+            supports_indexes: true,
+            supports_foreign_keys: true,
+            identifier_quote: "\"".to_string(),
+            default_port: 5432,
+        }
+    }
+}
+
+impl DatabaseType {
+    pub fn capabilities(&self) -> DriverCapabilities {
+        match self {
+            DatabaseType::PostgreSQL => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                identifier_quote: "\"".to_string(), default_port: 5432,
+            },
+            DatabaseType::MySQL => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                identifier_quote: "`".to_string(), default_port: 3306,
+            },
+            DatabaseType::SQLite => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: false,
+                supports_triggers: true, is_file_based: true,
+                supports_indexes: true, supports_foreign_keys: true,
+                identifier_quote: "\"".to_string(), default_port: 0,
+            },
+            DatabaseType::ClickHouse => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: false,
+                supports_triggers: false, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: false,
+                identifier_quote: "`".to_string(), default_port: 8123,
+            },
+            DatabaseType::GaussDB => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                identifier_quote: "\"".to_string(), default_port: 8000,
+            },
+            DatabaseType::Plugin(_) => DriverCapabilities::default(),
+        }
+    }
+}
+
 impl Serialize for DatabaseType {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
