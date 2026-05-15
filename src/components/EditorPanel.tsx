@@ -1556,6 +1556,18 @@ function VirtualTableBody({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [lastClickedIdx, setLastClickedIdx] = useState<number | null>(null);
+  const [editingCell, setEditingCell] = useState<{ rowIdx: number; colName: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [modifiedCells, setModifiedCells] = useState<Map<string, any>>(new Map());
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus and select input when editing starts
+  useEffect(() => {
+    if (editingCell && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingCell]);
 
   // Reset selection when result set changes
   useEffect(() => {
@@ -1684,17 +1696,107 @@ function VirtualTableBody({
                 >
                   {rowIdx + 1}
                 </td>
-                {columns.map((col: any) => (
-                  <td
-                    key={col.name}
-                    className="px-3 py-1 whitespace-nowrap truncate border"
-                    style={{ minWidth: COL_MIN_WIDTH }}
-                  >
-                    <span className={row[col.name] === null ? "text-muted-foreground/40 italic" : "text-foreground"}>
-                      {row[col.name] === null ? "NULL" : String(row[col.name])}
-                    </span>
-                  </td>
-                ))}
+                {columns.map((col: any) => {
+                  const cellKey = `${rowIdx}:${col.name}`;
+                  const isEditing = editingCell?.rowIdx === rowIdx && editingCell?.colName === col.name;
+                  const modifiedValue = modifiedCells.get(cellKey);
+                  const displayValue = modifiedValue !== undefined ? modifiedValue : row[col.name];
+                  const isModified = modifiedCells.has(cellKey);
+
+                  if (isEditing) {
+                    return (
+                      <td
+                        key={col.name}
+                        className="px-0 py-0 border"
+                        style={{ minWidth: COL_MIN_WIDTH }}
+                      >
+                        <input
+                          ref={editInputRef}
+                          className="w-full h-full px-3 py-1 text-xs bg-[hsl(var(--background))] text-foreground outline-none ring-2 ring-inset ring-orange-400"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const originalVal = row[col.name];
+                              if (editValue !== String(originalVal ?? '')) {
+                                setModifiedCells((prev) => {
+                                  const next = new Map(prev);
+                                  next.set(cellKey, editValue === 'NULL' ? null : editValue);
+                                  return next;
+                                });
+                              }
+                              setEditingCell(null);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setEditingCell(null);
+                            } else if (e.key === 'Tab') {
+                              e.preventDefault();
+                              const originalVal = row[col.name];
+                              if (editValue !== String(originalVal ?? '')) {
+                                setModifiedCells((prev) => {
+                                  const next = new Map(prev);
+                                  next.set(cellKey, editValue === 'NULL' ? null : editValue);
+                                  return next;
+                                });
+                              }
+                              setEditingCell(null);
+                              const colIdx = columns.findIndex((c: any) => c.name === col.name);
+                              if (e.shiftKey) {
+                                if (colIdx > 0) {
+                                  const prevCol = columns[colIdx - 1];
+                                  setTimeout(() => {
+                                    setEditingCell({ rowIdx, colName: prevCol.name });
+                                    setEditValue(String(modifiedCells.get(`${rowIdx}:${prevCol.name}`) ?? row[prevCol.name] ?? ''));
+                                  }, 0);
+                                }
+                              } else {
+                                if (colIdx < columns.length - 1) {
+                                  const nextCol = columns[colIdx + 1];
+                                  setTimeout(() => {
+                                    setEditingCell({ rowIdx, colName: nextCol.name });
+                                    setEditValue(String(modifiedCells.get(`${rowIdx}:${nextCol.name}`) ?? row[nextCol.name] ?? ''));
+                                  }, 0);
+                                }
+                              }
+                            }
+                          }}
+                          onBlur={() => {
+                            const originalVal = row[col.name];
+                            if (editValue !== String(originalVal ?? '')) {
+                              setModifiedCells((prev) => {
+                                const next = new Map(prev);
+                                next.set(cellKey, editValue === 'NULL' ? null : editValue);
+                                return next;
+                              });
+                            }
+                            setEditingCell(null);
+                          }}
+                        />
+                      </td>
+                    );
+                  }
+
+                  return (
+                    <td
+                      key={col.name}
+                      className={`px-3 py-1 whitespace-nowrap truncate border ${isModified ? 'bg-orange-500/15 ring-1 ring-inset ring-orange-500/50' : ''}`}
+                      style={{ minWidth: COL_MIN_WIDTH, cursor: 'default' }}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const currentVal = modifiedCells.get(cellKey);
+                        const val = currentVal !== undefined ? currentVal : row[col.name];
+                        setEditValue(val === null ? '' : String(val));
+                        setEditingCell({ rowIdx, colName: col.name });
+                      }}
+                    >
+                      <span className={displayValue === null ? "text-muted-foreground/40 italic" : "text-foreground"}>
+                        {displayValue === null ? "NULL" : String(displayValue)}
+                      </span>
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}
