@@ -107,7 +107,7 @@ function shouldAutoLimit(sql: string): boolean {
   return trimmed.startsWith("SELECT") || trimmed.startsWith("WITH");
 }
 
-const QUERY_PAGE_SIZE = 1000;
+const QUERY_PAGE_SIZE = 500;
 
 // Split SQL text into individual statements, respecting strings, comments, dollar-quotes, and BEGIN...END blocks
 function splitSqlStatements(sql: string): string[] {
@@ -651,6 +651,7 @@ function QueryEditor() {
 
   const handleExecute = useCallback(async (selectedOnly?: boolean) => {
     if (!activeTabId || !effectiveConnectionId || !editorRef.current) return;
+    if (isExecuting[activeTabId]) return;
 
     let sqlText: string;
     try {
@@ -678,7 +679,7 @@ function QueryEditor() {
     const statements = splitSqlStatements(sqlText);
     if (statements.length === 0) return;
 
-    setIsExecuting(true);
+    setIsExecuting(activeTabId!, true);
     setMessages([]);
     setExecutionTime(null);
     setImportPreview(null);
@@ -694,6 +695,7 @@ function QueryEditor() {
         const stmtStart = performance.now();
 
         if (isSelectQuery(sql)) {
+          const ipcStart = performance.now();
           let queryResult: QueryResult;
           let hasMore = false;
 
@@ -706,6 +708,9 @@ function QueryEditor() {
           } else {
             queryResult = await executeQuery(effectiveConnectionId, sql);
           }
+          const ipcElapsed = performance.now() - ipcStart;
+          const dbTime = (queryResult as any).duration ?? (queryResult as any).executionTimeMs ?? 0;
+          const overhead = ipcElapsed - dbTime;
 
           const stmtElapsed = performance.now() - stmtStart;
           const resultIdx = collectedResults.length;
@@ -718,10 +723,11 @@ function QueryEditor() {
             originalSql: sql,
           };
 
+
+          const prefix = statements.length > 1 ? `[${idx + 1}/${statements.length}] ` : '';
+          const timingDetail = `(DB: ${dbTime.toFixed(0)}ms | 传输: ${Math.max(0, overhead).toFixed(0)}ms | 总计: ${stmtElapsed.toFixed(0)}ms)`;
           allMessages.push(
-            statements.length > 1
-              ? `[${idx + 1}/${statements.length}] ${t('editor.querySuccess', { rows: String(queryResult.rowCount), ms: stmtElapsed.toFixed(0) })}`
-              : t('editor.querySuccess', { rows: String(queryResult.rowCount), ms: stmtElapsed.toFixed(0) })
+            `${prefix}${t('editor.querySuccess', { rows: String(queryResult.rowCount), ms: stmtElapsed.toFixed(0) })} ${timingDetail}`
           );
 
           addQueryHistory({
@@ -801,12 +807,12 @@ function QueryEditor() {
       }
       setResultTab("messages");
     } finally {
-      setIsExecuting(false);
+      setIsExecuting(activeTabId!, false);
     }
   }, [activeTabId, effectiveConnectionId, activeConnection, setQueryResult, setIsExecuting, addQueryHistory]);
 
   // Load more rows for a specific result index
-  const MAX_DISPLAY_ROWS = 50000;
+  const MAX_DISPLAY_ROWS = 10000;
 
   const handleLoadMore = useCallback(async (resultIdx: number) => {
     if (isLoadingMore || !effectiveConnectionId) return;
@@ -1138,7 +1144,7 @@ function QueryEditor() {
 
     const fullSql = sql + insertStatements.join("\n");
 
-    setIsExecuting(true);
+    setIsExecuting(activeTabId!, true);
     try {
       await executeSql(effectiveConnectionId, fullSql);
       setMessages([t('editor.importSuccess', { rows: String(rows.length), table: importTableName })]);
@@ -1148,7 +1154,7 @@ function QueryEditor() {
       setMessages([t('editor.importFailed', { error: err instanceof Error ? err.message : (typeof err === 'string' ? err : t('common.unknownError')) })]);
       setResultTab("messages");
     } finally {
-      setIsExecuting(false);
+      setIsExecuting(activeTabId!, false);
     }
   }, [importPreview, effectiveConnectionId, activeTabId, importTableName, setIsExecuting]);
 
@@ -1239,7 +1245,7 @@ function QueryEditor() {
             <>
               <button
                 onClick={() => handleTransaction("begin")}
-                disabled={isTxActive || isExecuting}
+                disabled={isTxActive || isExecuting[activeTabId!]}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
                 title={t('editor.beginTransaction')}
               >
@@ -1248,7 +1254,7 @@ function QueryEditor() {
               </button>
               <button
                 onClick={() => handleTransaction("commit")}
-                disabled={!isTxActive || isExecuting}
+                disabled={!isTxActive || isExecuting[activeTabId!]}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
                 title={t('editor.commitTransaction')}
               >
@@ -1257,7 +1263,7 @@ function QueryEditor() {
               </button>
               <button
                 onClick={() => handleTransaction("rollback")}
-                disabled={!isTxActive || isExecuting}
+                disabled={!isTxActive || isExecuting[activeTabId!]}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
                 title={t('editor.rollbackTransaction')}
               >
@@ -1312,11 +1318,11 @@ function QueryEditor() {
           </button>
           <button
             onClick={() => handleExecute()}
-            disabled={isExecuting || !effectiveConnectionId}
+            disabled={!!isExecuting[activeTabId!] || !effectiveConnectionId}
             className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
             title={t('editor.executeQuery')}
           >
-            {isExecuting ? (
+            {isExecuting[activeTabId!] ? (
               <Loader2 size={12} className="animate-spin" />
             ) : (
               <Play size={12} />
@@ -1476,7 +1482,7 @@ function QueryEditor() {
                 />
                 <button
                   onClick={handleConfirmImport}
-                  disabled={isExecuting || !importTableName.trim()}
+                  disabled={isExecuting[activeTabId!] || !importTableName.trim()}
                   className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
                 >
                   <CheckCircle2 size={10} />
@@ -1533,20 +1539,27 @@ function QueryEditor() {
 
 // ===== Virtualized Table Body =====
 
+const COL_MIN_WIDTH = 120;
+
 function VirtualTableBody({
-  rows, columns, parentRef, virtualCount, hasMore, isLoadingMore, onLoadMore,
+  rows, columns, virtualCount, hasMore, isLoadingMore, onLoadMore,
+  onSelectionChange,
 }: {
   rows: any[];
   columns: any[];
-  parentRef: React.RefObject<HTMLDivElement | null>;
   virtualCount: number;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  onSelectionChange?: (indices: number[]) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [lastClickedIdx, setLastClickedIdx] = useState<number | null>(null);
+
   const virtualizer = useVirtualizer({
     count: virtualCount,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollRef.current,
     estimateSize: () => 28,
     overscan: 15,
   });
@@ -1562,21 +1575,60 @@ function VirtualTableBody({
     }
   }, [virtualizer.getVirtualItems(), rows.length, hasMore, isLoadingMore, onLoadMore]);
 
+  // Notify parent of selection changes
+  useEffect(() => {
+    onSelectionChange?.(Array.from(selectedRows));
+  }, [selectedRows, onSelectionChange]);
+
+  const toggleRow = useCallback((idx: number, ctrl: boolean, shift: boolean) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (shift && lastClickedIdx !== null && lastClickedIdx !== idx) {
+        const from = Math.min(lastClickedIdx, idx);
+        const to = Math.max(lastClickedIdx, idx);
+        for (let i = from; i <= to; i++) next.add(i);
+      } else if (ctrl) {
+        if (next.has(idx)) { next.delete(idx); } else { next.add(idx); }
+      } else {
+        next.clear();
+        next.add(idx);
+      }
+      return next;
+    });
+    setLastClickedIdx(idx);
+  }, [lastClickedIdx]);
+
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  const firstItem = virtualItems[0];
+  const lastItem = virtualItems[virtualItems.length - 1];
+  const beforeHeight = firstItem ? firstItem.start : 0;
+  const afterHeight = totalSize - (lastItem ? lastItem.end : 0);
+
   return (
-    <>
-      <table className="w-full text-xs border-collapse border" style={{ tableLayout: 'fixed' }}>
+    <div ref={scrollRef} className="flex-1 overflow-auto min-h-0">
+      <table
+        className="text-xs border-collapse border"
+        style={{ tableLayout: 'fixed', width: '100%', minWidth: 36 + columns.length * COL_MIN_WIDTH }}
+      >
         <thead className="sticky top-0 z-10">
-          <tr style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
+          <tr>
+            <th
+              className="px-1.5 py-1.5 text-center font-medium text-white/50 border border-white/30"
+              style={{ backgroundColor: 'hsl(var(--tab-active))', width: 36, minWidth: 36 }}
+            >
+              #
+            </th>
             {columns.map((col: any) => (
               <th
                 key={col.name}
-                className="px-3 py-1.5 text-left font-medium text-white whitespace-nowrap border border-white/40"
-                style={{ minWidth: 120 }}
+                className="px-3 py-1.5 text-left font-medium text-white border border-white/30"
+                style={{ backgroundColor: 'hsl(var(--tab-active))', minWidth: COL_MIN_WIDTH }}
               >
-                <div className="flex items-center gap-1">
-                  <span>{col.name}</span>
+                <div className="flex items-center gap-1 overflow-hidden">
+                  <span className="truncate">{col.name}</span>
                   {col.isPrimaryKey && (
-                    <span className="text-[9px] px-0.5 rounded bg-white/20 text-white">PK</span>
+                    <span className="text-[9px] px-0.5 rounded bg-white/20 text-white shrink-0">PK</span>
                   )}
                 </div>
               </th>
@@ -1584,12 +1636,17 @@ function VirtualTableBody({
           </tr>
         </thead>
         <tbody>
-          {virtualizer.getVirtualItems().map((virtualRow) => {
+          {/* Top spacer row for virtual scroll offset */}
+          {beforeHeight > 0 && (
+            <tr style={{ height: beforeHeight }}>
+              <td colSpan={columns.length + 1} style={{ padding: 0, border: 'none' }} />
+            </tr>
+          )}
+          {virtualItems.map((virtualRow) => {
             if (virtualRow.index >= rows.length) {
-              // Load-more sentinel row
               return (
                 <tr key="sentinel" style={{ height: 28 }}>
-                  <td colSpan={columns.length} className="border">
+                  <td colSpan={columns.length + 1} className="border">
                     <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
                       {isLoadingMore && <Loader2 size={12} className="animate-spin" />}
                       {isLoadingMore ? 'Loading...' : 'Scroll for more...'}
@@ -1599,17 +1656,33 @@ function VirtualTableBody({
               );
             }
             const row = rows[virtualRow.index];
+            const rowIdx = virtualRow.index;
+            const isSelected = selectedRows.has(rowIdx);
             return (
               <tr
                 key={virtualRow.key}
-                className="hover:bg-accent transition-colors even:bg-muted/60"
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 28, transform: `translateY(${virtualRow.start}px)` }}
+                className={`hover:bg-accent transition-colors even:bg-muted/60 ${isSelected ? 'ring-1 ring-inset ring-blue-400' : ''}`}
+                style={{ height: 28, backgroundColor: isSelected ? 'hsl(var(--accent))' : undefined }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  toggleRow(rowIdx, e.ctrlKey || e.metaKey, e.shiftKey);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  // Context menu will be added in later tasks
+                }}
               >
+                <td
+                  className="px-1.5 py-1 text-center border text-muted-foreground select-none"
+                  style={{ width: 36, minWidth: 36, fontSize: 10, cursor: 'pointer' }}
+                >
+                  {rowIdx + 1}
+                </td>
                 {columns.map((col: any) => (
                   <td
                     key={col.name}
                     className="px-3 py-1 whitespace-nowrap truncate border"
-                    style={{ minWidth: 120 }}
+                    style={{ minWidth: COL_MIN_WIDTH }}
                   >
                     <span className={row[col.name] === null ? "text-muted-foreground/40 italic" : "text-foreground"}>
                       {row[col.name] === null ? "NULL" : String(row[col.name])}
@@ -1619,9 +1692,15 @@ function VirtualTableBody({
               </tr>
             );
           })}
+          {/* Bottom spacer row for virtual scroll offset */}
+          {afterHeight > 0 && (
+            <tr style={{ height: afterHeight }}>
+              <td colSpan={columns.length + 1} style={{ padding: 0, border: 'none' }} />
+            </tr>
+          )}
         </tbody>
       </table>
-    </>
+    </div>
   );
 }
 
@@ -1636,8 +1715,6 @@ interface ResultTableProps {
 }
 
 function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore }: ResultTableProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
-
   if (importPreview) {
     const { columns, rows } = importPreview;
     return (
@@ -1648,9 +1725,10 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
               {columns.map((col: any) => (
                 <th
                   key={col}
-                  className="px-3 py-1.5 text-left font-medium text-white whitespace-nowrap border border-white/40"
+                  className="px-3 py-1.5 text-left font-medium text-white border border-white/30"
+                  style={{ minWidth: 120, maxWidth: 300 }}
                 >
-                  {col}
+                  <span className="truncate block">{col}</span>
                 </th>
               ))}
             </tr>
@@ -1688,31 +1766,31 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
   }
 
   const { columns, rows } = result;
-  const virtualCount = rows.length + (hasMore ? 1 : 0); // extra slot for sentinel
+  const virtualCount = rows.length + (hasMore ? 1 : 0);
 
   return (
     <div className="flex flex-col h-full">
-      <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
-        <div style={{ height: `${virtualCount * 28}px`, position: 'relative' }}>
-          <VirtualTableBody
-            rows={rows}
-            columns={columns}
-            parentRef={parentRef}
-            virtualCount={virtualCount}
-            hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
-            onLoadMore={onLoadMore}
-          />
-        </div>
-      </div>
+      <VirtualTableBody
+        rows={rows}
+        columns={columns}
+        virtualCount={virtualCount}
+        hasMore={hasMore}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={onLoadMore}
+      />
       {/* Bottom status bar */}
-      <div className="flex items-center px-3 py-1 border-t border-border shrink-0 bg-muted/20 text-[11px] text-muted-foreground">
-        {hasMore
-          ? t('scroll.rowsLoaded', { count: String(rows.length) })
-          : rows.length > 0
-            ? t('scroll.allLoaded', { count: String(rows.length) })
-            : null
-        }
+      <div className="flex items-center px-3 py-1 border-t border-border shrink-0 bg-muted/20 text-[11px] text-muted-foreground gap-2">
+        {rows.length > 0 && (
+          <span>
+            {hasMore
+              ? `${t('scroll.rowsLoaded', { count: String(rows.length) })} — ${t('scroll.scrollForMore')}`
+              : t('scroll.allLoaded', { count: String(rows.length) })
+            }
+          </span>
+        )}
+        {rows.length >= 10000 && !hasMore && (
+          <span className="text-yellow-500">({t('scroll.rowLimitReached')})</span>
+        )}
       </div>
     </div>
   );
