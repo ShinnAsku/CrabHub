@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import Editor, { type OnMount, loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -1565,7 +1565,7 @@ function TableContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
       let ax = x, ay = y;
@@ -1650,6 +1650,7 @@ function VirtualTableBody({
     setModifiedCells(new Map());
     setEditingCell(null);
     setEditValue('');
+    setContextMenu(null);
   }, [rows]);
 
   const virtualizer = useVirtualizer({
