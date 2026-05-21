@@ -22,6 +22,11 @@ import {
 } from "lucide-react";
 import { useAppStore, useUIStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
+import { AgentToolCard } from "@/components/AgentToolCard";
+import { AgentConfirmBar } from "@/components/AgentConfirmBar";
+// Reserved for agent event rendering in chat messages
+void AgentToolCard;
+void AgentConfirmBar;
 
 // ===== AI Settings Types =====
 
@@ -761,6 +766,15 @@ function AIPanel() {
               </button>
             </div>
           </div>
+
+          {/* Context indicator */}
+          {activeConnectionId && (
+            <div className="border-t border-border px-3 py-1 shrink-0">
+              <span className="text-[10px] text-muted-foreground">
+                Schema已注入 · 可执行操作
+              </span>
+            </div>
+          )}
 
           {/* Input Area */}
           <div className="border-t border-border p-2 shrink-0">

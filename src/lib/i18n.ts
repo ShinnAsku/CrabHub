@@ -252,6 +252,13 @@ const translations: Record<Language, Record<string, string>> = {
     'ai.explainSql': '解释SQL',
     'ai.optimizeSql': '优化SQL',
 
+    // ===== Agent =====
+    'agent.thinking': '思考中...',
+    'agent.toolCall': '调用工具',
+    'agent.confirmTitle': '需要确认',
+    'agent.execute': '执行',
+    'agent.ignore': '忽略',
+
     // ===== Status Bar =====
     'status.notConnected': '未连接',
     'status.transactionActive': '事务中',
@@ -961,6 +968,13 @@ const translations: Record<Language, Record<string, string>> = {
     'ai.analyzeData': 'Analyze Data',
     'ai.explainSql': 'Explain SQL',
     'ai.optimizeSql': 'Optimize SQL',
+
+    // ===== Agent =====
+    'agent.thinking': 'Thinking...',
+    'agent.toolCall': 'Tool Call',
+    'agent.confirmTitle': 'Needs Confirmation',
+    'agent.execute': 'Execute',
+    'agent.ignore': 'Ignore',
 
     // ===== Status Bar =====
     'status.notConnected': 'Not Connected',
