@@ -23,7 +23,7 @@ function ToolbarActions({
   onOpenImport: () => void;
   onOpenExport: () => void;
 }) {
-  const { aiPanelOpen, toggleAIPanel, setViewModeType } = useAppStore();
+  const { aiPanelOpen, toggleAIPanel } = useAppStore();
   const { addTab, tabs } = useTabStore();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -38,15 +38,10 @@ function ToolbarActions({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleNewQuery = useCallback(async () => {
+  const handleNewQuery = useCallback(() => {
     const queryCount = tabs.filter((t) => t.type === "query").length + 1;
     addTab({ title: `${t('tab.query')} ${queryCount}`, titleKey: 'tab.query', titleNum: queryCount, type: "query", content: "" });
-    setViewModeType("query");
-    setTimeout(() => {
-      const newActiveId = useTabStore.getState().activeTabId;
-      if (newActiveId) window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
-    }, 0);
-  }, [addTab, tabs.length, setViewModeType, t]);
+  }, [addTab, tabs.length, t]);
 
   const ICON_SIZE = 15;
   const BTN_CLS = "h-7 w-7";
