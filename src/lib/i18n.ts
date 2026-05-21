@@ -468,6 +468,8 @@ const translations: Record<Language, Record<string, string>> = {
     'table.changesPending': '{count} 个单元格已修改 — 点击"应用修改"保存',
     'table.discardChanges': '放弃修改',
     'table.editing': '编辑中',
+    'table.generateChart': '生成图表',
+    'table.chartType': '图表类型',
 
     // ===== MainLayout =====
     'layout.saved': '已保存',
@@ -1173,6 +1175,8 @@ const translations: Record<Language, Record<string, string>> = {
     'table.changesPending': '{count} cell(s) modified — click Apply Changes to save',
     'table.discardChanges': 'Discard Changes',
     'table.editing': 'Editing',
+    'table.generateChart': 'Generate Chart',
+    'table.chartType': 'Chart Type',
 
     // ===== MainLayout =====
     'layout.saved': 'Saved',

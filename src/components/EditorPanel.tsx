@@ -20,6 +20,7 @@ import {
   TextCursorInput,
   Brain,
   Lightbulb,
+  BarChart3,
 } from "lucide-react";
 import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
 import type { QueryResult, PagedQueryResult } from "@/types";
@@ -32,6 +33,7 @@ import TableDesigner from "./TableDesigner";
 import QueryAnalyzer from "./QueryAnalyzer";
 import NotebookView from "./notebook/NotebookView";
 import VisualQueryBuilder from "./query-builder/VisualQueryBuilder";
+import QuickChartPanel from "./QuickChartPanel";
 
 // SQL keywords for autocompletion
 const SQL_KEYWORDS = [
@@ -386,6 +388,7 @@ function QueryEditor() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [multiResults, setMultiResults] = useState<QueryResult[]>([]);
   const [activeResultIdx, setActiveResultIdx] = useState(0);
+  const [chartPanel, setChartPanel] = useState<{ columns: string[]; rows: Record<string, unknown>[] } | null>(null);
 
   // Scroll-to-load-more state for query results
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -1063,6 +1066,15 @@ function QueryEditor() {
     } catch {}
   }, [activeTabId, updateTabContent]);
 
+  const handleGenerateChart = useCallback(() => {
+    const selectedResult = multiResults[activeResultIdx];
+    if (!selectedResult || selectedResult.columns.length === 0) return;
+    setChartPanel({
+      columns: selectedResult.columns.map((c: any) => c.name),
+      rows: selectedResult.rows,
+    });
+  }, [multiResults, activeResultIdx]);
+
   const handleExport = useCallback(
     (format: "csv" | "json" | "sql") => {
       if (!result || result.columns.length === 0) return;
@@ -1605,6 +1617,7 @@ function QueryEditor() {
                       }]);
                     }
                   }}
+                  onGenerateChart={handleGenerateChart}
                 />
               )}
               {resultTab === "messages" && (
@@ -1631,6 +1644,14 @@ function QueryEditor() {
           </div>
         </Panel>
       </PanelGroup>
+
+      {chartPanel && (
+        <QuickChartPanel
+          columns={chartPanel.columns}
+          rows={chartPanel.rows}
+          onClose={() => setChartPanel(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1654,12 +1675,13 @@ interface TableContextMenuProps {
   onEditRow: () => void;
   onDeleteRows: () => void;
   onGenerateDeleteSQL: () => void;
+  onGenerateChart?: () => void;
 }
 
 function TableContextMenu({
   x, y, selectedCount, hasSelection, canEdit, onClose,
   onCopyRows, onCopyAsMarkdown, onExportCSV, onExportJSON, onExportSQL,
-  onEditRow, onDeleteRows, onGenerateDeleteSQL,
+  onEditRow, onDeleteRows, onGenerateDeleteSQL, onGenerateChart,
 }: TableContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
@@ -1704,6 +1726,7 @@ function TableContextMenu({
         {item(t('table.exportCSV'), onExportCSV, <Database size={12} />, !hasSelection)}
         {item(t('table.exportJSON'), onExportJSON, <Code2 size={12} />, !hasSelection)}
         {item(t('table.exportSQL'), onExportSQL, <Database size={12} />, !hasSelection)}
+        {item(t('table.generateChart'), () => onGenerateChart?.(), <BarChart3 size={12} />, !hasSelection)}
         <div className="border-t border-border my-1" />
         {item(t('table.editRow'), onEditRow, <TextCursorInput size={12} />, !canEdit || selectedCount !== 1)}
         {item(t('table.generateDeleteSQL'), onGenerateDeleteSQL, <Code2 size={12} />, !canEdit || !hasSelection)}
@@ -1719,6 +1742,7 @@ function VirtualTableBody({
   onModifiedCellsChange,
   onDeleteRows,
   onGenerateDeleteSQL,
+  onGenerateChart,
   discardRef,
   selectedRowsRef,
   sortConfig,
@@ -1734,6 +1758,7 @@ function VirtualTableBody({
   onModifiedCellsChange?: (count: number, getCells: () => Map<string, any>) => void;
   onDeleteRows?: () => void;
   onGenerateDeleteSQL?: () => void;
+  onGenerateChart?: () => void;
   discardRef?: React.MutableRefObject<(() => void) | null>;
   selectedRowsRef?: React.MutableRefObject<Set<number> | null>;
   sortConfig?: { key: string; direction: 'asc' | 'desc' } | null;
@@ -2109,6 +2134,9 @@ function VirtualTableBody({
           onGenerateDeleteSQL={() => {
             onGenerateDeleteSQL?.();
           }}
+          onGenerateChart={() => {
+            onGenerateChart?.();
+          }}
         />
       )}
     </div>
@@ -2126,9 +2154,10 @@ interface ResultTableProps {
   onApplyChanges?: (modifiedCells: Map<string, any>, columns: any[], rows: any[]) => void;
   onDeleteRows?: (rowIndices: number[]) => void;
   onGenerateDeleteSQL?: (rowIndices: number[]) => void;
+  onGenerateChart?: () => void;
 }
 
-function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore, onApplyChanges, onDeleteRows, onGenerateDeleteSQL }: ResultTableProps) {
+function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore, onApplyChanges, onDeleteRows, onGenerateDeleteSQL, onGenerateChart }: ResultTableProps) {
   const [modifiedCount, setModifiedCount] = useState(0);
   const modifiedCellsRef = useRef<() => Map<string, any>>(() => new Map());
   const discardRef = useRef<(() => void) | null>(null);
@@ -2216,6 +2245,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
         onModifiedCellsChange={handleModifiedCellsChange}
         onDeleteRows={() => onDeleteRows?.(Array.from(selectedRowsRef.current ?? new Set()))}
         onGenerateDeleteSQL={() => onGenerateDeleteSQL?.(Array.from(selectedRowsRef.current ?? new Set()))}
+        onGenerateChart={onGenerateChart}
         discardRef={discardRef}
         selectedRowsRef={selectedRowsRef}
         sortConfig={sortConfig}
