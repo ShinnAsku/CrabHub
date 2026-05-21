@@ -448,18 +448,41 @@ function QueryEditor() {
         }
       }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
     } else {
-      // Load actual databases (not schemas) for PostgreSQL, GaussDB, etc.
+      // Load databases for PostgreSQL, GaussDB, etc.
+      // Fall back to schemas if getDatabases returns empty
+      const timeout = setTimeout(() => setLoadingDatabases(false), 8000);
       getDatabases(effectiveConnectionId).then((dbs) => {
-        setDatabaseList(dbs);
-        // Use connection's specified database as default, or the first one
-        if (conn.database && dbs.includes(conn.database)) {
-          setSelectedDatabase(conn.database);
-        } else if (dbs.length > 0 && !selectedDatabase) {
-          setSelectedDatabase(dbs[0] || "");
+        clearTimeout(timeout);
+        if (dbs.length > 0) {
+          setDatabaseList(dbs);
+          if (conn.database && dbs.includes(conn.database)) {
+            setSelectedDatabase(conn.database);
+          } else if (!selectedDatabase) {
+            setSelectedDatabase(dbs[0] || "");
+          }
+        } else {
+          // Fallback: load schemas
+          getSchemas(effectiveConnectionId).then((schemas) => {
+            setDatabaseList(schemas);
+            if (!selectedDatabase && schemas.length > 0) {
+              setSelectedDatabase(schemas[0] || "");
+            }
+          }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
+          return;
         }
-      }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
+        setLoadingDatabases(false);
+      }).catch(() => {
+        clearTimeout(timeout);
+        // Fallback to schemas on error
+        getSchemas(effectiveConnectionId).then((schemas) => {
+          setDatabaseList(schemas);
+          if (!selectedDatabase && schemas.length > 0) {
+            setSelectedDatabase(schemas[0] || "");
+          }
+        }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
+      });
     }
-  }, [effectiveConnectionId, connections]);
+  }, [effectiveConnectionId]); // Only re-run when connection changes
 
   // Handle connection change
   const handleConnectionChange = useCallback((connId: string) => {
