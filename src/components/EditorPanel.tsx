@@ -26,7 +26,7 @@ import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stor
 import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQuery, executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
@@ -736,39 +736,33 @@ function QueryEditor() {
     const newLoadMoreState: Record<number, { hasMore: boolean; currentOffset: number; originalSql: string }> = {};
 
     try {
-      // Single IPC call — send ALL statements at once
-      const batchStart = performance.now();
-      const rawResults = await executeBatch(effectiveConnectionId, statements);
-      const batchElapsed = performance.now() - batchStart;
-
-      for (let idx = 0; idx < rawResults.length; idx++) {
-        const sql = statements[idx]!;
-        const raw = rawResults[idx]!;
-        if (raw?.type === 'empty') continue;
-        if (raw?.type === 'error') {
-          allMessages.push(`[${idx + 1}/${statements.length}] 错误: ${raw.message}`);
-          continue;
-        }
-        const isSelect = isSelectQuery(sql);
-        const queryResult: QueryResult = isSelect ? raw : { columns: [], rows: [], rowCount: 0, duration: raw?.duration ?? 0 };
-        const hasMore = isSelect ? (raw?.hasMore ?? false) : false;
-        const dbTime = (queryResult as any).duration ?? (queryResult as any).executionTimeMs ?? 0;
-        // Distribute batch time evenly for display
-        const stmtElapsed = batchElapsed / rawResults.length;
-        if (queryResult.columns?.length > 0 || queryResult.rows?.length > 0) {
-          const resultIdx = collectedResults.length;
-          collectedResults.push(queryResult);
-          newLoadMoreState[resultIdx] = { hasMore, currentOffset: queryResult.rows?.length ?? 0, originalSql: sql };
-          const prefix = statements.length > 1 ? `[${idx + 1}/${statements.length}] ` : '';
-          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(queryResult.rowCount ?? 0), ms: stmtElapsed.toFixed(0) })} (DB: ${dbTime.toFixed(0)}ms | 总批: ${batchElapsed.toFixed(0)}ms)`);
-          addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: queryResult.rowCount || 0 });
+      // Execute all statements in parallel via Promise.all
+      const allResults = await Promise.all(statements.map(async (sql, idx) => {
+        const stmtStart = performance.now();
+        if (isSelectQuery(sql)) {
+          const pagedResult = await executeQueryPaged(effectiveConnectionId, sql, QUERY_PAGE_SIZE, 0);
+          const elapsed = performance.now() - stmtStart;
+          return { idx, sql, type: 'select' as const, result: pagedResult, hasMore: pagedResult.hasMore, elapsed };
         } else {
-          allMessages.push(
-            statements.length > 1
-              ? `[${idx + 1}/${statements.length}] ${t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })} (总批: ${batchElapsed.toFixed(0)}ms)`
-              : t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })
-          );
-          addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: 0 });
+          const execResult = await executeSql(effectiveConnectionId, sql);
+          const elapsed = performance.now() - stmtStart;
+          return { idx, sql, type: 'exec' as const, elapsed, message: execResult.message };
+        }
+      }));
+
+      // Process in original order
+      allResults.sort((a, b) => a.idx - b.idx);
+      for (const r of allResults) {
+        if (r.type === 'select') {
+          collectedResults.push(r.result);
+          newLoadMoreState[collectedResults.length - 1] = { hasMore: r.hasMore, currentOffset: r.result.rows.length, originalSql: r.sql };
+          const prefix = statements.length > 1 ? `[${allResults.indexOf(r) + 1}/${statements.length}] ` : '';
+          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(r.result.rowCount), ms: r.elapsed.toFixed(0) })}`);
+          addQueryHistory({ connectionId: effectiveConnectionId, sql: r.sql, duration: r.elapsed, timestamp: new Date(), rowCount: r.result.rowCount || 0 });
+        } else {
+          const prefix = statements.length > 1 ? `[${allResults.indexOf(r) + 1}/${statements.length}] ` : '';
+          allMessages.push(`${prefix}${t('editor.executeSuccess', { message: r.message || '', ms: r.elapsed.toFixed(0) })}`);
+          addQueryHistory({ connectionId: effectiveConnectionId, sql: r.sql, duration: r.elapsed, timestamp: new Date(), rowCount: 0 });
         }
       }
 
