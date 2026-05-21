@@ -1153,10 +1153,13 @@ function QueryEditor() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full">
-      {/* Unified toolbar: tabs + controls in one row */}
-      <div className="flex items-center h-9 border-b border-border shrink-0 bg-muted/20 overflow-hidden">
+      {/* Tabs row */}
+      <div className="flex items-center h-8 border-b border-border shrink-0 bg-muted/20 overflow-hidden">
         <TabBar />
-        <div className="flex items-center gap-2 px-2 ml-auto shrink-0">
+      </div>
+      {/* Controls row */}
+      <div className="flex items-center h-8 border-b border-border shrink-0 bg-muted/20">
+        <div className="flex items-center gap-2 px-2">
           {/* Connection selector */}
           <select
             value={effectiveConnectionId || ""}
