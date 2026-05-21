@@ -36,6 +36,8 @@ impl ClickHouseConnection {
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .pool_max_idle_per_host(5)
+            .pool_idle_timeout(Some(std::time::Duration::from_secs(90)))
             .build()
             .map_err(|e| {
                 DbError::ConnectionError(format!("Failed to create HTTP client: {}", e))
