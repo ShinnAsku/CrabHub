@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Plug } from "lucide-react";
 import { useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
 import type { Connection } from "@/types";
 import { t } from "@/lib/i18n";
@@ -289,6 +290,14 @@ function MainLayout() {
 
       {/* Unified Navigation Bar (Toolbar + TabBar merged) */}
       <div className="flex items-center h-9 bg-background border-b border-border shrink-0">
+        {/* New Connection — always visible */}
+        <button
+          onClick={() => handleOpenConnectionDialog()}
+          className="flex items-center justify-center w-8 h-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 border-r border-border"
+          title={t('toolbar.newConnection')}
+        >
+          <Plug size={14} />
+        </button>
         <TabBar />
         <ToolbarActions
           onOpenConnectionDialog={() => handleOpenConnectionDialog()}
@@ -299,7 +308,6 @@ function MainLayout() {
           onOpenDataMigration={() => setDataMigrationOpen(true)}
           onOpenImport={() => setImportExportMode("import")}
           onOpenExport={() => setImportExportMode("export")}
-          connections={connections}
         />
       </div>
 
