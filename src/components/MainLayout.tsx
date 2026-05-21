@@ -214,7 +214,7 @@ function MainLayout() {
         toast.textContent = t('layout.saved');
         toast.style.cssText = `
           position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-          background: var(--tab-active); color: white; padding: 6px 16px;
+          background: hsl(var(--tab-active)); color: white; padding: 6px 16px;
           border-radius: 6px; font-size: 12px; z-index: 9999;
           animation: fadeInOut 1.5s ease-in-out forwards;
         `;
@@ -319,18 +319,15 @@ function MainLayout() {
             <Sidebar openConnectionDialog={handleOpenConnectionDialog} />
           </Panel>
         )}
-        {sidebarOpen && <PanelResizeHandle className="w-px bg-border hover:bg-[var(--tab-active)] transition-colors cursor-col-resize opacity-0 hover:opacity-100" />}
+        {sidebarOpen && <PanelResizeHandle className="w-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-col-resize opacity-0 hover:opacity-100" />}
 
         {/* Center: Editor or Navicat Panel */}
         <Panel>
           <ErrorBoundary>
           {(() => {
             const activeTab = tabs.find(t => t.id === activeTabId);
-            // Show EditorPanel: when no connection, OR when active tab is a query/editor type
-            const isQueryTab = activeTab && ['query', 'notebook', 'query-builder', 'designer', 'analyzer'].includes(activeTab.type);
-            if (!activeConnection || isQueryTab) {
-              return <EditorPanel />;
-            }
+            const isEditorTab = activeTab && ['query', 'notebook', 'query-builder', 'designer', 'analyzer'].includes(activeTab.type);
+            if (!activeConnection || isEditorTab) return <EditorPanel />;
             return <CrabHubMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />;
           })()}
           </ErrorBoundary>

@@ -907,7 +907,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
           onClick={() => setActiveView("objects")}
           className={`flex items-center gap-1 px-2 py-1 text-xs border-t-2 transition-colors shrink-0 ${
             showObjectsView
-              ? "border-[var(--tab-active)] bg-background text-foreground"
+              ? "border-[hsl(var(--tab-active))] bg-background text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
         >
@@ -922,7 +922,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
             onClick={() => setActiveView(tab.id)}
             className={`group flex items-center gap-1 px-3 py-1 text-xs border-t-2 cursor-pointer transition-colors shrink-0 ${
               activeView === tab.id
-                ? "border-[var(--tab-active)] bg-background text-foreground"
+                ? "border-[hsl(var(--tab-active))] bg-background text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -952,7 +952,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
             onClick={() => setActiveView(`query:${tab.id}`)}
             className={`group flex items-center gap-1 px-3 py-1 text-xs border-t-2 cursor-pointer transition-colors shrink-0 ${
               activeView === `query:${tab.id}`
-                ? "border-[var(--tab-active)] bg-background text-foreground"
+                ? "border-[hsl(var(--tab-active))] bg-background text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -1085,7 +1085,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                         placeholder={t('common.search')}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-6 pr-2 py-0.5 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
+                        className="w-full pl-6 pr-2 py-0.5 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
                       />
                     </div>
                   </div>
@@ -1119,7 +1119,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                             </>
                           )}
                         </colgroup>
-                        <thead className="sticky top-0" style={{ backgroundColor: 'var(--tab-active)' }}>
+                        <thead className="sticky top-0" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
                           {activeConnection?.type === 'mysql' ? (
                             <tr>
                               <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t('common.name')}</th>
@@ -1161,7 +1161,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                   onDoubleClick={() => handleOpenTableTab(table)}
                                   onContextMenu={(e) => handleTableContextMenu(e, table)}
                                   className={`cursor-pointer hover:bg-muted/50 ${
-                                    selectedTableId === table.id ? "bg-[var(--tab-active)]/10" : ""
+                                    selectedTableId === table.id ? "bg-[hsl(var(--tab-active))]/10" : ""
                                   }`}
                                 >
                                   <td className="px-2 py-1 truncate border">
@@ -1192,7 +1192,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                               onDoubleClick={() => handleOpenTableTab(table)}
                               onContextMenu={(e) => handleTableContextMenu(e, table)}
                               className={`cursor-pointer hover:bg-muted/50 ${
-                                selectedTableId === table.id ? "bg-[var(--tab-active)]/10" : ""
+                                selectedTableId === table.id ? "bg-[hsl(var(--tab-active))]/10" : ""
                               }`}
                             >
                               <td className="px-2 py-1 truncate border">
@@ -1222,7 +1222,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                             onDoubleClick={() => handleOpenTableTab(table)}
                             onContextMenu={(e) => handleTableContextMenu(e, table)}
                             className={`flex flex-col items-center p-2 rounded cursor-pointer hover:bg-muted/50 ${
-                              selectedTableId === table.id ? "bg-[var(--tab-active)]/10" : ""
+                              selectedTableId === table.id ? "bg-[hsl(var(--tab-active))]/10" : ""
                             }`}
                           >
                             {table.type === "view" ? <Eye size={24} className="mb-1" /> : <Table size={24} className="mb-1" />}
@@ -1243,11 +1243,11 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                     <div className="flex-1 overflow-auto">
                       {columnsLoading ? (
                         <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                          <div className="w-4 h-4 border-2 border-muted-foreground border-t-[var(--tab-active)] rounded-full animate-spin"></div>
+                          <div className="w-4 h-4 border-2 border-muted-foreground border-t-[hsl(var(--tab-active))] rounded-full animate-spin"></div>
                         </div>
                       ) : selectedColumns && selectedColumns.length > 0 ? (
                         <table className="w-full text-xs border-collapse border">
-                          <thead className="sticky top-0" style={{ backgroundColor: 'var(--tab-active)' }}>
+                          <thead className="sticky top-0" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
                             <tr>
                               <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">名称</th>
                               <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">类型</th>
@@ -1411,7 +1411,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                     {loading ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                         <div className="flex flex-col items-center">
-                          <div className="w-8 h-8 border-4 border-muted-foreground border-t-[var(--tab-active)] rounded-full animate-spin mb-2"></div>
+                          <div className="w-8 h-8 border-4 border-muted-foreground border-t-[hsl(var(--tab-active))] rounded-full animate-spin mb-2"></div>
                           <span>{t('common.loading')}</span>
                         </div>
                       </div>
@@ -1424,7 +1424,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                       </div>
                     ) : selectedTableData ? (
                       <table className="w-full text-xs border-collapse border">
-                        <thead className="sticky top-0 z-10" style={{ backgroundColor: 'var(--tab-active)' }}>
+                        <thead className="sticky top-0 z-10" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
                           <tr>
                             {/* Select All checkbox */}
                             <th className="px-1 py-1 text-center border border-white/30 w-[30px]">
@@ -1463,7 +1463,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                 <td className="px-1 py-0.5 text-center border">
                                   <input
                                     type="checkbox"
-                                    className="w-3 h-3 accent-[var(--tab-active)]"
+                                    className="w-3 h-3 accent-[hsl(var(--tab-active))]"
                                     checked={isSelected}
                                     onChange={(e) => {
                                       setSelectedRowIndices(prev => {
@@ -1490,7 +1490,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                           type="text"
                                           autoFocus
                                           defaultValue={value === null || value === undefined ? "" : String(value)}
-                                          className="w-full px-2 py-0.5 text-xs bg-background outline-none border-2 border-[var(--tab-active)]"
+                                          className="w-full px-2 py-0.5 text-xs bg-background outline-none border-2 border-[hsl(var(--tab-active))]"
                                           onBlur={(e) => {
                                             const newVal = e.target.value;
                                             const origVal = row[col.name];
@@ -1546,12 +1546,12 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                               <tr
                                 key={`new-${nIdx}`}
                                 className={`transition-colors ${isSelected ? 'bg-blue-500/10' : 'bg-green-500/5 hover:bg-green-500/10'}`}
-                                style={{ borderLeft: '3px solid var(--tab-active)' }}
+                                style={{ borderLeft: '3px solid hsl(var(--tab-active))' }}
                               >
                                 <td className="px-1 py-0.5 text-center border">
                                   <input
                                     type="checkbox"
-                                    className="w-3 h-3 accent-[var(--tab-active)]"
+                                    className="w-3 h-3 accent-[hsl(var(--tab-active))]"
                                     checked={isSelected}
                                     onChange={(e) => {
                                       setSelectedRowIndices(prev => {
@@ -1573,7 +1573,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                           type="text"
                                           autoFocus
                                           defaultValue={value === null || value === undefined ? "" : String(value)}
-                                          className="w-full px-2 py-0.5 text-xs bg-background outline-none border-2 border-[var(--tab-active)]"
+                                          className="w-full px-2 py-0.5 text-xs bg-background outline-none border-2 border-[hsl(var(--tab-active))]"
                                           onBlur={(e) => {
                                             const newVal = e.target.value === "" ? null : e.target.value;
                                             setNewRows(prev => prev.map((r, i) => i === nIdx ? { ...r, [col.name]: newVal } : r));
@@ -1639,7 +1639,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
           <div className="fixed inset-0 z-50" onClick={() => setTableContextMenu(null)} />
           <div
             className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[180px]"
-            style={{ left: tableContextMenu.x, top: tableContextMenu.y, backgroundColor: 'var(--popover)', color: 'var(--popover-foreground)' }}
+            style={{ left: tableContextMenu.x, top: tableContextMenu.y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
           >
             <button
               onClick={() => { handleOpenTableTab(tableContextMenu.table); setTableContextMenu(null); }}
@@ -1685,7 +1685,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                   <div className="absolute left-full top-0 ml-0 hidden group-hover/dup:block z-[60]">
                     <div
                       className="border border-border rounded-md shadow-lg py-1 min-w-[150px]"
-                      style={{ backgroundColor: 'var(--popover)', color: 'var(--popover-foreground)' }}
+                      style={{ backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
                     >
                       <button
                         onClick={() => { handleDuplicateTable(tableContextMenu.table, true); setTableContextMenu(null); }}

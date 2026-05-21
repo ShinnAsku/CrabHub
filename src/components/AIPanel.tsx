@@ -114,7 +114,7 @@ function AISettingsDialog({
                 onChange={(e) =>
                   handleProviderChange(e.target.value as AISettings["provider"])
                 }
-                className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground cursor-pointer pr-8"
+                className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground cursor-pointer pr-8"
               >
                 {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
                   <option key={key} value={key}>
@@ -136,7 +136,7 @@ function AISettingsDialog({
               type="text"
               value={form.endpoint}
               onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
-              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground"
+              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground"
             />
           </div>
 
@@ -148,7 +148,7 @@ function AISettingsDialog({
               value={form.apiKey}
               onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
               placeholder={form.provider === "ollama" ? t('ai.noApiKey') : "sk-..."}
-              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
             />
           </div>
 
@@ -159,7 +159,7 @@ function AISettingsDialog({
               type="text"
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
-              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground"
+              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground"
             />
           </div>
 
@@ -177,7 +177,7 @@ function AISettingsDialog({
               onChange={(e) =>
                 setForm({ ...form, temperature: parseFloat(e.target.value) })
               }
-              className="w-full accent-[var(--tab-active)]"
+              className="w-full accent-[hsl(var(--tab-active))]"
             />
           </div>
         </div>
@@ -638,7 +638,7 @@ function AIPanel() {
       >
         <div className="flex items-center gap-1.5">
           <GripHorizontal size={12} className="text-muted-foreground/50" />
-          <Bot size={13} className="text-[var(--tab-active)]" />
+          <Bot size={13} className="text-[hsl(var(--tab-active))]" />
           <span className="text-xs font-medium text-foreground">
             {t('ai.title')}
           </span>
@@ -688,7 +688,7 @@ function AIPanel() {
                   className={`w-5 h-5 rounded flex items-center justify-center shrink-0 mt-0.5 ${
                     msg.role === "user"
                       ? "bg-accent text-accent-foreground"
-                      : "bg-[var(--tab-active)] text-white"
+                      : "bg-[hsl(var(--tab-active))] text-white"
                   }`}
                 >
                   {msg.role === "user" ? (

@@ -141,7 +141,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
   const availableColumns = cell.result?.columns || [];
 
   return (
-    <div className={`border rounded-lg overflow-hidden ${isActive ? "border-[var(--tab-active)]" : "border-border"} ${isExpanded ? "" : "h-12"}`}>
+    <div className={`border rounded-lg overflow-hidden ${isActive ? "border-[hsl(var(--tab-active))]" : "border-border"} ${isExpanded ? "" : "h-12"}`}>
       {/* Cell Header */}
       <div className="flex items-center justify-between bg-muted px-4 py-2">
         <div className="flex items-center space-x-2">
@@ -152,7 +152,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="bg-background text-foreground px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)] border border-border"
+                className="bg-background text-foreground px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] border border-border"
                 autoFocus
                 onBlur={handleNameSubmit}
               />
@@ -263,7 +263,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
                       <button
                         onClick={() => setViewMode("table")}
                         className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                          viewMode === "table" ? "bg-[var(--tab-active)] text-white" : "text-muted-foreground hover:bg-muted"
+                          viewMode === "table" ? "bg-[hsl(var(--tab-active))] text-white" : "text-muted-foreground hover:bg-muted"
                         }`}
                       >
                         <Table size={12} />
@@ -272,7 +272,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
                       <button
                         onClick={() => setViewMode("chart")}
                         className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                          viewMode === "chart" ? "bg-[var(--tab-active)] text-white" : "text-muted-foreground hover:bg-muted"
+                          viewMode === "chart" ? "bg-[hsl(var(--tab-active))] text-white" : "text-muted-foreground hover:bg-muted"
                         }`}
                       >
                         <BarChart3 size={12} />

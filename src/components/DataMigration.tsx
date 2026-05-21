@@ -498,7 +498,7 @@ function DataMigration({ isOpen, onClose }: DataMigrationProps) {
 
               <div className="border border-border rounded overflow-hidden max-h-[350px] overflow-y-auto">
                 <table className="w-full text-xs border-collapse border">
-                  <thead className="sticky top-0" style={{ backgroundColor: 'var(--tab-active)' }}>
+                  <thead className="sticky top-0" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
                     <tr>
                       <th className="px-3 py-2 text-left font-medium text-white border border-white/30 w-8">
                         <input

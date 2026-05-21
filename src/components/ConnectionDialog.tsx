@@ -517,7 +517,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t('connection.namePlaceholder')}
-                className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
               />
             </div>
 
@@ -528,7 +528,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as Connection["type"])}
-                  className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground cursor-pointer pr-8"
+                  className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground cursor-pointer pr-8"
                 >
                   {getAllDbTypes().map((db) => (
                     <option key={db.value} value={db.value}>
@@ -557,7 +557,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                         name="sqliteMode"
                         checked={sqliteMode === "existing"}
                         onChange={() => { setSqliteMode("existing"); setFilePath(""); }}
-                        className="accent-[var(--tab-active)]"
+                        className="accent-[hsl(var(--tab-active))]"
                       />
                       {t('connection.sqliteExisting')}
                     </label>
@@ -567,7 +567,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                         name="sqliteMode"
                         checked={sqliteMode === "new"}
                         onChange={() => { setSqliteMode("new"); setFilePath(""); }}
-                        className="accent-[var(--tab-active)]"
+                        className="accent-[hsl(var(--tab-active))]"
                       />
                       {t('connection.sqliteNew')}
                     </label>
@@ -583,7 +583,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       value={filePath}
                       onChange={(e) => setFilePath(e.target.value)}
                       placeholder={sqliteMode === "new" ? t('connection.sqliteNewPlaceholder') : "/path/to/database.db"}
-                      className="flex-1 px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                      className="flex-1 px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
                     />
                     <button
                       onClick={handleBrowse}
@@ -606,7 +606,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       value={host}
                       onChange={(e) => setHost(e.target.value)}
                       placeholder="localhost"
-                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
                     />
                   </div>
                   <div className="w-24 space-y-1">
@@ -615,7 +615,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       type="number"
                       value={port}
                       onChange={(e) => setPort(Number(e.target.value))}
-                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground"
+                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground"
                     />
                   </div>
                 </div>
@@ -629,7 +629,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder={type === "clickhouse" ? "default" : type === "postgresql" ? "postgres" : type === "gaussdb" ? "gaussdb" : "root"}
-                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
                     />
                   </div>
                   <div className="flex-1 space-y-1">
@@ -640,7 +640,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder={t('connection.passwordPlaceholder')}
-                        className="w-full px-2.5 py-1.5 pr-7 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                        className="w-full px-2.5 py-1.5 pr-7 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
                       />
                       <button
                         type="button"
@@ -664,7 +664,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       value={database}
                       onChange={(e) => setDatabase(e.target.value)}
                       placeholder={type === "gaussdb" ? "gaussdb" : "postgres"}
-                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                      className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
                     />
                   </div>
                 )}
@@ -686,7 +686,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   onChange={(e) => setKeepaliveInterval(Math.max(0, Number(e.target.value)))}
                   min={0}
                   max={600}
-                  className="w-16 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground"
+                  className="w-16 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
                 />
                 <span className="text-[11px] text-muted-foreground">{t('connection.seconds')}</span>
                 <span className="text-[11px] text-muted-foreground/60">({t('connection.keepaliveHint')})</span>
@@ -720,7 +720,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 value={database}
                 onChange={(e) => setDatabase(e.target.value)}
                 placeholder="(Optional)"
-                className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] transition-colors text-foreground placeholder:text-muted-foreground/60"
+                className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
               />
             </div>
           </div>
@@ -754,7 +754,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     value={sslCaCert}
                     onChange={(e) => setSslCaCert(e.target.value)}
                     placeholder="/path/to/ca-cert.pem"
-                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
+                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
                   />
                 </div>
                 <div className="space-y-1">
@@ -764,7 +764,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     value={sslClientCert}
                     onChange={(e) => setSslClientCert(e.target.value)}
                     placeholder="/path/to/client-cert.pem"
-                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
+                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
                   />
                 </div>
                 <div className="space-y-1">
@@ -774,7 +774,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     value={sslClientKey}
                     onChange={(e) => setSslClientKey(e.target.value)}
                     placeholder="/path/to/client-key.pem"
-                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
+                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
                   />
                 </div>
               </div>
@@ -810,7 +810,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       value={sshHost}
                       onChange={(e) => setSshHost(e.target.value)}
                       placeholder="ssh.example.com"
-                      className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
+                      className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
                     />
                   </div>
                   <div className="w-20 space-y-1">
@@ -819,7 +819,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       type="number"
                       value={sshPort}
                       onChange={(e) => setSshPort(Number(e.target.value))}
-                      className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground"
+                      className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
                     />
                   </div>
                 </div>
@@ -830,7 +830,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     value={sshUsername}
                     onChange={(e) => setSshUsername(e.target.value)}
                     placeholder="ssh_user"
-                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
+                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
                   />
                 </div>
                 <div className="space-y-1">
@@ -840,7 +840,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     value={sshPassword}
                     onChange={(e) => setSshPassword(e.target.value)}
                     placeholder={t('connection.sshPasswordPlaceholder')}
-                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
+                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
                   />
                 </div>
                 <div className="space-y-1">
@@ -850,7 +850,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     onChange={(e) => setSshPrivateKey(e.target.value)}
                     placeholder={t('connection.privateKeyPlaceholder')}
                     rows={3}
-                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60 resize-none font-mono"
+                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60 resize-none font-mono"
                   />
                 </div>
               </div>
@@ -899,7 +899,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors whitespace-nowrap ${
                   activeTab === tab.id
-                    ? "text-[var(--tab-active)] border-b-2 border-[var(--tab-active)]"
+                    ? "text-[hsl(var(--tab-active))] border-b-2 border-[hsl(var(--tab-active))]"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
                 }`}
               >

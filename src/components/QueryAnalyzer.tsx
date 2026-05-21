@@ -1036,7 +1036,7 @@ export default function QueryAnalyzer({
           value={sql}
           onChange={(e) => setSql(e.target.value)}
           placeholder={t('analyzer.inputPlaceholder')}
-          className="w-full h-20 bg-muted/50 rounded p-2 text-sm font-mono resize-none border border-border focus:border-[var(--tab-active)] outline-none text-foreground"
+          className="w-full h-20 bg-muted/50 rounded p-2 text-sm font-mono resize-none border border-border focus:border-[hsl(var(--tab-active))] outline-none text-foreground"
           onKeyDown={(e) => {
             if (e.ctrlKey && e.key === 'Enter') {
               e.preventDefault();
@@ -1049,7 +1049,7 @@ export default function QueryAnalyzer({
             <button
               onClick={runExplain}
               disabled={loading || !sql.trim() || !connectionId}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-[var(--tab-active)] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-[hsl(var(--tab-active))] text-white rounded hover:opacity-90 transition-opacity disabled:opacity-40"
             >
               {loading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
               {t('analyzer.runExplain')}
@@ -1079,7 +1079,7 @@ export default function QueryAnalyzer({
             onClick={() => setActiveView(key)}
             className={`px-2.5 py-1.5 text-xs transition-colors ${
               activeView === key
-                ? 'text-foreground border-b-2 border-[var(--tab-active)]'
+                ? 'text-foreground border-b-2 border-[hsl(var(--tab-active))]'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -1141,7 +1141,7 @@ export default function QueryAnalyzer({
                 type="number"
                 value={slowQueryThreshold}
                 onChange={handleThresholdChange}
-                className="w-20 px-1.5 py-0.5 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground"
+                className="w-20 px-1.5 py-0.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
                 min={0}
                 step={100}
               />

@@ -1351,25 +1351,25 @@ function TreeNodeItem({
       case 'database':
         return <DatabaseIcon type={connectionType || ''} connected={true} size={12} />;
       case 'schema':
-        return <Layers size={12} className="text-tree-schema" />;
+        return <Layers size={12} className="text-[hsl(var(--tree-schema))]" />;
       case 'tables':
-        return <TableIcon size={12} className="text-tree-table" />;
+        return <TableIcon size={12} className="text-[hsl(var(--tree-table))]" />;
       case 'views':
-        return <Eye size={12} className="text-tree-view" />;
+        return <Eye size={12} className="text-[hsl(var(--tree-view))]" />;
       case 'functions':
-        return <FileText size={12} className="text-tree-function" />;
+        return <FileText size={12} className="text-[hsl(var(--tree-function))]" />;
       case 'procedures':
-        return <Settings size={12} className="text-tree-procedure" />;
+        return <Settings size={12} className="text-[hsl(var(--tree-procedure))]" />;
       case 'events':
         return <Calendar size={12} className="text-pink-500" />;
       case 'triggers':
-        return <Zap size={12} className="text-tree-trigger" />;
+        return <Zap size={12} className="text-[hsl(var(--tree-trigger))]" />;
       case 'table':
-        return <TableIcon size={12} className="text-tree-table" />;
+        return <TableIcon size={12} className="text-[hsl(var(--tree-table))]" />;
       case 'view':
-        return <Eye size={12} className="text-tree-view" />;
+        return <Eye size={12} className="text-[hsl(var(--tree-view))]" />;
       case 'function':
-        return <FileText size={12} className="text-tree-function" />;
+        return <FileText size={12} className="text-[hsl(var(--tree-function))]" />;
       default:
         return <Folder size={12} />;
     }
@@ -1532,7 +1532,7 @@ function ConnectionItem({
     <div
       className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer text-xs border-l-2 transition-colors ${
         isActive
-          ? "bg-[var(--tab-active)]/10 border-[var(--tab-active)] text-foreground"
+          ? "bg-[hsl(var(--tab-active))]/10 border-[hsl(var(--tab-active))] text-foreground"
           : "border-transparent hover:bg-muted/50 text-foreground"
       }`}
       onClick={onClick}
@@ -1636,7 +1636,7 @@ function EmptyConnectionList({ openConnectionDialog }: { openConnectionDialog: (
       </p>
       <button
         onClick={() => openConnectionDialog()}
-        className="flex items-center gap-1.5 px-4 py-2 bg-[var(--tab-active)] text-white rounded text-xs hover:opacity-90 transition-opacity"
+        className="flex items-center gap-1.5 px-4 py-2 bg-[hsl(var(--tab-active))] text-white rounded text-xs hover:opacity-90 transition-opacity"
       >
         <Plus size={14} />
         <span>新建连接</span>
@@ -1750,7 +1750,7 @@ function ContextMenu({ x, y, connectionId, onClose, openConnectionDialog, expand
       <div className="fixed inset-0 z-50" onClick={onClose} />
       <div
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
-        style={{ left: x, top: y, backgroundColor: 'var(--popover)', color: 'var(--popover-foreground)' }}
+        style={{ left: x, top: y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
       >
         <div className="px-3 py-1.5 text-xs font-medium border-b border-border mb-1">
           {connection.name}
@@ -1874,7 +1874,7 @@ function TreeNodeContextMenu({ x, y, node, onClose, onRefresh, onCopyName, onNew
       <div className="fixed inset-0 z-50" onClick={onClose} />
       <div
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
-        style={{ left: x, top: y, backgroundColor: 'var(--popover)', color: 'var(--popover-foreground)' }}
+        style={{ left: x, top: y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
       >
         <div className="px-3 py-1.5 text-xs font-medium border-b border-border mb-1">
           {node.name}
@@ -1946,7 +1946,7 @@ function TreeNodeContextMenu({ x, y, node, onClose, onRefresh, onCopyName, onNew
               <div className="absolute left-full top-0 ml-0 hidden group-hover/dup:block z-[60]">
                 <div
                   className="border border-border rounded-md shadow-lg py-1 min-w-[150px]"
-                  style={{ backgroundColor: 'var(--popover)', color: 'var(--popover-foreground)' }}
+                  style={{ backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
                 >
                   <button
                     onClick={handleDuplicateStructureAndDataClick}

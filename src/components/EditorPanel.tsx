@@ -1235,7 +1235,7 @@ function QueryEditor() {
           <select
             value={effectiveConnectionId || ""}
             onChange={(e) => handleConnectionChange(e.target.value)}
-            className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[180px] truncate focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
+            className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[180px] truncate focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
             title={t('sidebar.connections')}
           >
             <option value="" disabled>{t('sidebar.connections')}</option>
@@ -1250,7 +1250,7 @@ function QueryEditor() {
             value={selectedDatabase}
             onChange={(e) => handleDatabaseChange(e.target.value)}
             disabled={!effectiveConnectionId || databaseList.length === 0}
-            className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[160px] truncate focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)] disabled:opacity-40"
+            className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[160px] truncate focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] disabled:opacity-40"
             title={activeConnection?.type === 'mysql' ? 'Database' : 'Schema'}
           >
             {loadingDatabases ? (
@@ -1442,7 +1442,7 @@ function QueryEditor() {
         </Panel>
 
         {/* Resize Handle */}
-        <PanelResizeHandle className="h-px bg-border hover:bg-[var(--tab-active)] transition-colors cursor-row-resize opacity-0 hover:opacity-100" />
+        <PanelResizeHandle className="h-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-row-resize opacity-0 hover:opacity-100" />
 
         {/* Result Panel */}
         <Panel defaultSize={40} minSize={10}>
@@ -1463,7 +1463,7 @@ function QueryEditor() {
                         }}
                         className={`px-2.5 py-1 text-xs transition-colors ${
                           resultTab === "results" && activeResultIdx === idx
-                            ? "text-foreground border-b-2 border-[var(--tab-active)]"
+                            ? "text-foreground border-b-2 border-[hsl(var(--tab-active))]"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -1474,7 +1474,7 @@ function QueryEditor() {
                       onClick={() => setResultTab("messages")}
                       className={`px-2.5 py-1 text-xs transition-colors ${
                         resultTab === "messages"
-                          ? "text-foreground border-b-2 border-[var(--tab-active)]"
+                          ? "text-foreground border-b-2 border-[hsl(var(--tab-active))]"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -1488,7 +1488,7 @@ function QueryEditor() {
                         onClick={() => setResultTab("results")}
                         className={`px-2.5 py-1 text-xs transition-colors ${
                           resultTab === "results"
-                            ? "text-foreground border-b-2 border-[var(--tab-active)]"
+                            ? "text-foreground border-b-2 border-[hsl(var(--tab-active))]"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -1499,7 +1499,7 @@ function QueryEditor() {
                       onClick={() => setResultTab("messages")}
                       className={`px-2.5 py-1 text-xs transition-colors ${
                         resultTab === "messages"
-                          ? "text-foreground border-b-2 border-[var(--tab-active)]"
+                          ? "text-foreground border-b-2 border-[hsl(var(--tab-active))]"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -1538,7 +1538,7 @@ function QueryEditor() {
                   type="text"
                   value={importTableName}
                   onChange={(e) => setImportTableName(e.target.value)}
-                  className="px-2 py-0.5 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground w-40"
+                  className="px-2 py-0.5 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground w-40"
                 />
                 <button
                   onClick={handleConfirmImport}
@@ -1718,7 +1718,7 @@ function TableContextMenu({
       <div
         ref={menuRef}
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[200px]"
-        style={{ left: pos.x, top: pos.y, backgroundColor: 'var(--popover)', color: 'var(--popover-foreground)' }}
+        style={{ left: pos.x, top: pos.y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
       >
         {item(t('table.copyRows'), onCopyRows, <Copy size={12} />, !hasSelection)}
         {item(t('table.copyAsMarkdown'), onCopyAsMarkdown, <Copy size={12} />, !hasSelection)}
@@ -1879,7 +1879,7 @@ function VirtualTableBody({
           <tr>
             <th
               className="px-1.5 py-1.5 text-center font-medium text-white/50 border border-white/30"
-              style={{ backgroundColor: 'var(--tab-active)', width: 36, minWidth: 36 }}
+              style={{ backgroundColor: 'hsl(var(--tab-active))', width: 36, minWidth: 36 }}
             >
               #
             </th>
@@ -1887,7 +1887,7 @@ function VirtualTableBody({
               <th
                 key={col.name}
                 className="px-3 py-1.5 text-left font-medium text-white border border-white/30 cursor-pointer hover:bg-white/10 transition-colors select-none"
-                style={{ backgroundColor: 'var(--tab-active)', minWidth: COL_MIN_WIDTH }}
+                style={{ backgroundColor: 'hsl(var(--tab-active))', minWidth: COL_MIN_WIDTH }}
                 onClick={() => onSort?.(col.name)}
               >
                 <div className="flex items-center gap-1 overflow-hidden">
@@ -1930,7 +1930,7 @@ function VirtualTableBody({
               <tr
                 key={virtualRow.key}
                 className={`hover:bg-accent transition-colors even:bg-muted/60 ${isSelected ? 'ring-1 ring-inset ring-blue-400' : ''}`}
-                style={{ height: 28, backgroundColor: isSelected ? 'var(--accent)' : undefined }}
+                style={{ height: 28, backgroundColor: isSelected ? 'hsl(var(--accent))' : undefined }}
                 onClick={(e) => {
                   e.preventDefault();
                   toggleRow(rowIdx, e.ctrlKey || e.metaKey, e.shiftKey);
@@ -1966,7 +1966,7 @@ function VirtualTableBody({
                       >
                         <input
                           ref={editInputRef}
-                          className="w-full h-full px-3 py-1 text-xs bg-[var(--background)] text-foreground outline-none ring-2 ring-inset ring-orange-400"
+                          className="w-full h-full px-3 py-1 text-xs bg-[hsl(var(--background))] text-foreground outline-none ring-2 ring-inset ring-orange-400"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -2174,7 +2174,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
       <div className="h-full overflow-auto">
         <table className="w-full text-xs border-collapse border">
           <thead className="sticky top-0 z-10">
-            <tr style={{ backgroundColor: 'var(--tab-active)' }}>
+            <tr style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
               {columns.map((col: any) => (
                 <th
                   key={col}
@@ -2267,7 +2267,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
           <button
             onClick={() => onApplyChanges?.(modifiedCellsRef.current(), columns, rows)}
             className="px-3 py-0.5 text-xs text-white rounded transition-colors"
-            style={{ backgroundColor: 'var(--tab-active)' }}
+            style={{ backgroundColor: 'hsl(var(--tab-active))' }}
           >
             {t('table.applyChanges')}
           </button>
@@ -2404,7 +2404,7 @@ function EditorContextMenu({
       disabled={disabled}
       className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-default ${
         highlight
-          ? "bg-[var(--tab-active)] text-white hover:opacity-90"
+          ? "bg-[hsl(var(--tab-active))] text-white hover:opacity-90"
           : "hover:bg-muted"
       }`}
     >
@@ -2425,8 +2425,8 @@ function EditorContextMenu({
         style={{
           left: pos.x,
           top: pos.y,
-          backgroundColor: 'var(--popover)',
-          color: 'var(--popover-foreground)',
+          backgroundColor: 'hsl(var(--popover))',
+          color: 'hsl(var(--popover-foreground))',
         }}
       >
         {hasSelection

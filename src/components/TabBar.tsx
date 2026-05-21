@@ -23,7 +23,7 @@ function TabBar() {
             key={tab.id}
             className={`group flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-r border-border transition-colors shrink-0 cursor-pointer border-b-2 ${
               activeTabId === tab.id
-                ? "text-foreground bg-muted border-b-[var(--tab-active)]"
+                ? "text-foreground bg-muted border-b-[hsl(var(--tab-active))]"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-b-transparent"
             }`}
             onClick={() => setActiveTab(tab.id)}

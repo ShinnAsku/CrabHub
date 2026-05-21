@@ -226,7 +226,7 @@ function SchemaDiffDialog({ isOpen, onClose }: SchemaDiffDialogProps) {
 
               <div className="border border-border rounded overflow-hidden">
                 <table className="w-full text-xs border-collapse border">
-                  <thead style={{ backgroundColor: 'var(--tab-active)' }}>
+                  <thead style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
                     <tr>
                       <th className="px-3 py-1.5 text-left font-medium text-white border border-white/30">{t('diff.tableName')}</th>
                       <th className="px-3 py-1.5 text-left font-medium text-white border border-white/30">{t('diff.status')}</th>
