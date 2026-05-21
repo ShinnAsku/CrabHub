@@ -375,8 +375,8 @@ function QueryEditor() {
     transactionActive,
     setTransactionActive,
     toggleSnippetPanel,
-    addSlowQuery,
-    slowQueryThreshold,
+    addSlowQuery: _addSlowQuery,
+    slowQueryThreshold: _slowQueryThreshold,
   } = useAppStore();
 
   const editorRef = useRef<any>(null);
@@ -741,89 +741,67 @@ function QueryEditor() {
     const newLoadMoreState: Record<number, { hasMore: boolean; currentOffset: number; originalSql: string }> = {};
 
     try {
-      for (let idx = 0; idx < statements.length; idx++) {
-        const sql = statements[idx]!;
+      // Batch: execute all SELECTs in parallel via Promise.all for speed
+      const selectStmts: { sql: string; idx: number }[] = [];
+      const nonSelectStmts: { sql: string; idx: number }[] = [];
+      statements.forEach((sql, idx) => {
+        if (isSelectQuery(sql)) selectStmts.push({ sql, idx });
+        else nonSelectStmts.push({ sql, idx });
+      });
+
+      // Fire all SELECT queries concurrently
+      const selectResults = await Promise.all(selectStmts.map(async ({ sql, idx }) => {
         const stmtStart = performance.now();
+        const ipcStart = performance.now();
+        let queryResult: QueryResult;
+        let hasMore = false;
+        if (shouldAutoLimit(sql)) {
+          const pagedResult: PagedQueryResult = await executeQueryPaged(effectiveConnectionId, sql, QUERY_PAGE_SIZE, 0);
+          queryResult = pagedResult;
+          hasMore = pagedResult.hasMore;
+        } else {
+          queryResult = await executeQuery(effectiveConnectionId, sql);
+        }
+        const ipcElapsed = performance.now() - ipcStart;
+        const dbTime = (queryResult as any).duration ?? (queryResult as any).executionTimeMs ?? 0;
+        const overhead = ipcElapsed - dbTime;
+        const stmtElapsed = performance.now() - stmtStart;
+        return { idx, queryResult, hasMore, stmtElapsed, dbTime, overhead, sql };
+      }));
 
-        if (isSelectQuery(sql)) {
-          const ipcStart = performance.now();
-          let queryResult: QueryResult;
-          let hasMore = false;
+      // Gather results in original order
+      const resultsMap = new Map<number, { queryResult: QueryResult; hasMore: boolean; stmtElapsed: number; dbTime: number; overhead: number; sql: string }>();
+      selectResults.forEach(r => resultsMap.set(r.idx, r));
 
-          // Use paged API for SELECT/WITH queries (auto-LIMIT injection)
-          // For SHOW/DESCRIBE/EXPLAIN, use regular executeQuery (no LIMIT needed)
-          if (shouldAutoLimit(sql)) {
-            const pagedResult: PagedQueryResult = await executeQueryPaged(effectiveConnectionId, sql, QUERY_PAGE_SIZE, 0);
-            queryResult = pagedResult;
-            hasMore = pagedResult.hasMore;
-          } else {
-            queryResult = await executeQuery(effectiveConnectionId, sql);
-          }
-          const ipcElapsed = performance.now() - ipcStart;
-          const dbTime = (queryResult as any).duration ?? (queryResult as any).executionTimeMs ?? 0;
-          const overhead = ipcElapsed - dbTime;
+      // Execute non-SELECTs sequentially (DDL/DML must be ordered)
+      for (const { sql, idx } of nonSelectStmts) {
+        const stmtStart = performance.now();
+        await executeSql(effectiveConnectionId, sql);
+        const stmtElapsed = performance.now() - stmtStart;
+        resultsMap.set(idx, { queryResult: { columns: [], rows: [], rowCount: 0, duration: stmtElapsed }, hasMore: false, stmtElapsed, dbTime: stmtElapsed, overhead: 0, sql });
+      }
 
-          const stmtElapsed = performance.now() - stmtStart;
+      // Process all results in original statement order
+      for (let idx = 0; idx < statements.length; idx++) {
+        const r = resultsMap.get(idx);
+        if (!r) continue;
+        const { queryResult, hasMore, stmtElapsed, dbTime, overhead, sql } = r;
+
+        if (queryResult.columns.length > 0 || queryResult.rows.length > 0) {
           const resultIdx = collectedResults.length;
           collectedResults.push(queryResult);
-
-          // Track load-more state for this result
-          newLoadMoreState[resultIdx] = {
-            hasMore,
-            currentOffset: queryResult.rows.length,
-            originalSql: sql,
-          };
-
-
+          newLoadMoreState[resultIdx] = { hasMore, currentOffset: queryResult.rows.length, originalSql: sql };
           const prefix = statements.length > 1 ? `[${idx + 1}/${statements.length}] ` : '';
           const timingDetail = `(DB: ${dbTime.toFixed(0)}ms | 传输: ${Math.max(0, overhead).toFixed(0)}ms | 总计: ${stmtElapsed.toFixed(0)}ms)`;
-          allMessages.push(
-            `${prefix}${t('editor.querySuccess', { rows: String(queryResult.rowCount), ms: stmtElapsed.toFixed(0) })} ${timingDetail}`
-          );
-
-          addQueryHistory({
-            connectionId: effectiveConnectionId,
-            sql,
-            duration: stmtElapsed,
-            timestamp: new Date(),
-            rowCount: queryResult.rowCount || 0,
-          });
-
-          if (stmtElapsed >= slowQueryThreshold) {
-            addSlowQuery({
-              sql,
-              duration: stmtElapsed,
-              timestamp: new Date(),
-              connectionId: effectiveConnectionId,
-              rowCount: queryResult.rowCount || 0,
-            });
-          }
+          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(queryResult.rowCount), ms: stmtElapsed.toFixed(0) })} ${timingDetail}`);
+          addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: queryResult.rowCount || 0 });
         } else {
-          const execResult = await executeSql(effectiveConnectionId, sql);
-          const stmtElapsed = performance.now() - stmtStart;
           allMessages.push(
             statements.length > 1
-              ? `[${idx + 1}/${statements.length}] ${t('editor.executeSuccess', { message: execResult.message, ms: stmtElapsed.toFixed(0) })}`
-              : t('editor.executeSuccess', { message: execResult.message, ms: stmtElapsed.toFixed(0) })
+              ? `[${idx + 1}/${statements.length}] ${t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })}`
+              : t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })
           );
-
-          addQueryHistory({
-            connectionId: effectiveConnectionId,
-            sql,
-            duration: stmtElapsed,
-            timestamp: new Date(),
-            rowCount: 0,
-          });
-
-          if (stmtElapsed >= slowQueryThreshold) {
-            addSlowQuery({
-              sql,
-              duration: stmtElapsed,
-              timestamp: new Date(),
-              connectionId: effectiveConnectionId,
-              rowCount: 0,
-            });
-          }
+          addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: 0 });
         }
       }
 
