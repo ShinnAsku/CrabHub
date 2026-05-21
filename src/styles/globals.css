@@ -44,16 +44,3 @@
     --ring: 210 79% 56%;
   }
 }
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  }
-  code, pre, .mono {
-    font-family: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
-  }
-}
