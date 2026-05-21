@@ -453,6 +453,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // ===== Table row operations =====
     'table.copyRows': '复制行',
+    'table.copyAsMarkdown': '复制为 Markdown',
     'table.exportCSV': '导出选中为CSV',
     'table.exportJSON': '导出选中为JSON',
     'table.exportSQL': '导出选中为SQL',
@@ -1157,6 +1158,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // ===== Table row operations =====
     'table.copyRows': 'Copy Row(s)',
+    'table.copyAsMarkdown': 'Copy as Markdown',
     'table.exportCSV': 'Export Selected as CSV',
     'table.exportJSON': 'Export Selected as JSON',
     'table.exportSQL': 'Export Selected as SQL',

@@ -226,6 +226,29 @@ function splitSqlStatements(sql: string): string[] {
   return statements.filter(s => s !== '/');
 }
 
+function rowsToMarkdown(
+  columns: { name: string }[],
+  rows: Record<string, unknown>[]
+): string {
+  if (rows.length === 0) return "";
+  const headers = columns.map(c => c.name);
+  const separator = headers.map(() => "---");
+
+  const body = rows.map(row =>
+    "| " + headers.map(h => {
+      const val = row[h];
+      if (val === null || val === undefined) return "";
+      return String(val).replace(/\|/g, "\\|").replace(/\n/g, " ");
+    }).join(" | ") + " |"
+  );
+
+  return [
+    "| " + headers.join(" | ") + " |",
+    "| " + separator.join(" | ") + " |",
+    ...body,
+  ].join("\n");
+}
+
 function EditorPanel() {
   const { tabs, activeTabId, connections, addTab, closeTab } = useAppStore();
 
@@ -1624,6 +1647,7 @@ interface TableContextMenuProps {
   canEdit: boolean;
   onClose: () => void;
   onCopyRows: () => void;
+  onCopyAsMarkdown: () => void;
   onExportCSV: () => void;
   onExportJSON: () => void;
   onExportSQL: () => void;
@@ -1634,7 +1658,7 @@ interface TableContextMenuProps {
 
 function TableContextMenu({
   x, y, selectedCount, hasSelection, canEdit, onClose,
-  onCopyRows, onExportCSV, onExportJSON, onExportSQL,
+  onCopyRows, onCopyAsMarkdown, onExportCSV, onExportJSON, onExportSQL,
   onEditRow, onDeleteRows, onGenerateDeleteSQL,
 }: TableContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1675,6 +1699,7 @@ function TableContextMenu({
         style={{ left: pos.x, top: pos.y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
       >
         {item(t('table.copyRows'), onCopyRows, <Copy size={12} />, !hasSelection)}
+        {item(t('table.copyAsMarkdown'), onCopyAsMarkdown, <Copy size={12} />, !hasSelection)}
         <div className="border-t border-border my-1" />
         {item(t('table.exportCSV'), onExportCSV, <Database size={12} />, !hasSelection)}
         {item(t('table.exportJSON'), onExportJSON, <Code2 size={12} />, !hasSelection)}
@@ -2036,6 +2061,14 @@ function VirtualTableBody({
               columns.map((c: any) => String(row[c.name] ?? '')).join('\t')
             ).join('\n');
             navigator.clipboard.writeText(text);
+          }}
+          onCopyAsMarkdown={async () => {
+            const selectedData = Array.from(selectedRows)
+              .filter(i => i < rows.length)
+              .sort((a, b) => a - b)
+              .map(i => rows[i]);
+            const md = rowsToMarkdown(columns, selectedData);
+            await navigator.clipboard.writeText(md);
           }}
           onExportCSV={() => {
             const selectedData = Array.from(selectedRows)
