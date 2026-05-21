@@ -100,9 +100,7 @@ table td {
   border-color: hsl(var(--table-border));
 }
 
-.border-table {
-  border-color: hsl(var(--table-border));
-}
+@utility border-table { border-color: hsl(var(--table-border)); }
 
 body {
   margin: 0;
