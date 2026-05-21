@@ -1,6 +1,9 @@
 @import "./globals.css";
 @import "tailwindcss";
 
+/* Tell Tailwind 4 to use data-theme attribute for dark mode */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ===== Light Theme - Navicat Style ===== */
 [data-theme="light"] {
   --background: 210 40% 98%;
