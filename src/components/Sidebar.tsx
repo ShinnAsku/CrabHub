@@ -1484,17 +1484,13 @@ function ConnectionItem({
     e.stopPropagation();
     console.log('[ConnectionItem] Connect/Disconnect button clicked for:', connection.name, 'Current status:', connection.connected ? 'connected' : 'disconnected');
     if (connection.connected) {
-      console.log('[ConnectionItem] Disconnecting...');
-      try {
-        await disconnectDatabase(connection.id);
-        console.log('[ConnectionItem] ✓ Successfully disconnected');
-      } catch (error) {
-        console.error('[ConnectionItem] ✗ Failed to disconnect from backend:', error);
-      }
-      // Always update frontend state when user explicitly disconnects
+      // Update frontend immediately — don't wait for backend disconnect
       useConnectionStore.getState().updateConnection(connection.id, { connected: false });
       onDisconnect(connection.id);
-      console.log('[ConnectionItem] Updated connection status to disconnected');
+      // Fire backend disconnect in background (non-blocking)
+      disconnectDatabase(connection.id).catch((error) => {
+        console.error('[ConnectionItem] Failed to disconnect from backend:', error);
+      });
     } else {
       console.log('[ConnectionItem] Connecting...');
       setIsConnecting(true);
@@ -1687,21 +1683,16 @@ function ContextMenu({ x, y, connectionId, onClose, openConnectionDialog, expand
   const handleConnect = async () => {
     console.log('[ContextMenu] Connect/Disconnect clicked for:', connection.name, 'Current status:', connection.connected ? 'connected' : 'disconnected');
     if (connection.connected) {
-      console.log('[ContextMenu] Disconnecting...');
-      try {
-        await disconnectDatabase(connection.id);
-        console.log('[ContextMenu] ✓ Successfully disconnected');
-      } catch (error) {
-        console.error('[ContextMenu] ✗ Failed to disconnect from backend:', error);
-      }
-      // Always update frontend state when user explicitly disconnects
+      // Update frontend immediately — don't wait for backend disconnect
       useConnectionStore.getState().updateConnection(connection.id, { connected: false });
-      console.log('[ContextMenu] Updated connection status to disconnected');
-      // Collapse the connection after disconnecting
       const newExpanded = new Set(expandedConnections);
       newExpanded.delete(connection.id);
       setExpandedConnections(newExpanded);
-      console.log('[ContextMenu] Collapsed connection after disconnect:', connection.name);
+      onClose();
+      // Fire backend disconnect in background (non-blocking)
+      disconnectDatabase(connection.id).catch((error) => {
+        console.error('[ContextMenu] Failed to disconnect from backend:', error);
+      });
     } else {
       console.log('[ContextMenu] Connecting...');
       try {
