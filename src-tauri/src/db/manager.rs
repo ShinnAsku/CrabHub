@@ -287,18 +287,25 @@ impl ConnectionManager {
     }
 
     /// Run a query with cancellation support (for user-initiated queries).
-    /// Creates a oneshot cancel token that can be triggered via `cancel_query()`.
+    /// Uses both oneshot cancel AND tokio timeout to ensure queries can always be interrupted.
     async fn query_inner_cancellable(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let mut cancel = self.cancel_token(id).await;
         let connections = self.connections.read().await;
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        // 5-minute hard timeout prevents queries from hanging indefinitely
+        let timeout = tokio::time::sleep(std::time::Duration::from_secs(300));
+        tokio::pin!(timeout);
         let result = tokio::select! {
             r = entry.connection.query_sql(sql) => r,
             _ = &mut cancel => {
-                log::info!("Query cancelled for connection '{}'", id);
+                log::info!("Query cancelled by user for connection '{}'", id);
                 Err(DbError::QueryError("Query cancelled".to_string()))
+            }
+            _ = &mut timeout => {
+                log::warn!("Query timed out (5min) for connection '{}'", id);
+                Err(DbError::Timeout("Query exceeded 5 minute limit".to_string()))
             }
         };
         if let Ok(ref _r) = result {
