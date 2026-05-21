@@ -292,7 +292,7 @@ function MainLayout() {
         {/* New Connection — always visible */}
         <button
           onClick={() => handleOpenConnectionDialog()}
-          className="flex items-center justify-center w-8 h-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 border-r border-border"
+          className="flex items-center justify-center w-8 h-full text-primary hover:bg-muted transition-colors shrink-0 border-r border-border"
           title={t('toolbar.newConnection')}
         >
           <Plug size={14} />
