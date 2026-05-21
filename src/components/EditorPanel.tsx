@@ -23,6 +23,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
+import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
 import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
@@ -1228,9 +1229,10 @@ function QueryEditor() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full">
-      {/* Navicat-style Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1 border-b border-border shrink-0 bg-muted/20">
-        <div className="flex items-center gap-2">
+      {/* Navicat-style Toolbar with Tabs */}
+      <div className="flex items-center justify-between border-b border-border shrink-0 bg-muted/20">
+        <TabBar />
+        <div className="flex items-center gap-2 px-2 py-1">
           {/* Connection selector */}
           <select
             value={effectiveConnectionId || ""}

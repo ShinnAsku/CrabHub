@@ -8,7 +8,6 @@ import { TitleBar } from "./TitleBar";
 import ToolbarActions from "./Toolbar";
 import Sidebar from "./Sidebar";
 import CrabHubMainPanel from "./CrabHubMainPanel";
-import TabBar from "./TabBar";
 import EditorPanel from "./EditorPanel";
 import AIPanel from "./AIPanel";
 import ConnectionDialog from "./ConnectionDialog";
@@ -288,7 +287,7 @@ function MainLayout() {
       {/* Content container */}
       <div className="flex flex-col flex-1 overflow-hidden">
 
-      {/* Unified Navigation Bar (Toolbar + TabBar merged) */}
+      {/* Unified Navigation Bar */}
       <div className="flex items-center h-9 bg-background border-b border-border shrink-0">
         {/* New Connection — always visible */}
         <button
@@ -298,7 +297,7 @@ function MainLayout() {
         >
           <Plug size={14} />
         </button>
-        <TabBar />
+        <div className="flex-1" />
         <ToolbarActions
           onOpenConnectionDialog={() => handleOpenConnectionDialog()}
           onOpenSnippetPanel={toggleSnippetPanel}

@@ -15,13 +15,13 @@ function TabBar() {
     useAppStore();
 
   return (
-    <div className="flex items-center h-full flex-1 overflow-x-auto min-w-0">
+    <div className="flex items-center flex-1 overflow-x-auto min-w-0">
       {/* Tabs */}
-      <div className="flex items-center h-full min-w-0">
+      <div className="flex items-center min-w-0">
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            className={`group flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-r border-border transition-colors shrink-0 cursor-pointer border-b-2 ${
+            className={`group flex items-center gap-1.5 px-3 h-8 text-xs whitespace-nowrap border-r border-border transition-colors shrink-0 cursor-pointer border-b-2 ${
               activeTabId === tab.id
                 ? "text-foreground bg-muted border-b-[hsl(var(--tab-active))]"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-b-transparent"
