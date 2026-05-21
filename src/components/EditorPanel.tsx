@@ -1229,10 +1229,13 @@ function QueryEditor() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full">
-      {/* Navicat-style Toolbar with Tabs */}
-      <div className="flex items-center justify-between border-b border-border shrink-0 bg-muted/20">
+      {/* Tabs row */}
+      <div className="flex items-center border-b border-border shrink-0 bg-muted/20">
         <TabBar />
-        <div className="flex items-center gap-2 px-2 py-1">
+      </div>
+      {/* Toolbar row */}
+      <div className="flex items-center justify-between px-2 py-1 border-b border-border shrink-0 bg-muted/20">
+        <div className="flex items-center gap-2">
           {/* Connection selector */}
           <select
             value={effectiveConnectionId || ""}
