@@ -405,6 +405,8 @@ function QueryEditor() {
   const [databaseList, setDatabaseList] = useState<string[]>([]);
   const [selectedDatabase, setSelectedDatabase] = useState<string>("");
   const [loadingDatabases, setLoadingDatabases] = useState(false);
+  // Cache database lists per connection to avoid re-fetching
+  const dbCacheRef = useRef<Record<string, string[]>>({});
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const result = activeTabId ? queryResults[activeTabId] : undefined;
@@ -433,6 +435,17 @@ function QueryEditor() {
       return;
     }
 
+    // Return cached list if already loaded for this connection
+    if (dbCacheRef.current[effectiveConnectionId]) {
+      setDatabaseList(dbCacheRef.current[effectiveConnectionId]);
+      if (conn.database && dbCacheRef.current[effectiveConnectionId].includes(conn.database)) {
+        setSelectedDatabase(conn.database);
+      } else if (!selectedDatabase) {
+        setSelectedDatabase(dbCacheRef.current[effectiveConnectionId][0] || "");
+      }
+      return;
+    }
+
     setLoadingDatabases(true);
     if (conn.type === 'mysql') {
       executeQuery(effectiveConnectionId, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME").then((res) => {
@@ -440,49 +453,35 @@ function QueryEditor() {
           const val = row['SCHEMA_NAME'] || row['schema_name'] || Object.values(row)[0];
           return String(val);
         }).filter((v: string) => v && v !== 'undefined');
+        dbCacheRef.current[effectiveConnectionId] = dbs;
         setDatabaseList(dbs);
-        if (conn.database && dbs.includes(conn.database)) {
-          setSelectedDatabase(conn.database);
-        } else if (dbs.length > 0 && !selectedDatabase) {
-          setSelectedDatabase(dbs[0] || "");
-        }
+        setSelectedDatabase(conn.database && dbs.includes(conn.database) ? conn.database : dbs[0] || "");
       }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
     } else {
-      // Load databases for PostgreSQL, GaussDB, etc.
-      // Fall back to schemas if getDatabases returns empty
-      const timeout = setTimeout(() => setLoadingDatabases(false), 8000);
       getDatabases(effectiveConnectionId).then((dbs) => {
-        clearTimeout(timeout);
         if (dbs.length > 0) {
+          dbCacheRef.current[effectiveConnectionId] = dbs;
           setDatabaseList(dbs);
-          if (conn.database && dbs.includes(conn.database)) {
-            setSelectedDatabase(conn.database);
-          } else if (!selectedDatabase) {
-            setSelectedDatabase(dbs[0] || "");
-          }
+          setSelectedDatabase(conn.database && dbs.includes(conn.database) ? conn.database : dbs[0] || "");
         } else {
           // Fallback: load schemas
           getSchemas(effectiveConnectionId).then((schemas) => {
+            dbCacheRef.current[effectiveConnectionId] = schemas;
             setDatabaseList(schemas);
-            if (!selectedDatabase && schemas.length > 0) {
-              setSelectedDatabase(schemas[0] || "");
-            }
+            setSelectedDatabase(schemas[0] || "");
           }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
           return;
         }
         setLoadingDatabases(false);
       }).catch(() => {
-        clearTimeout(timeout);
-        // Fallback to schemas on error
         getSchemas(effectiveConnectionId).then((schemas) => {
+          dbCacheRef.current[effectiveConnectionId] = schemas;
           setDatabaseList(schemas);
-          if (!selectedDatabase && schemas.length > 0) {
-            setSelectedDatabase(schemas[0] || "");
-          }
+          setSelectedDatabase(schemas[0] || "");
         }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
       });
     }
-  }, [effectiveConnectionId]); // Only re-run when connection changes
+  }, [effectiveConnectionId]);
 
   // Handle connection change
   const handleConnectionChange = useCallback((connId: string) => {
