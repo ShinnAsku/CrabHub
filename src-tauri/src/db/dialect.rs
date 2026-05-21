@@ -167,6 +167,14 @@ impl DialectConfig {
         }
     }
 
+    /// GaussDB 方言 — 基于 PG，默认端口 8000
+    pub fn gaussdb() -> Self {
+        let mut d = Self::pg_standard();
+        d.db_type = DatabaseType::GaussDB;
+        d.default_port = 8000;
+        d
+    }
+
     /// Kingbase 方言 — 基于 PG，覆盖差异
     pub fn kingbase() -> Self {
         let mut d = Self::pg_standard();

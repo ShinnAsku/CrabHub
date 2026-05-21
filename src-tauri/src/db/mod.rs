@@ -2,6 +2,7 @@ pub mod types;
 pub mod dialect;
 pub mod trait_def;
 pub mod pool_config;
+pub mod pg_utils;
 pub mod postgres;
 pub mod mysql;
 pub mod sqlite;
