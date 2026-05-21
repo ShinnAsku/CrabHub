@@ -1,4 +1,5 @@
 pub mod types;
+pub mod dialect;
 pub mod trait_def;
 pub mod pool_config;
 pub mod postgres;
