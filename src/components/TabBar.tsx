@@ -1,4 +1,4 @@
-import { X, Plus } from "lucide-react";
+import { X } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 
@@ -11,19 +11,8 @@ function getTabTitle(tab: { title: string; titleKey?: string; titleNum?: number 
 }
 
 function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, addTab } =
+  const { tabs, activeTabId, setActiveTab, closeTab } =
     useAppStore();
-
-  const handleAddTab = () => {
-    const queryCount = tabs.filter((t) => t.type === "query").length + 1;
-    addTab({
-        title: `${t('tab.query')} ${queryCount}`,
-        titleKey: 'tab.query',
-        titleNum: queryCount,
-        type: "query",
-        content: "",
-      });
-  };
 
   return (
     <div className="flex items-center h-full flex-1 overflow-x-auto min-w-0">
@@ -54,14 +43,6 @@ function TabBar() {
         ))}
       </div>
 
-      {/* Add Tab Button */}
-      <button
-        onClick={handleAddTab}
-        className="flex items-center justify-center w-8 h-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-        title={t('tab.newQuery')}
-      >
-        <Plus size={14} />
-      </button>
     </div>
   );
 }

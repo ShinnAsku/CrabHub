@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import {
-  Sparkles, MoreHorizontal,
+  Plus, Sparkles, MoreHorizontal,
   Network, Upload, Download, Code2, GitCompare,
   BarChart3, ArrowLeftRight,
   Package,
 } from 'lucide-react';
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, useTabStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 
@@ -23,7 +23,8 @@ function ToolbarActions({
   onOpenImport: () => void;
   onOpenExport: () => void;
 }) {
-  const { aiPanelOpen, toggleAIPanel } = useAppStore();
+  const { aiPanelOpen, toggleAIPanel, setViewModeType } = useAppStore();
+  const { addTab, tabs } = useTabStore();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
@@ -37,11 +38,26 @@ function ToolbarActions({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const handleNewQuery = useCallback(async () => {
+    const queryCount = tabs.filter((t) => t.type === "query").length + 1;
+    addTab({ title: `${t('tab.query')} ${queryCount}`, titleKey: 'tab.query', titleNum: queryCount, type: "query", content: "" });
+    setViewModeType("query");
+    setTimeout(() => {
+      const newActiveId = useTabStore.getState().activeTabId;
+      if (newActiveId) window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
+    }, 0);
+  }, [addTab, tabs.length, setViewModeType, t]);
+
   const ICON_SIZE = 15;
   const BTN_CLS = "h-7 w-7";
 
   return (
     <div className="flex items-center gap-0.5 shrink-0 px-1.5">
+      {/* New Query */}
+      <Button variant="ghost" size="icon" className={BTN_CLS} onClick={(e) => { e.stopPropagation(); handleNewQuery(); }} title={t('toolbar.newQuery')}>
+        <Plus size={ICON_SIZE} />
+      </Button>
+
       {/* Toggle AI Panel */}
       <Button variant="ghost" size="icon" className={BTN_CLS} onClick={(e) => { e.stopPropagation(); toggleAIPanel(); }} data-active={aiPanelOpen || undefined} title={t('toolbar.aiAssistant')}>
         <Sparkles size={ICON_SIZE} />
