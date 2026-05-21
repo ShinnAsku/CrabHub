@@ -5,6 +5,7 @@ import {
   Tooltip, ResponsiveContainer,
 } from "recharts";
 import { X } from "lucide-react";
+import { t } from "@/lib/i18n";
 
 type ChartType = "bar" | "line" | "pie" | "scatter";
 
@@ -57,16 +58,16 @@ export default function QuickChartPanel({
       border border-border p-4 z-50">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Chart</span>
+          <span className="text-sm font-medium">{t('table.chartType')}</span>
           <select
             value={chartType}
             onChange={e => setChartType(e.target.value as ChartType)}
             className="text-xs border border-border rounded-md px-2 py-1 bg-background"
           >
-            <option value="bar">Bar</option>
-            <option value="line">Line</option>
-            <option value="pie">Pie</option>
-            <option value="scatter">Scatter</option>
+            <option value="bar">{t('chart.bar')}</option>
+            <option value="line">{t('chart.line')}</option>
+            <option value="pie">{t('chart.pie')}</option>
+            <option value="scatter">{t('chart.scatter')}</option>
           </select>
         </div>
         <button onClick={onClose}

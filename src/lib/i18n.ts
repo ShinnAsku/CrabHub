@@ -477,6 +477,10 @@ const translations: Record<Language, Record<string, string>> = {
     'table.editing': '编辑中',
     'table.generateChart': '生成图表',
     'table.chartType': '图表类型',
+    'chart.bar': '柱状图',
+    'chart.line': '折线图',
+    'chart.pie': '饼图',
+    'chart.scatter': '散点图',
 
     // ===== MainLayout =====
     'layout.saved': '已保存',
@@ -1191,6 +1195,10 @@ const translations: Record<Language, Record<string, string>> = {
     'table.editing': 'Editing',
     'table.generateChart': 'Generate Chart',
     'table.chartType': 'Chart Type',
+    'chart.bar': 'Bar',
+    'chart.line': 'Line',
+    'chart.pie': 'Pie',
+    'chart.scatter': 'Scatter',
 
     // ===== MainLayout =====
     'layout.saved': 'Saved',
