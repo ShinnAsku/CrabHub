@@ -311,7 +311,7 @@ function MainLayout() {
             <Sidebar openConnectionDialog={handleOpenConnectionDialog} />
           </Panel>
         )}
-        {sidebarOpen && <PanelResizeHandle className="w-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-col-resize" />}
+        {sidebarOpen && <PanelResizeHandle className="w-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-col-resize opacity-0 hover:opacity-100" />}
 
         {/* Center: Editor or Navicat Panel */}
         <Panel>

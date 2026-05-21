@@ -35,7 +35,7 @@ export function TitleBar() {
     <div
       data-tauri-drag-region
       className="flex items-center justify-between h-10 px-3
-        bg-background/80 backdrop-blur-xl border-b border-border/50
+        bg-background/80 backdrop-blur-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]
         select-none shrink-0"
     >
       <div className="flex items-center gap-2 pl-[70px]">

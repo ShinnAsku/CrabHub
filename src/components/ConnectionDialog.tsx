@@ -679,7 +679,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
             <div className="space-y-2 p-2.5 bg-muted/30 rounded border border-border/50">
               <label className="text-xs font-medium text-muted-foreground">{t('connection.keepaliveTitle')}</label>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-muted-foreground whitespace-nowrap">{t('connection.keepaliveInterval')}</label>
+                <label className="text-[11px] text-muted-foreground whitespace-nowrap">{t('connection.keepaliveInterval')}</label>
                 <input
                   type="number"
                   value={keepaliveInterval}
@@ -688,11 +688,11 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   max={600}
                   className="w-16 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
                 />
-                <span className="text-[10px] text-muted-foreground">{t('connection.seconds')}</span>
-                <span className="text-[10px] text-muted-foreground/60">({t('connection.keepaliveHint')})</span>
+                <span className="text-[11px] text-muted-foreground">{t('connection.seconds')}</span>
+                <span className="text-[11px] text-muted-foreground/60">({t('connection.keepaliveHint')})</span>
               </div>
               <div className="flex items-center justify-between">
-                <label className="text-[10px] text-muted-foreground">{t('connection.autoReconnect')}</label>
+                <label className="text-[11px] text-muted-foreground">{t('connection.autoReconnect')}</label>
                 <button
                   onClick={() => setAutoReconnect(!autoReconnect)}
                   className={`relative w-8 h-4 rounded-full transition-colors ${
@@ -748,7 +748,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               <div className="space-y-2 p-2.5 bg-muted/30 rounded border border-border/50">
                 <label className="text-xs font-medium text-muted-foreground">{t('connection.sslCerts')}</label>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground">{t('connection.caCert')}</label>
+                  <label className="text-[11px] text-muted-foreground">{t('connection.caCert')}</label>
                   <input
                     type="text"
                     value={sslCaCert}
@@ -758,7 +758,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground">{t('connection.clientCert')}</label>
+                  <label className="text-[11px] text-muted-foreground">{t('connection.clientCert')}</label>
                   <input
                     type="text"
                     value={sslClientCert}
@@ -768,7 +768,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground">{t('connection.clientKey')}</label>
+                  <label className="text-[11px] text-muted-foreground">{t('connection.clientKey')}</label>
                   <input
                     type="text"
                     value={sslClientKey}
@@ -804,7 +804,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               <div className="space-y-2 p-2.5 bg-muted/30 rounded border border-border/50">
                 <div className="flex gap-2">
                   <div className="flex-1 space-y-1">
-                    <label className="text-[10px] text-muted-foreground">{t('connection.sshHost')}</label>
+                    <label className="text-[11px] text-muted-foreground">{t('connection.sshHost')}</label>
                     <input
                       type="text"
                       value={sshHost}
@@ -814,7 +814,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     />
                   </div>
                   <div className="w-20 space-y-1">
-                    <label className="text-[10px] text-muted-foreground">{t('connection.sshPort')}</label>
+                    <label className="text-[11px] text-muted-foreground">{t('connection.sshPort')}</label>
                     <input
                       type="number"
                       value={sshPort}
@@ -824,7 +824,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground">{t('connection.sshUsername')}</label>
+                  <label className="text-[11px] text-muted-foreground">{t('connection.sshUsername')}</label>
                   <input
                     type="text"
                     value={sshUsername}
@@ -834,7 +834,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground">{t('connection.sshPassword')}</label>
+                  <label className="text-[11px] text-muted-foreground">{t('connection.sshPassword')}</label>
                   <input
                     type="password"
                     value={sshPassword}
@@ -844,7 +844,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground">{t('connection.privateKey')}</label>
+                  <label className="text-[11px] text-muted-foreground">{t('connection.privateKey')}</label>
                   <textarea
                     value={sshPrivateKey}
                     onChange={(e) => setSshPrivateKey(e.target.value)}

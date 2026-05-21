@@ -364,12 +364,12 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-sidebar-bg/70 backdrop-blur-xl backdrop-saturate-150 border-r border-sidebar-border/50">
+    <div className="flex flex-col h-full bg-sidebar-bg/70 backdrop-blur-xl backdrop-saturate-150 border-r border-border/20">
       {/* View toggle */}
       <div className="flex items-center gap-1 px-2 py-1 shrink-0">
         <button
           onClick={() => setView("connections")}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors ${
             view === "connections"
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -381,7 +381,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
         </button>
         <button
           onClick={() => setView("history")}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors ${
             view === "history"
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -1351,25 +1351,25 @@ function TreeNodeItem({
       case 'database':
         return <DatabaseIcon type={connectionType || ''} connected={true} size={12} />;
       case 'schema':
-        return <Layers size={12} className="text-sky-400" />;
+        return <Layers size={12} className="text-[hsl(var(--tree-schema))]" />;
       case 'tables':
-        return <TableIcon size={12} className="text-green-500" />;
+        return <TableIcon size={12} className="text-[hsl(var(--tree-table))]" />;
       case 'views':
-        return <Eye size={12} className="text-purple-500" />;
+        return <Eye size={12} className="text-[hsl(var(--tree-view))]" />;
       case 'functions':
-        return <FileText size={12} className="text-orange-500" />;
+        return <FileText size={12} className="text-[hsl(var(--tree-function))]" />;
       case 'procedures':
-        return <Settings size={12} className="text-red-500" />;
+        return <Settings size={12} className="text-[hsl(var(--tree-procedure))]" />;
       case 'events':
         return <Calendar size={12} className="text-pink-500" />;
       case 'triggers':
-        return <Zap size={12} className="text-yellow-600" />;
+        return <Zap size={12} className="text-[hsl(var(--tree-trigger))]" />;
       case 'table':
-        return <TableIcon size={12} className="text-green-500" />;
+        return <TableIcon size={12} className="text-[hsl(var(--tree-table))]" />;
       case 'view':
-        return <Eye size={12} className="text-purple-500" />;
+        return <Eye size={12} className="text-[hsl(var(--tree-view))]" />;
       case 'function':
-        return <FileText size={12} className="text-orange-500" />;
+        return <FileText size={12} className="text-[hsl(var(--tree-function))]" />;
       default:
         return <Folder size={12} />;
     }
@@ -1577,7 +1577,7 @@ function ConnectionItem({
               className="p-0.5 hover:bg-muted rounded transition-colors"
               title="断开连接"
             >
-              <Unplug size={12} className="text-green-500" />
+              <Unplug size={12} className="text-success" />
             </button>
             <button
               onClick={handleEdit}
@@ -1591,7 +1591,7 @@ function ConnectionItem({
               className="p-0.5 hover:bg-muted rounded transition-colors"
               title="删除"
             >
-              <Trash2 size={12} className="text-red-500" />
+              <Trash2 size={12} className="text-destructive" />
             </button>
           </>
         ) : (
@@ -1615,7 +1615,7 @@ function ConnectionItem({
               className="p-0.5 hover:bg-muted rounded transition-colors"
               title="删除"
             >
-              <Trash2 size={12} className="text-red-500" />
+              <Trash2 size={12} className="text-destructive" />
             </button>
           </>
         )}
@@ -1631,7 +1631,7 @@ function EmptyConnectionList({ openConnectionDialog }: { openConnectionDialog: (
     <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-xs px-4 text-center">
       <Database size={32} className="mb-3 opacity-30" />
       <p className="text-sm font-medium mb-2">暂无连接</p>
-      <p className="text-[10px] text-muted-foreground/60 mb-3">
+      <p className="text-[11px] text-muted-foreground/60 mb-3">
         点击下方按钮创建新的数据库连接
       </p>
       <button
@@ -1807,7 +1807,7 @@ function ContextMenu({ x, y, connectionId, onClose, openConnectionDialog, expand
 
         <button
           onClick={handleDelete}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-red-500"
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
         >
           <Trash2 size={12} />
           <span>删除</span>
@@ -1971,7 +1971,7 @@ function TreeNodeContextMenu({ x, y, node, onClose, onRefresh, onCopyName, onNew
             <div className="border-t border-border my-1" />
             <button
               onClick={handleTruncateClick}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-orange-500"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-warning"
             >
               <Eraser size={12} />
               <span>{t('sidebar.truncateTable')}</span>
@@ -1987,7 +1987,7 @@ function TreeNodeContextMenu({ x, y, node, onClose, onRefresh, onCopyName, onNew
         )}
 
         <div className="border-t border-border my-1" />
-        <div className="px-3 py-1.5 text-[10px] text-muted-foreground">
+        <div className="px-3 py-1.5 text-[11px] text-muted-foreground">
           类型：{node.type}
         </div>
       </div>

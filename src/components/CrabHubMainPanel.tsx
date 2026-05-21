@@ -997,9 +997,9 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                     {/* Inline query tabs (same as TabBar but compact) */}
                     {globalTabs.map((tab) => (
                       <div key={tab.id}
-                        className={`flex items-center gap-1 px-2 h-6 rounded text-[11px] whitespace-nowrap shrink-0 cursor-pointer border border-border transition-colors ${
+                        className={`flex items-center gap-1 px-2 h-6 rounded text-xs whitespace-nowrap shrink-0 cursor-pointer border border-border transition-colors ${
                           globalActiveTabId === tab.id
-                            ? "bg-blue-600 text-white border-blue-600"
+                            ? "bg-primary text-primary-foreground border-primary"
                             : "text-muted-foreground hover:text-foreground hover:bg-muted"
                         }`}
                         onClick={() => { setGlobalActiveTab(tab.id); setActiveView(`query:${tab.id}`); }}>
@@ -1265,10 +1265,10 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                 </td>
                                 <td className="px-2 py-0.5 text-muted-foreground border">{col.type}</td>
                                 <td className="text-center px-1 py-0.5 border">
-                                  {col.primaryKey && <span className="text-amber-500 text-[10px] font-bold">PK</span>}
+                                  {col.primaryKey && <span className="text-amber-500 text-[11px] font-bold">PK</span>}
                                 </td>
                                 <td className="text-center px-1 py-0.5 border">
-                                  {col.notNull && <span className="text-blue-500 text-[10px] font-bold">NN</span>}
+                                  {col.notNull && <span className="text-blue-500 text-[11px] font-bold">NN</span>}
                                 </td>
                                 <td className="px-2 py-0.5 text-muted-foreground truncate max-w-[80px] border">
                                   {col.defaultValue != null ? String(col.defaultValue) : ""}
@@ -1287,7 +1287,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                       {displayDDL && (
                         <div className="border-t border-border mt-2">
                           <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('navicat.ddl')}</span>
+                            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('navicat.ddl')}</span>
                           </div>
                           <pre className="text-xs font-mono whitespace-pre-wrap text-blue-500 p-3 max-h-[200px] overflow-auto">
                             {displayDDL}
@@ -1304,7 +1304,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                   <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
                     {/* Add Row */}
                     <button
-                      className="p-1 rounded hover:bg-muted text-green-600 hover:text-green-500"
+                      className="p-1 rounded hover:bg-muted text-success"
                       title={t('data.addRow')}
                       onClick={handleAddRow}
                       disabled={!selectedTableData}
@@ -1331,7 +1331,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                     </button>
                     {/* Delete */}
                     <button
-                      className="p-1 rounded hover:bg-muted text-red-500 hover:text-red-400 disabled:opacity-30"
+                      className="p-1 rounded hover:bg-muted text-destructive disabled:opacity-30"
                       title={t('data.deleteSelected')}
                       onClick={handleDeleteRows}
                       disabled={selectedRowIndices.size === 0 || isSaving}
@@ -1392,13 +1392,13 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
                     {/* Messages */}
                     {dataMessage && (
-                      <span className={`text-[11px] flex items-center gap-1 ${dataMessage.type === 'error' ? 'text-destructive' : 'text-green-500'}`}>
+                      <span className={`text-xs flex items-center gap-1 ${dataMessage.type === 'error' ? 'text-destructive' : 'text-green-500'}`}>
                         {dataMessage.type === 'error' ? <X size={10} /> : <Check size={10} />}
                         {dataMessage.text}
                       </span>
                     )}
                     {hasPendingChanges && (
-                      <span className="text-[11px] text-yellow-500 ml-2">
+                      <span className="text-xs text-warning ml-2">
                         {editedRows.size > 0 && `${editedRows.size} modified`}
                         {editedRows.size > 0 && newRows.length > 0 && ', '}
                         {newRows.length > 0 && `${newRows.length} new`}
@@ -1416,7 +1416,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                         </div>
                       </div>
                     ) : error ? (
-                      <div className="flex items-center justify-center h-full text-red-500 text-sm p-4">
+                      <div className="flex items-center justify-center h-full text-destructive text-sm p-4">
                         <div className="flex flex-col items-center">
                           <span className="mb-2">Error:</span>
                           <span>{error}</span>
@@ -1709,7 +1709,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                 <div className="border-t border-border my-1" />
                 <button
                   onClick={() => { handleTruncateTableAction(tableContextMenu.table); setTableContextMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-orange-500"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-warning"
                 >
                   <Eraser size={12} />
                   <span>{t('sidebar.truncateTable')}</span>

@@ -1,6 +1,11 @@
 @import "./globals.css";
 @import "tailwindcss";
 
+/* Typography scale */
+--font-compact: 0.6875rem;  /* 11px — StatusBar, badges, timestamps */
+--font-body: 0.75rem;       /* 12px — main UI text (text-xs) */
+--font-heading: 0.875rem;   /* 14px — panel titles (text-sm) */
+
 /* Tell Tailwind 4 to use data-theme attribute for dark mode */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -44,6 +49,14 @@
   --editor-bg: 0 0% 100%;
   --editor-line-number: 215 16% 65%;
   --editor-selection: 221 83% 90%;
+
+  /* Tree node semantic colors */
+  --tree-table: 142 76% 36%;
+  --tree-view: 262 83% 58%;
+  --tree-function: 38 92% 50%;
+  --tree-procedure: 0 84% 60%;
+  --tree-trigger: 45 93% 47%;
+  --tree-schema: 199 89% 48%;
 }
 
 /* ===== Dark Theme - Navicat Style ===== */
@@ -86,6 +99,14 @@
   --editor-bg: 222 47% 8%;
   --editor-line-number: 215 20% 50%;
   --editor-selection: 221 83% 20%;
+
+  /* Tree node semantic colors — brighter for dark backgrounds */
+  --tree-table: 142 60% 50%;
+  --tree-view: 262 70% 65%;
+  --tree-function: 38 80% 55%;
+  --tree-procedure: 0 70% 65%;
+  --tree-trigger: 45 70% 55%;
+  --tree-schema: 199 70% 55%;
 }
 
 /* ===== Base Styles ===== */
@@ -174,6 +195,13 @@ body {
 @utility border-primary { border-color: hsl(var(--primary)); }
 
 @utility ring-ring { --tw-ring-color: hsl(var(--ring)); }
+
+@utility text-tree-table { color: hsl(var(--tree-table)); }
+@utility text-tree-view { color: hsl(var(--tree-view)); }
+@utility text-tree-function { color: hsl(var(--tree-function)); }
+@utility text-tree-procedure { color: hsl(var(--tree-procedure)); }
+@utility text-tree-trigger { color: hsl(var(--tree-trigger)); }
+@utility text-tree-schema { color: hsl(var(--tree-schema)); }
 
 /* ===== Resizable Panels ===== */
 [data-panel-group-direction="horizontal"] > [data-resize-handle-active] {

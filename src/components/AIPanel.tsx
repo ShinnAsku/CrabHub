@@ -193,7 +193,7 @@ function AISettingsDialog({
               onSave(form);
               onClose();
             }}
-            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+            className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
             {t('common.save')}
           </button>
@@ -572,27 +572,27 @@ function AIPanel() {
         const sql = part.replace(/```sql\n/, "").replace(/```$/, "").trim();
         return (
           <div key={i} className="my-1.5">
-            <pre className="bg-muted/80 rounded p-2 text-[11px] font-mono overflow-x-auto text-foreground border border-border/50">
+            <pre className="bg-muted/80 rounded p-2 text-xs font-mono overflow-x-auto text-foreground border border-border/50">
               {sql}
             </pre>
             <div className="flex items-center gap-1 mt-1">
               <button
                 onClick={() => handleCopySQL(sql)}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Copy size={10} />
                 {t('ai.copySql')}
               </button>
               <button
                 onClick={() => handleExecuteSQL(sql)}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Play size={10} />
                 {t('ai.runSql')}
               </button>
               <button
                 onClick={() => handleInsertToEditor(sql)}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <FileCode size={10} />
                 {t('ai.insertEditor')}
@@ -642,7 +642,7 @@ function AIPanel() {
           <span className="text-xs font-medium text-foreground">
             {t('ai.title')}
           </span>
-          <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+          <span className="text-[11px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
             {PROVIDER_LABELS[settings.provider]}
           </span>
         </div>
@@ -720,46 +720,46 @@ function AIPanel() {
           </div>
 
           {/* Quick Actions */}
-          <div className="border-t border-border px-3 py-2 shrink-0">
+          <div className="px-3 py-2 shrink-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 onClick={() => setInput("帮我写一个查询用户表的SQL语句")}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Code size={10} />
                 <span>{t('ai.writeSql')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我分析这个SQL的性能: ")}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Zap size={10} />
                 <span>{t('ai.analyzePerformance')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我根据需求设计表结构")}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Database size={10} />
                 <span>{t('ai.designTable')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我分析查询结果")}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <BarChart2 size={10} />
                 <span>{t('ai.analyzeData')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我解释这个SQL语句")}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Brain size={10} />
                 <span>{t('ai.explainSql')}</span>
               </button>
               <button
                 onClick={() => setInput("帮我优化这个SQL: ")}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Lightbulb size={10} />
                 <span>{t('ai.optimizeSql')}</span>
@@ -769,8 +769,8 @@ function AIPanel() {
 
           {/* Context indicator */}
           {activeConnectionId && (
-            <div className="border-t border-border px-3 py-1 shrink-0">
-              <span className="text-[10px] text-muted-foreground">
+            <div className="px-3 py-1 shrink-0">
+              <span className="text-[11px] text-muted-foreground">
                 Schema已注入 · 可执行操作
               </span>
             </div>

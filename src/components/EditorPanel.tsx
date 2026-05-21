@@ -1264,14 +1264,14 @@ function QueryEditor() {
             )}
           </select>
           {isTxActive && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 animate-pulse">
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-warning/20 text-warning animate-pulse">
               {t('common.transactionActive')}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1">
           {executionTime !== null && (
-            <span className="text-[10px] text-muted-foreground mr-1">
+            <span className="text-[11px] text-muted-foreground mr-1">
               {executionTime.toFixed(0)} ms
             </span>
           )}
@@ -1281,7 +1281,7 @@ function QueryEditor() {
               <button
                 onClick={() => handleTransaction("begin")}
                 disabled={isTxActive || isExecuting[activeTabId!]}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
                 title={t('editor.beginTransaction')}
               >
                 <Database size={11} />
@@ -1290,7 +1290,7 @@ function QueryEditor() {
               <button
                 onClick={() => handleTransaction("commit")}
                 disabled={!isTxActive || isExecuting[activeTabId!]}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
                 title={t('editor.commitTransaction')}
               >
                 <CheckCircle2 size={11} />
@@ -1299,7 +1299,7 @@ function QueryEditor() {
               <button
                 onClick={() => handleTransaction("rollback")}
                 disabled={!isTxActive || isExecuting[activeTabId!]}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors disabled:opacity-40"
                 title={t('editor.rollbackTransaction')}
               >
                 <RotateCcw size={11} />
@@ -1359,7 +1359,7 @@ function QueryEditor() {
                   setMessages(prev => [...prev, 'Query cancelled by user']);
                 }
               }}
-              className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
               title="Cancel query"
             >
               <XCircle size={12} />
@@ -1369,7 +1369,7 @@ function QueryEditor() {
           <button
             onClick={() => handleExecute()}
             disabled={!!isExecuting[activeTabId!] || !effectiveConnectionId}
-            className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
+            className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-40"
             title={t('editor.executeQuery')}
           >
             {isExecuting[activeTabId!] ? (
@@ -1442,7 +1442,7 @@ function QueryEditor() {
         </Panel>
 
         {/* Resize Handle */}
-        <PanelResizeHandle className="h-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-row-resize" />
+        <PanelResizeHandle className="h-px bg-border hover:bg-[hsl(var(--tab-active))] transition-colors cursor-row-resize opacity-0 hover:opacity-100" />
 
         {/* Result Panel */}
         <Panel defaultSize={40} minSize={10}>
@@ -1515,13 +1515,13 @@ function QueryEditor() {
                   <>
                     <button
                       onClick={() => handleExport("csv")}
-                      className="px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                      className="px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
                     >
                       CSV
                     </button>
                     <button
                       onClick={() => handleExport("json")}
-                      className="px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                      className="px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
                     >
                       JSON
                     </button>
@@ -1533,7 +1533,7 @@ function QueryEditor() {
             {/* Import preview bar */}
             {importPreview && (
               <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0 bg-muted/30">
-                <span className="text-[10px] text-muted-foreground">{t('editor.importTargetTable')}</span>
+                <span className="text-[11px] text-muted-foreground">{t('editor.importTargetTable')}</span>
                 <input
                   type="text"
                   value={importTableName}
@@ -1543,14 +1543,14 @@ function QueryEditor() {
                 <button
                   onClick={handleConfirmImport}
                   disabled={isExecuting[activeTabId!] || !importTableName.trim()}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-40"
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-40"
                 >
                   <CheckCircle2 size={10} />
                   {t('editor.confirmImport')}
                 </button>
                 <button
                   onClick={() => setImportPreview(null)}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
                 >
                   <XCircle size={10} />
                   {t('common.cancel')}
@@ -1707,7 +1707,7 @@ function TableContextMenu({
       <span className="w-4 flex items-center justify-center">{icon}</span>
       <span className="flex-1 text-left">{label}</span>
       {selectedCount > 0 && (
-        <span className="text-[10px] text-muted-foreground ml-2">{selectedCount}</span>
+        <span className="text-[11px] text-muted-foreground ml-2">{selectedCount}</span>
       )}
     </button>
   );
@@ -1896,7 +1896,7 @@ function VirtualTableBody({
                     <span className="text-white shrink-0">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
                   )}
                   {col.isPrimaryKey && (
-                    <span className="text-[9px] px-0.5 rounded bg-white/20 text-white shrink-0">PK</span>
+                    <span className="text-[11px] px-0.5 rounded bg-white/20 text-white shrink-0">PK</span>
                   )}
                 </div>
               </th>
@@ -1915,7 +1915,7 @@ function VirtualTableBody({
               return (
                 <tr key="sentinel" style={{ height: 28 }}>
                   <td colSpan={columns.length + 1} className="border">
-                    <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
                       {isLoadingMore && <Loader2 size={12} className="animate-spin" />}
                       {isLoadingMore ? 'Loading...' : 'Scroll for more...'}
                     </div>
@@ -2254,19 +2254,19 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
       {/* Apply Changes toolbar */}
       {modifiedCount > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border shrink-0 bg-orange-500/10">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {t('table.changesPending', { count: String(modifiedCount) })}
           </span>
           <div className="flex-1" />
           <button
             onClick={() => discardRef.current?.()}
-            className="px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            className="px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {t('table.discardChanges')}
           </button>
           <button
             onClick={() => onApplyChanges?.(modifiedCellsRef.current(), columns, rows)}
-            className="px-3 py-0.5 text-[11px] text-white rounded transition-colors"
+            className="px-3 py-0.5 text-xs text-white rounded transition-colors"
             style={{ backgroundColor: 'hsl(var(--tab-active))' }}
           >
             {t('table.applyChanges')}
@@ -2274,7 +2274,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
         </div>
       )}
       {/* Bottom status bar */}
-      <div className="flex items-center px-3 py-1 border-t border-border shrink-0 bg-muted/20 text-[11px] text-muted-foreground gap-2">
+      <div className="flex items-center px-3 py-1 border-t border-border shrink-0 bg-muted/20 text-xs text-muted-foreground gap-2">
         {rows.length > 0 && (
           <span>
             {hasMore
@@ -2304,7 +2304,7 @@ function WelcomeScreen() {
         <h2 className="text-base font-medium text-foreground/60">CrabHub</h2>
         <p className="text-xs text-muted-foreground/60 text-center max-w-[240px]">
           {t('welcome.description')}{" "}
-          <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Ctrl+N</kbd>{" "}
+          <kbd className="px-1 py-0.5 bg-muted rounded text-[11px]">Ctrl+N</kbd>{" "}
           {t('welcome.newQuery')}
         </p>
         <div className="flex items-center gap-2 mt-2">
@@ -2411,7 +2411,7 @@ function EditorContextMenu({
       <span className="w-4 flex items-center justify-center">{icon}</span>
       <span className="flex-1 text-left">{label}</span>
       {shortcut && (
-        <span className="text-[10px] text-muted-foreground ml-4">{shortcut}</span>
+        <span className="text-[11px] text-muted-foreground ml-4">{shortcut}</span>
       )}
     </button>
   );
