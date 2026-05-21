@@ -26,7 +26,7 @@ import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stor
 import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
@@ -448,12 +448,14 @@ function QueryEditor() {
         }
       }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
     } else {
-      getSchemas(effectiveConnectionId).then((schemas) => {
-        setDatabaseList(schemas);
-        if (schemas.includes('public')) {
-          setSelectedDatabase('public');
-        } else if (schemas.length > 0 && !selectedDatabase) {
-          setSelectedDatabase(schemas[0] || "");
+      // Load actual databases (not schemas) for PostgreSQL, GaussDB, etc.
+      getDatabases(effectiveConnectionId).then((dbs) => {
+        setDatabaseList(dbs);
+        // Use connection's specified database as default, or the first one
+        if (conn.database && dbs.includes(conn.database)) {
+          setSelectedDatabase(conn.database);
+        } else if (dbs.length > 0 && !selectedDatabase) {
+          setSelectedDatabase(dbs[0] || "");
         }
       }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
     }
@@ -1256,12 +1258,12 @@ function QueryEditor() {
             onChange={(e) => handleDatabaseChange(e.target.value)}
             disabled={!effectiveConnectionId || databaseList.length === 0}
             className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[160px] truncate focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] disabled:opacity-40"
-            title={activeConnection?.type === 'mysql' ? 'Database' : 'Schema'}
+            title="Database"
           >
             {loadingDatabases ? (
               <option value="">Loading...</option>
             ) : databaseList.length === 0 ? (
-              <option value="">{activeConnection?.type === 'mysql' ? 'Database' : 'Schema'}</option>
+              <option value="">Database</option>
             ) : (
               databaseList.map((db) => (
                 <option key={db} value={db}>{db}</option>
