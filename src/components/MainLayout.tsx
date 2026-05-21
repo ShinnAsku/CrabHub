@@ -3,6 +3,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
 import type { Connection } from "@/types";
 import { t } from "@/lib/i18n";
+import { TitleBar } from "./TitleBar";
 import Toolbar from "./Toolbar";
 import Sidebar from "./Sidebar";
 import CrabHubMainPanel from "./CrabHubMainPanel";
@@ -280,6 +281,12 @@ function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">
+      {/* Title Bar */}
+      <TitleBar />
+
+      {/* Content container */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+
       {/* Top Toolbar */}
       <Toolbar
         onOpenConnectionDialog={() => handleOpenConnectionDialog()}
@@ -394,6 +401,7 @@ function MainLayout() {
         </div>
       )}
       <MessageDialog />
+      </div>
     </div>
   );
 }

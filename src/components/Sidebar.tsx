@@ -364,7 +364,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-sidebar-bg">
+    <div className="flex flex-col h-full bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl backdrop-saturate-150 border-r border-border/50">
       {/* Mini Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-0.5">
