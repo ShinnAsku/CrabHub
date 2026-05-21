@@ -1650,7 +1650,16 @@ function QueryEditor() {
                 />
               )}
               {resultTab === "messages" && (
-                <div className="p-3 space-y-1">
+                <div className="p-3 space-y-2 overflow-auto">
+                  {/* Summary */}
+                  {executionTime !== null && (
+                    <div className="text-xs text-muted-foreground space-y-1 mb-3 pb-3 border-b border-border">
+                      <p>{t('editor.totalTime', { ms: executionTime.toFixed(0) })}</p>
+                      {multiResults.length > 0 && (
+                        <p>{t('editor.resultCount', { suffix: `: ${multiResults.map(r => r.rowCount).join(', ')}` })}</p>
+                      )}
+                    </div>
+                  )}
                   {messages.length === 0 ? (
                     <p className="text-xs text-muted-foreground">{t('editor.noMessages')}</p>
                   ) : (
