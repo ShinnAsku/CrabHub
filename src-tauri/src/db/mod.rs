@@ -9,4 +9,5 @@ pub mod gaussdb;
 pub mod clickhouse;
 pub mod manager;
 pub mod commands;
+pub mod pg_compatible;
 pub mod sql_limiter;

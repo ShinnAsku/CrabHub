@@ -941,6 +941,7 @@ dependencies = [
  "tokio-gaussdb",
  "tokio-native-tls",
  "tokio-opengauss",
+ "tokio-util 0.7.18",
  "urlencoding",
  "uuid",
  "zip 0.6.6",
@@ -7188,6 +7189,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
