@@ -43,7 +43,6 @@ const TableSelector: React.FC<TableSelectorProps> = ({
             <div className="text-xs text-muted-foreground italic">No tables selected</div>
           ) : (
             selectedTables.map(tableName => {
-              const table = tables.find(t => t.name === tableName);
               return (
                 <div key={tableName} className="flex items-center justify-between bg-card px-3 py-2 rounded border border-border">
                   <span className="text-sm">{tableName}</span>

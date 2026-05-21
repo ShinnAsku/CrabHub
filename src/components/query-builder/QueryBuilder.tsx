@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Play, Save, X, Table, Columns, Filter, GitMerge, Eye, Settings } from "lucide-react";
+import { Play, X, Table, Filter } from "lucide-react";
 import { t } from "@/lib/i18n";
 import TableSelector from "./TableSelector";
 import ColumnSelector from "./ColumnSelector";
@@ -37,12 +37,11 @@ interface QueryBuilderProps {
   onQueryGenerated: (sql: string) => void;
 }
 
-const QueryBuilder: React.FC<QueryBuilderProps> = ({ 
-  connectionId, 
-  onClose, 
-  onQueryGenerated 
+const QueryBuilder: React.FC<QueryBuilderProps> = ({
+  onClose,
+  onQueryGenerated
 }) => {
-  const [tables, setTables] = useState<Table[]>([
+  const [tables] = useState<Table[]>([
     {
       name: "users",
       columns: [
@@ -67,9 +66,9 @@ const QueryBuilder: React.FC<QueryBuilderProps> = ({
   const [selectedColumns, setSelectedColumns] = useState<string[]>(["users.id", "users.name", "users.email"]);
   const [filters, setFilters] = useState<Filter[]>([]);
   const [joins, setJoins] = useState<Join[]>([]);
-  const [groupBy, setGroupBy] = useState<string[]>([]);
-  const [orderBy, setOrderBy] = useState<string[]>([]);
-  const [limit, setLimit] = useState<string>("100");
+  const [groupBy] = useState<string[]>([]);
+  const [orderBy] = useState<string[]>([]);
+  const [limit] = useState<string>("100");
 
   const addTable = useCallback((tableName: string) => {
     if (!selectedTables.includes(tableName)) {

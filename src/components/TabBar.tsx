@@ -11,7 +11,7 @@ function getTabTitle(tab: { title: string; titleKey?: string; titleNum?: number 
 }
 
 function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, addTab, language } =
+  const { tabs, activeTabId, setActiveTab, closeTab, addTab } =
     useAppStore();
 
   const handleAddTab = () => {

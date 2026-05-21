@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Code, FileText } from "lucide-react";
+import { Code, FileText } from "lucide-react";
 
 interface AddCellButtonProps {
   onAddSql: () => void;

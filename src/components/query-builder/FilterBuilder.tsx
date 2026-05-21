@@ -1,5 +1,5 @@
 import React from "react";
-import { Filter, Plus, X } from "lucide-react";
+import { Filter, X } from "lucide-react";
 
 interface Filter {
   id: string;

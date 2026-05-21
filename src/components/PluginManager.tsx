@@ -6,9 +6,9 @@ import {
 } from "@/lib/tauri-commands";
 import { showMessage } from "./MessageDialog";
 import {
-  RefreshCw, Loader2, AlertTriangle, Download, RotateCcw, Check,
-  ExternalLink, Settings as SettingsIcon, Trash2, ChevronDown,
-  CheckCircle2, Plug, PackageCheck, Power, Boxes, Search, X,
+  RefreshCw, Loader2, AlertTriangle, Download, RotateCcw,
+  ExternalLink, Trash2,
+  CheckCircle2, Plug, Boxes, Search, X,
 } from "lucide-react";
 
 /* ── Types ── */
@@ -90,21 +90,6 @@ function PluginCard({ name, description, version, author, homepage, status, acti
         <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2 flex-1">{description}</p>
       </div>
       <div className="flex min-h-11 items-center justify-end gap-2 border-t border-border bg-muted/50 px-4 py-2.5">{actions}</div>
-    </div>
-  );
-}
-
-/* ── StatCard ── */
-function StatCard({ icon, value, label, colorClass, bgClass, valueColorClass }: {
-  icon: React.ReactNode; value: number; label: string; colorClass: string; bgClass: string; valueColorClass?: string;
-}) {
-  return (
-    <div className="p-4 flex items-center gap-3">
-      <div className={`p-2.5 rounded-lg shrink-0 ${bgClass} ${colorClass}`}>{icon}</div>
-      <div className="min-w-0">
-        <div className={`text-2xl font-bold leading-none tabular-nums ${valueColorClass ?? "text-foreground"}`}>{value}</div>
-        <div className="text-[10px] text-muted-foreground mt-1 leading-tight truncate">{label}</div>
-      </div>
     </div>
   );
 }

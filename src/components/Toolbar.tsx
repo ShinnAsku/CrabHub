@@ -64,19 +64,6 @@ function Toolbar({
     }, 0);
   }, [addTab, tabs.length, connections, setViewModeType, t]);
 
-  const handleNewQueryBuilder = useCallback(async () => {
-    const connected = connections.filter((c: any) => c.connected);
-    if (connected.length === 0) { await showMessage(t('common.noConnectionHint')); return; }
-    if (connected.length > 1) { await showMessage(t('common.multipleConnectionsHint')); return; }
-    const builderCount = tabs.filter((t) => t.type === "query-builder").length + 1;
-    addTab({ title: `${t('tab.queryBuilder')} ${builderCount}`, titleKey: 'tab.queryBuilder', titleNum: builderCount, type: "query-builder", content: "", connectionId: connected[0].id });
-    setViewModeType("query");
-    setTimeout(() => {
-      const newActiveId = useTabStore.getState().activeTabId;
-      if (newActiveId) window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
-    }, 0);
-  }, [addTab, tabs.length, connections, setViewModeType, t]);
-
   return (
     <div className="flex items-center h-9 px-2 border-b border-border select-none shrink-0 gap-0.5 relative">
 

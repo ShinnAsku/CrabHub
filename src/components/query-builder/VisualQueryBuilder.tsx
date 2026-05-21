@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import ReactFlow, {
   ReactFlowProvider,
   addEdge,
@@ -19,13 +19,10 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import {
   Play,
-  Save,
   X,
   Table,
-  Columns,
   Filter,
   GitMerge,
-  Eye,
   Settings,
   Plus,
   Trash2,
@@ -126,7 +123,7 @@ const VisualQueryBuilder: React.FC<QueryBuilderProps> = ({
   const [limit, setLimit] = useState<string>("100");
   const [loading, setLoading] = useState(true);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [_reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   
   const { activeConnectionId } = useAppStore();
   const effectiveConnectionId = connectionId || activeConnectionId;

@@ -11,7 +11,6 @@ import {
   Trash2,
   FileText,
   X,
-  Info,
   List,
   Grid3X3,
   Code2,
@@ -81,7 +80,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   const [selectedColumns, setSelectedColumns] = useState<ColumnInfo[] | null>(null);
   const [columnsLoading, setColumnsLoading] = useState(false);
   const [previewDDL, setPreviewDDL] = useState<string>("");
-  const [ddlLoading, setDdlLoading] = useState(false);
+  const [_ddlLoading, setDdlLoading] = useState(false);
   const [previewTableName, setPreviewTableName] = useState<string | null>(null);
 
   // Directly loaded tables from API (not from schemaData which lacks children)

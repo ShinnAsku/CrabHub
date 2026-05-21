@@ -8,7 +8,6 @@ import {
   Plus,
   FileText,
   Code,
-  Settings,
   BarChart3,
   Table,
   Maximize2,
@@ -31,8 +30,6 @@ import {
   Line
 } from "recharts";
 import { t } from "@/lib/i18n";
-import { useAppStore } from "@/stores/app-store";
-import { executeQuery } from "@/lib/tauri-commands";
 
 interface Cell {
   id: string;
@@ -74,7 +71,6 @@ const CHART_COLORS = [
 const SqlCell: React.FC<SqlCellProps> = ({
   cell,
   isActive,
-  allCells,
   onContentChange,
   onNameChange,
   onRun,
@@ -92,43 +88,11 @@ const SqlCell: React.FC<SqlCellProps> = ({
   const [xAxisColumn, setXAxisColumn] = useState<string>("");
   const [yAxisColumns, setYAxisColumns] = useState<string[]>([]);
 
-  const { activeConnectionId, connections } = useAppStore();
-
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onNameChange(editName);
     setIsEditingName(false);
   };
-
-  // Process cell variables like {{cellName.columnName}}
-  const processCellVariables = useCallback((sql: string): string => {
-    let processedSql = sql;
-    const variableRegex = /\{\{([^.]+)\.([^}]+)\}\}/g;
-    let match;
-    
-    while ((match = variableRegex.exec(sql)) !== null) {
-      const cellName = match[1];
-      const columnName = match[2];
-      const referencedCell = allCells.find(c => c.name === cellName);
-      
-      if (referencedCell && referencedCell.result && referencedCell.result.rows.length > 0) {
-        const colIndex = referencedCell.result.columns.indexOf(columnName);
-        if (colIndex !== -1) {
-          const values = referencedCell.result.rows.map((row: any[]) => {
-            const val = row[colIndex];
-            if (typeof val === "string") {
-              return `'${val.replace(/'/g, "''")}'`;
-            }
-            return val;
-          });
-          const replacement = values.join(", ");
-          processedSql = processedSql.replace(match[0], replacement);
-        }
-      }
-    }
-    
-    return processedSql;
-  }, [allCells]);
 
   const handleRunClick = useCallback(() => {
     onRun(cell);
@@ -168,7 +132,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
     
     if (xIndex === -1 || yIndex === -1) return [];
 
-    return cell.result.rows.map((row: any[], idx: number) => ({
+    return cell.result.rows.map((row: any[], _idx: number) => ({
       name: String(row[xIndex]),
       value: Number(row[yIndex]) || 0
     }));
@@ -441,7 +405,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
                             fill="#8884d8"
                             dataKey="value"
                           >
-                            {(pieData.length > 0 ? pieData : chartData.slice(0, 10)).map((entry: any, index: number) => (
+                            {(pieData.length > 0 ? pieData : chartData.slice(0, 10)).map((_entry: any, index: number) => (
                               <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                             ))}
                           </Pie>

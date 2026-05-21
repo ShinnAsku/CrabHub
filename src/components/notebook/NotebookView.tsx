@@ -76,8 +76,8 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
     failed: number;
     errors: string[];
   } | null>(null);
-  const [showOutline, setShowOutline] = useState<boolean>(true);
-  const [showParams, setShowParams] = useState<boolean>(false);
+  const [showOutline] = useState<boolean>(true);
+  const [showParams] = useState<boolean>(false);
   const [params, setParams] = useState<Record<string, string>>({
     "example": "value"
   });

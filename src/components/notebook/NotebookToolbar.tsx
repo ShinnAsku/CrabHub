@@ -1,5 +1,5 @@
 import React from "react";
-import { Save, Play, PlayCircle, X, ChevronLeft, ChevronRight, Settings, List, Hash } from "lucide-react";
+import { Save, PlayCircle, X } from "lucide-react";
 import { t } from "@/lib/i18n";
 
 interface NotebookToolbarProps {
