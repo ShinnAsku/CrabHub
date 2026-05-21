@@ -26,7 +26,7 @@ function TabBar() {
   };
 
   return (
-    <div className="flex items-center h-9 bg-background border-b border-border shrink-0 overflow-x-auto">
+    <div className="flex items-center h-full flex-1 overflow-x-auto min-w-0">
       {/* Tabs */}
       <div className="flex items-center h-full min-w-0">
         {tabs.map((tab) => (

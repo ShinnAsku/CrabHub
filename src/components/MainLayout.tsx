@@ -4,7 +4,7 @@ import { useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store"
 import type { Connection } from "@/types";
 import { t } from "@/lib/i18n";
 import { TitleBar } from "./TitleBar";
-import Toolbar from "./Toolbar";
+import ToolbarActions from "./Toolbar";
 import Sidebar from "./Sidebar";
 import CrabHubMainPanel from "./CrabHubMainPanel";
 import TabBar from "./TabBar";
@@ -54,7 +54,7 @@ function MainLayout() {
     activeTabId,
     tabs,
   } = useTabStore();
-  
+
   const {
     activeConnectionId,
     connections,
@@ -169,7 +169,7 @@ function MainLayout() {
       if (ctrl && e.shiftKey && e.key === "N") {
         e.preventDefault();
         const connectedConnections = connections.filter(conn => conn.connected);
-        
+
         if (connectedConnections.length === 0) {
           showMessage(t('common.noConnectionHint'));
           return;
@@ -287,18 +287,21 @@ function MainLayout() {
       {/* Content container */}
       <div className="flex flex-col flex-1 overflow-hidden">
 
-      {/* Top Toolbar */}
-      <Toolbar
-        onOpenConnectionDialog={() => handleOpenConnectionDialog()}
-        onOpenSnippetPanel={toggleSnippetPanel}
-        onOpenSchemaDiff={() => setSchemaDiffOpen(true)}
-        onOpenERDiagram={handleOpenERDiagram}
-        onOpenQueryAnalyzer={handleOpenQueryAnalyzer}
-        onOpenDataMigration={() => setDataMigrationOpen(true)}
-        onOpenImport={() => setImportExportMode("import")}
-        onOpenExport={() => setImportExportMode("export")}
-        connections={connections}
-      />
+      {/* Unified Navigation Bar (Toolbar + TabBar merged) */}
+      <div className="flex items-center h-9 bg-background border-b border-border shrink-0">
+        <TabBar />
+        <ToolbarActions
+          onOpenConnectionDialog={() => handleOpenConnectionDialog()}
+          onOpenSnippetPanel={toggleSnippetPanel}
+          onOpenSchemaDiff={() => setSchemaDiffOpen(true)}
+          onOpenERDiagram={handleOpenERDiagram}
+          onOpenQueryAnalyzer={handleOpenQueryAnalyzer}
+          onOpenDataMigration={() => setDataMigrationOpen(true)}
+          onOpenImport={() => setImportExportMode("import")}
+          onOpenExport={() => setImportExportMode("export")}
+          connections={connections}
+        />
+      </div>
 
       {/* Main Content: Sidebar + Editor/Navicat Panel */}
       <PanelGroup direction="horizontal">
@@ -316,10 +319,7 @@ function MainLayout() {
           {activeConnection ? (
             <CrabHubMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />
           ) : (
-            <>
-              {tabs.length > 0 && <TabBar />}
-              <EditorPanel />
-            </>
+            <EditorPanel />
           )}
           </ErrorBoundary>
         </Panel>
@@ -347,7 +347,7 @@ function MainLayout() {
             );
           } else {
             const connectedConnections = connections.filter(conn => conn.connected);
-            
+
             if (connectedConnections.length === 0) {
               showMessage(t('common.noConnectionHint'));
             } else if (connectedConnections.length > 1) {
