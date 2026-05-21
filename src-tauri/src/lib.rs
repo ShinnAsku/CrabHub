@@ -104,6 +104,8 @@ pub async fn run() {
             ai::commands::ai_chat,
             ai::commands::analyze_sql,
             ai::commands::format_sql,
+            ai::commands::get_agent_tools,
+            ai::commands::check_sql_safety,
             // Plugin commands
             plugins::commands::list_plugins,
             plugins::commands::fetch_plugin_registry,

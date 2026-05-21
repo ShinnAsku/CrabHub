@@ -1,5 +1,7 @@
+use crate::ai::agent::AgentRuntime;
 use crate::ai::client::AIClient;
 use crate::ai::optimizer::SQLOptimizer;
+use crate::ai::safety::SafetyGate;
 use crate::ai::types::Message;
 
 #[derive(Clone, serde::Serialize)]
@@ -62,4 +64,17 @@ pub async fn format_sql(sql: String) -> Result<String, String> {
         .join("\n");
     
     Ok(formatted)
+}
+
+/// Get the agent tools definitions (for frontend to configure LLM function calling)
+#[tauri::command]
+pub async fn get_agent_tools() -> Result<Vec<serde_json::Value>, String> {
+    Ok(AgentRuntime::tools_for_llm())
+}
+
+/// Check if a SQL operation needs user confirmation
+#[tauri::command]
+pub async fn check_sql_safety(sql: String) -> Result<serde_json::Value, String> {
+    let action = SafetyGate::default().evaluate(&sql);
+    serde_json::to_value(action).map_err(|e| e.to_string())
 }
