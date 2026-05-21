@@ -325,7 +325,13 @@ function MainLayout() {
           <ErrorBoundary>
           {(() => {
             const activeTab = tabs.find(t => t.id === activeTabId);
-            const isEditorTab = activeTab && ['query', 'notebook', 'query-builder', 'designer', 'analyzer'].includes(activeTab.type);
+            const isEditorTab = activeTab && ['query', 'notebook', 'query-builder', 'analyzer'].includes(activeTab.type);
+            // In navicat mode, show the DB browser (e.g. after double-clicking a table)
+            if (viewModeType === "navicat") {
+              return activeConnection
+                ? <CrabHubMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />
+                : <EditorPanel />;
+            }
             if (!activeConnection || isEditorTab) return <EditorPanel />;
             return <CrabHubMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />;
           })()}
