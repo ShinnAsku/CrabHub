@@ -1968,12 +1968,12 @@ function VirtualTableBody({
                     return (
                       <td
                         key={col.name}
-                        className="px-0 py-0 border"
-                        style={{ minWidth: COL_MIN_WIDTH }}
+                        className="px-0 py-0 border border-orange-400"
+                        style={{ minWidth: COL_MIN_WIDTH, boxShadow: 'inset 0 0 0 1px #f97316' }}
                       >
                         <input
                           ref={editInputRef}
-                          className="w-full h-full px-3 py-1 text-xs bg-[hsl(var(--background))] text-foreground outline-none ring-2 ring-inset ring-orange-400"
+                          className="w-full h-full px-3 py-1 text-xs bg-orange-50 dark:bg-orange-950/40 text-foreground outline-none"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -2048,8 +2048,8 @@ function VirtualTableBody({
                   return (
                     <td
                       key={col.name}
-                      className={`px-3 py-1 whitespace-nowrap truncate border ${isModified ? 'bg-orange-500/15 ring-1 ring-inset ring-orange-500/50' : ''}`}
-                      style={{ minWidth: COL_MIN_WIDTH, cursor: 'default' }}
+                      className={`px-3 py-1 whitespace-nowrap truncate border transition-colors ${isModified ? 'bg-orange-500/25 dark:bg-orange-500/20 ring-1 ring-inset ring-orange-500/70 shadow-[inset_3px_0_0_0_#f97316]' : 'hover:bg-muted/50'}`}
+                      style={{ minWidth: COL_MIN_WIDTH, cursor: 'cell' }}
                       onDoubleClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
