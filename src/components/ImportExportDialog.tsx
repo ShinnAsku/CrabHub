@@ -323,7 +323,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                 <select
                   value={selectedConnId}
                   onChange={(e) => setSelectedConnId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
                 >
                   <option value="" disabled>{t('importExport.selectConnection')}</option>
                   {connectedConns.map((c) => (
@@ -345,7 +345,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                     <select
                       value={selectedSchema}
                       onChange={(e) => setSelectedSchema(e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+                      className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
                       disabled={schemaList.length === 0}
                     >
                       {schemaList.length === 0 && <option value="">{t('importExport.selectSchema')}</option>}
@@ -415,7 +415,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                             name="export-format"
                             checked={format === f}
                             onChange={() => setFormat(f)}
-                            className="text-[hsl(var(--tab-active))]"
+                            className="text-[var(--tab-active)]"
                           />
                           <span className="text-foreground uppercase">{f}</span>
                         </label>
@@ -457,7 +457,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                             name="import-format"
                             checked={format === f}
                             onChange={() => setFormat(f)}
-                            className="text-[hsl(var(--tab-active))]"
+                            className="text-[var(--tab-active)]"
                           />
                           <span className="text-foreground uppercase">{f}</span>
                         </label>
@@ -477,7 +477,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                         <select
                           value={importTargetTable}
                           onChange={(e) => setImportTargetTable(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+                          className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
                         >
                           <option value="">{t('importExport.targetTable')}</option>
                           {tableList.map((ti) => (
@@ -490,7 +490,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                           value={importTargetTable}
                           onChange={(e) => setImportTargetTable(e.target.value)}
                           placeholder={t('importExport.targetTable')}
-                          className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+                          className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
                         />
                       )}
                     </div>

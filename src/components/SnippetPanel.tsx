@@ -152,14 +152,14 @@ function SnippetPanel({ isOpen, onClose, onInsert }: SnippetPanelProps) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder={t('snippet.namePlaceholder')}
-              className="w-full px-2 py-1 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60"
+              className="w-full px-2 py-1 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60"
             />
             <textarea
               value={newSql}
               onChange={(e) => setNewSql(e.target.value)}
               placeholder={t('snippet.contentPlaceholder')}
               rows={3}
-              className="w-full px-2 py-1 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground placeholder:text-muted-foreground/60 resize-none font-mono"
+              className="w-full px-2 py-1 text-xs bg-muted border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground placeholder:text-muted-foreground/60 resize-none font-mono"
             />
             <button
               onClick={handleAdd}

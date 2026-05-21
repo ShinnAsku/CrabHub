@@ -349,7 +349,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
             value={tableName}
             onChange={(e) => setTableName(e.target.value)}
             placeholder={t("designer.tableNamePlaceholder")}
-            className="px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground w-[180px]"
+            className="px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground w-[180px]"
             readOnly={isEditMode}
           />
 
@@ -387,7 +387,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
                 ? "text-white"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
-            style={activeDesignerTab === tab.key ? { backgroundColor: 'hsl(var(--tab-active))' } : undefined}
+            style={activeDesignerTab === tab.key ? { backgroundColor: 'var(--tab-active)' } : undefined}
           >
             {tab.label}
           </button>
@@ -473,7 +473,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
                   if (e.key === 'Escape') setShowTableNameDialog(false);
                 }}
                 placeholder={t('designer.tableNamePlaceholder')}
-                className="flex-1 px-2 py-1.5 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
+                className="flex-1 px-2 py-1.5 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground"
               />
             </div>
             <div className="flex items-center justify-end gap-2">
@@ -487,7 +487,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
                 onClick={handleDialogConfirm}
                 disabled={isExecuting}
                 className="px-4 py-1.5 text-xs text-white rounded transition-colors disabled:opacity-50"
-                style={{ backgroundColor: 'hsl(var(--tab-active))' }}
+                style={{ backgroundColor: 'var(--tab-active)' }}
               >
                 {isExecuting ? t('common.loading') : t('common.save')}
               </button>
@@ -514,7 +514,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
   return (
     <table className="w-full text-xs border-collapse">
       <thead className="sticky top-0 z-10">
-        <tr style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
+        <tr style={{ backgroundColor: 'var(--tab-active)' }}>
           <th className="px-2 py-1.5 text-left font-medium border border-white/30 min-w-[140px] text-white">
             {t("designer.colName")}
           </th>
@@ -550,7 +550,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
               key={index}
               onClick={() => setSelectedColumnIndex(index)}
               className={`border-b transition-colors cursor-pointer ${
-                isSelected ? "bg-[hsl(var(--tab-active))]/10" : "hover:bg-muted/30"
+                isSelected ? "bg-[var(--tab-active)]/10" : "hover:bg-muted/30"
               }`}
             >
               {/* Name */}
@@ -560,7 +560,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                   value={col.name}
                   onChange={(e) => updateColumn(index, { name: e.target.value })}
                   placeholder="column_name"
-                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[var(--tab-active)] rounded outline-none text-foreground"
                 />
               </td>
 
@@ -578,7 +578,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                       scale: newInfo?.hasScale ? col.scale : undefined,
                     });
                   }}
-                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[var(--tab-active)] rounded outline-none text-foreground"
                 >
                   {!allTypes.some((dt) => dt.name.toLowerCase() === col.dataType.toLowerCase()) && col.dataType && (
                     <option value={col.dataType}>{col.dataType}</option>
@@ -604,7 +604,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                       }
                     }}
                     placeholder={info?.hasLength ? "255" : "10"}
-                    className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                    className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[var(--tab-active)] rounded outline-none text-foreground"
                   />
                 ) : null}
               </td>
@@ -619,7 +619,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                       updateColumn(index, { scale: e.target.value ? Number(e.target.value) : undefined })
                     }
                     placeholder="2"
-                    className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                    className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[var(--tab-active)] rounded outline-none text-foreground"
                   />
                 ) : null}
               </td>
@@ -630,7 +630,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                   type="checkbox"
                   checked={!col.nullable}
                   onChange={(e) => updateColumn(index, { nullable: !e.target.checked })}
-                  className="w-3.5 h-3.5 accent-[hsl(var(--tab-active))]"
+                  className="w-3.5 h-3.5 accent-[var(--tab-active)]"
                 />
               </td>
 
@@ -669,7 +669,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                   value={col.comment || ""}
                   onChange={(e) => updateColumn(index, { comment: e.target.value })}
                   placeholder=""
-                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[var(--tab-active)] rounded outline-none text-foreground"
                 />
               </td>
             </tr>
@@ -701,7 +701,7 @@ function IndexesPanel({ indexes, isEditMode }: { indexes: any[]; isEditMode: boo
   return (
     <table className="w-full text-xs border-collapse">
       <thead className="sticky top-0 z-10">
-        <tr style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
+        <tr style={{ backgroundColor: 'var(--tab-active)' }}>
           <th className="px-3 py-1.5 text-left font-medium border border-white/30 text-white">{t('designer.indexName')}</th>
           <th className="px-3 py-1.5 text-center font-medium border border-white/30 w-[60px] text-white">{t('designer.isUnique')}</th>
           <th className="px-3 py-1.5 text-center font-medium border border-white/30 w-[60px] text-white">{t('designer.isPrimary')}</th>
@@ -750,7 +750,7 @@ function ForeignKeysPanel({ foreignKeys, isEditMode }: { foreignKeys: any[]; isE
   return (
     <table className="w-full text-xs border-collapse">
       <thead className="sticky top-0 z-10">
-        <tr style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
+        <tr style={{ backgroundColor: 'var(--tab-active)' }}>
           <th className="px-3 py-1.5 text-left font-medium border border-white/30 text-white">{t('designer.constraintName')}</th>
           <th className="px-3 py-1.5 text-left font-medium border border-white/30 text-white">{t('designer.columnName')}</th>
           <th className="px-3 py-1.5 text-left font-medium border border-white/30 text-white">{t('designer.referencedTable')}</th>
@@ -796,7 +796,7 @@ interface OptionsPanelProps {
 
 function OptionsPanel({ dbType, schemas, schema, setSchema, engine, setEngine, charset, setCharset, orderBy, setOrderBy, selectedColumnIndex, columns, updateColumn }: OptionsPanelProps) {
   const selectedCol = selectedColumnIndex !== null ? columns[selectedColumnIndex] : null;
-  const inputClass = "px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground";
+  const inputClass = "px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground";
 
   return (
     <div className="p-4 space-y-4 max-w-lg">
@@ -887,7 +887,7 @@ function OptionsPanel({ dbType, schemas, schema, setSchema, engine, setEngine, c
               type="checkbox"
               checked={selectedCol.unique || false}
               onChange={(e) => updateColumn(selectedColumnIndex, { unique: e.target.checked })}
-              className="w-3.5 h-3.5 accent-[hsl(var(--tab-active))]"
+              className="w-3.5 h-3.5 accent-[var(--tab-active)]"
             />
           </div>
           <div className="flex items-center gap-3">
@@ -896,7 +896,7 @@ function OptionsPanel({ dbType, schemas, schema, setSchema, engine, setEngine, c
               type="checkbox"
               checked={selectedCol.autoIncrement}
               onChange={(e) => updateColumn(selectedColumnIndex, { autoIncrement: e.target.checked })}
-              className="w-3.5 h-3.5 accent-[hsl(var(--tab-active))]"
+              className="w-3.5 h-3.5 accent-[var(--tab-active)]"
             />
           </div>
         </>
@@ -913,7 +913,7 @@ function CommentPanel({ tableComment, setTableComment }: { tableComment: string;
         value={tableComment}
         onChange={(e) => setTableComment(e.target.value)}
         placeholder={t("designer.commentPlaceholder")}
-        className="w-full h-40 px-3 py-2 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground resize-y font-mono"
+        className="w-full h-40 px-3 py-2 text-xs bg-background border border-border rounded outline-none focus:border-[var(--tab-active)] text-foreground resize-y font-mono"
       />
     </div>
   );

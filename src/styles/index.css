@@ -11,127 +11,125 @@
 
 /* ===== Light Theme - Navicat Style ===== */
 [data-theme="light"] {
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --table-border: 214 25% 78%;
-  --primary: 221 83% 53%;
-  --primary-glow: 221 83% 60%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --accent: 199 89% 48%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  --ring: 221 83% 27%;
+  --background: hsl(210 40% 98%);
+  --foreground: hsl(222 47% 11%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 47% 11%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 47% 11%);
+  --muted: hsl(210 40% 96%);
+  --muted-foreground: hsl(215 16% 47%);
+  --border: hsl(214 32% 91%);
+  --input: hsl(214 32% 91%);
+  --table-border: hsl(214 25% 78%);
+  --primary: hsl(221 83% 53%);
+  --primary-glow: hsl(221 83% 60%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(210 40% 96%);
+  --secondary-foreground: hsl(222 47% 11%);
+  --accent: hsl(199 89% 48%);
+  --accent-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --ring: hsl(221 83% 27%);
   --radius: 0.5rem;
-  --success: 142 76% 36%;
-  --success-foreground: 210 40% 98%;
-  --warning: 38 92% 50%;
-  --warning-foreground: 210 40% 98%;
-  --info: 199 89% 48%;
-  --info-foreground: 210 40% 98%;
-  --sidebar-bg: 220 33% 96%;
-  --sidebar-foreground: 222 47% 11%;
-  --sidebar-border: 214 32% 91%;
-  --sidebar-item-hover: 210 40% 92%;
-  --sidebar-item-active: 221 83% 53%;
-  --tab-active: 221 83% 53%;
-  --toolbar-bg: 210 40% 99%;
-  --editor-bg: 0 0% 100%;
-  --editor-line-number: 215 16% 65%;
-  --editor-selection: 221 83% 90%;
+  --success: hsl(142 76% 36%);
+  --success-foreground: hsl(210 40% 98%);
+  --warning: hsl(38 92% 50%);
+  --warning-foreground: hsl(210 40% 98%);
+  --info: hsl(199 89% 48%);
+  --info-foreground: hsl(210 40% 98%);
+  --sidebar-bg: hsl(220 33% 96%);
+  --sidebar-foreground: hsl(222 47% 11%);
+  --sidebar-border: hsl(214 32% 91%);
+  --sidebar-item-hover: hsl(210 40% 92%);
+  --sidebar-item-active: hsl(221 83% 53%);
+  --tab-active: hsl(221 83% 53%);
+  --toolbar-bg: hsl(210 40% 99%);
+  --editor-bg: hsl(0 0% 100%);
+  --editor-line-number: hsl(215 16% 65%);
+  --editor-selection: hsl(221 83% 90%);
 
   /* Tree node semantic colors */
-  --tree-table: 142 76% 36%;
-  --tree-view: 262 83% 58%;
-  --tree-function: 38 92% 50%;
-  --tree-procedure: 0 84% 60%;
-  --tree-trigger: 45 93% 47%;
-  --tree-schema: 199 89% 48%;
+  --tree-table: hsl(142 76% 36%);
+  --tree-view: hsl(262 83% 58%);
+  --tree-function: hsl(38 92% 50%);
+  --tree-procedure: hsl(0 84% 60%);
+  --tree-trigger: hsl(45 93% 47%);
+  --tree-schema: hsl(199 89% 48%);
 }
 
 /* ===== Dark Theme - Navicat Style ===== */
 [data-theme="dark"] {
-  --background: 222 47% 8%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --muted: 217 33% 18%;
-  --muted-foreground: 215 20% 65%;
-  --border: 217 33% 18%;
-  --input: 217 33% 18%;
-  --table-border: 217 25% 32%;
-  --primary: 221 83% 53%;
-  --primary-glow: 221 83% 60%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 217 33% 18%;
-  --secondary-foreground: 210 40% 98%;
-  --accent: 199 89% 48%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 63% 31%;
-  --destructive-foreground: 210 40% 98%;
-  --ring: 221 83% 35%;
+  --background: hsl(222 47% 8%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222 47% 11%);
+  --card-foreground: hsl(210 40% 98%);
+  --popover: hsl(222 47% 11%);
+  --popover-foreground: hsl(210 40% 98%);
+  --muted: hsl(217 33% 18%);
+  --muted-foreground: hsl(215 20% 65%);
+  --border: hsl(217 33% 18%);
+  --input: hsl(217 33% 18%);
+  --table-border: hsl(217 25% 32%);
+  --primary: hsl(221 83% 53%);
+  --primary-glow: hsl(221 83% 60%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(217 33% 18%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --accent: hsl(199 89% 48%);
+  --accent-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 63% 31%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --ring: hsl(221 83% 35%);
   --radius: 0.5rem;
-  --success: 142 76% 36%;
-  --success-foreground: 210 40% 98%;
-  --warning: 38 92% 50%;
-  --warning-foreground: 210 40% 98%;
-  --info: 199 89% 48%;
-  --info-foreground: 210 40% 98%;
-  --sidebar-bg: 222 47% 6%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217 33% 15%;
-  --sidebar-item-hover: 217 33% 15%;
-  --sidebar-item-active: 221 83% 53%;
-  --tab-active: 221 83% 53%;
-  --toolbar-bg: 222 47% 10%;
-  --editor-bg: 222 47% 8%;
-  --editor-line-number: 215 20% 50%;
-  --editor-selection: 221 83% 20%;
+  --success: hsl(142 76% 36%);
+  --success-foreground: hsl(210 40% 98%);
+  --warning: hsl(38 92% 50%);
+  --warning-foreground: hsl(210 40% 98%);
+  --info: hsl(199 89% 48%);
+  --info-foreground: hsl(210 40% 98%);
+  --sidebar-bg: hsl(222 47% 6%);
+  --sidebar-foreground: hsl(210 40% 98%);
+  --sidebar-border: hsl(217 33% 15%);
+  --sidebar-item-hover: hsl(217 33% 15%);
+  --sidebar-item-active: hsl(221 83% 53%);
+  --tab-active: hsl(221 83% 53%);
+  --toolbar-bg: hsl(222 47% 10%);
+  --editor-bg: hsl(222 47% 8%);
+  --editor-line-number: hsl(215 20% 50%);
+  --editor-selection: hsl(221 83% 20%);
 
   /* Tree node semantic colors — brighter for dark backgrounds */
-  --tree-table: 142 60% 50%;
-  --tree-view: 262 70% 65%;
-  --tree-function: 38 80% 55%;
-  --tree-procedure: 0 70% 65%;
-  --tree-trigger: 45 70% 55%;
-  --tree-schema: 199 70% 55%;
+  --tree-table: hsl(142 60% 50%);
+  --tree-view: hsl(262 70% 65%);
+  --tree-function: hsl(38 80% 55%);
+  --tree-procedure: hsl(0 70% 65%);
+  --tree-trigger: hsl(45 70% 55%);
+  --tree-schema: hsl(199 70% 55%);
 }
 
 /* ===== Base Styles ===== */
 * {
-  border-color: hsl(var(--border));
+  border-color: var(--border);
 }
 
 /* ===== Table Styles - heavier borders ===== */
 table {
-  border-color: hsl(var(--table-border));
+  border-color: var(--table-border);
 }
 
 table th,
 table td {
-  border-color: hsl(var(--table-border));
+  border-color: var(--table-border);
 }
-
-@utility border-table { border-color: hsl(var(--table-border)); }
 
 body {
   margin: 0;
   padding: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: var(--background);
+  color: var(--foreground);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -153,58 +151,53 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.25);
+  background: color-mix(in srgb, var(--muted-foreground) 25%, transparent);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.45);
+  background: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
-/* ===== Tailwind 4 @utility — runtime-resolved CSS variable colors ===== */
-@utility bg-background { background-color: hsl(var(--background)); }
-@utility bg-card { background-color: hsl(var(--card)); }
-@utility bg-muted { background-color: hsl(var(--muted)); }
-@utility bg-accent { background-color: hsl(var(--accent)); }
-@utility bg-sidebar-bg { background-color: hsl(var(--sidebar-bg)); }
-@utility bg-destructive { background-color: hsl(var(--destructive)); }
-
-@utility text-foreground { color: hsl(var(--foreground)); }
-@utility text-card-foreground { color: hsl(var(--card-foreground)); }
-@utility text-muted-foreground { color: hsl(var(--muted-foreground)); }
-@utility text-accent-foreground { color: hsl(var(--accent-foreground)); }
-@utility text-sidebar-foreground { color: hsl(var(--sidebar-foreground)); }
-@utility text-primary { color: hsl(var(--primary)); }
-@utility text-primary-foreground { color: hsl(var(--primary-foreground)); }
-@utility text-destructive { color: hsl(var(--destructive)); }
-@utility text-destructive-foreground { color: hsl(var(--destructive-foreground)); }
-@utility text-success { color: hsl(var(--success)); }
-@utility text-warning { color: hsl(var(--warning)); }
-
-@utility bg-success { background-color: hsl(var(--success)); }
-@utility bg-warning { background-color: hsl(var(--warning)); }
-
-@utility border-border { border-color: hsl(var(--border)); }
-@utility border-warning { border-color: hsl(var(--warning)); }
-@utility border-sidebar-border { border-color: hsl(var(--sidebar-border)); }
-@utility border-input { border-color: hsl(var(--input)); }
-@utility border-primary { border-color: hsl(var(--primary)); }
-@utility border-table { border-color: hsl(var(--table-border)); }
-
-@utility ring-ring { --tw-ring-color: hsl(var(--ring)); }
-
-@utility text-tree-table { color: hsl(var(--tree-table)); }
-@utility text-tree-view { color: hsl(var(--tree-view)); }
-@utility text-tree-function { color: hsl(var(--tree-function)); }
-@utility text-tree-procedure { color: hsl(var(--tree-procedure)); }
-@utility text-tree-trigger { color: hsl(var(--tree-trigger)); }
-@utility text-tree-schema { color: hsl(var(--tree-schema)); }
+/* ===== Tailwind 4 @theme inline — maps CSS variable colors to Tailwind utility classes ===== */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-tree-table: var(--tree-table);
+  --color-tree-view: var(--tree-view);
+  --color-tree-function: var(--tree-function);
+  --color-tree-procedure: var(--tree-procedure);
+  --color-tree-trigger: var(--tree-trigger);
+  --color-tree-schema: var(--tree-schema);
+}
 
 /* ===== Resizable Panels ===== */
 [data-panel-group-direction="horizontal"] > [data-resize-handle-active] {
-  background-color: hsl(var(--tab-active) / 0.3);
+  background-color: color-mix(in srgb, var(--tab-active) 30%, transparent);
 }

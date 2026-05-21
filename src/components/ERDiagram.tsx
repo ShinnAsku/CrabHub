@@ -187,7 +187,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
       <defs>
         <marker id="er-arrow" viewBox="0 0 10 10" refX="10" refY="5"
           markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--tab-active))" opacity="0.7" />
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--tab-active)" opacity="0.7" />
         </marker>
       </defs>
 
@@ -196,7 +196,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
         <path
           key={i}
           d={connectionPath(line)}
-          stroke="hsl(var(--tab-active))"
+          stroke="var(--tab-active)"
           strokeWidth="1.5"
           fill="none"
           opacity="0.6"
@@ -215,7 +215,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
             height={24}
             rx={4}
             ry={4}
-            fill="hsl(var(--tab-active))"
+            fill="var(--tab-active)"
             opacity="0.9"
           />
           <rect
@@ -223,7 +223,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
             y={table.y + 20}
             width={table.width}
             height={4}
-            fill="hsl(var(--tab-active))"
+            fill="var(--tab-active)"
             opacity="0.9"
           />
           <text
@@ -242,8 +242,8 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
             y={table.y + 24}
             width={table.width}
             height={table.height - 24}
-            fill="hsl(var(--background))"
-            stroke="hsl(var(--border))"
+            fill="var(--background)"
+            stroke="var(--border)"
             strokeWidth="1"
             rx="0"
             ry="0"
@@ -254,7 +254,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
             y={table.y + table.height - 4}
             width={table.width}
             height={4}
-            fill="hsl(var(--background))"
+            fill="var(--background)"
             rx="4"
             ry="4"
           />
@@ -263,10 +263,10 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
           {table.columns.map((col, ci) => {
             const prefix = col.isPK ? "PK" : col.isFK ? "FK" : "  ";
             const prefixColor = col.isPK
-              ? "hsl(var(--tab-active))"
+              ? "var(--tab-active)"
               : col.isFK
               ? "#60a5fa"
-              : "hsl(var(--muted-foreground))";
+              : "var(--muted-foreground)";
             return (
               <g key={col.name}>
                 {/* Prefix (PK/FK) */}
@@ -284,7 +284,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
                 <text
                   x={table.x + 24}
                   y={table.y + 40 + ci * 18}
-                  fill={col.isPK ? "hsl(var(--tab-active))" : "hsl(var(--muted-foreground))"}
+                  fill={col.isPK ? "var(--tab-active)" : "var(--muted-foreground)"}
                   fontSize="10"
                   fontFamily="monospace"
                 >
@@ -294,7 +294,7 @@ function ERDiagramSVG({ tables, connections, svgWidth, svgHeight }: {
                 <text
                   x={table.x + 24 + col.name.length * 6.5 + 6}
                   y={table.y + 40 + ci * 18}
-                  fill="hsl(var(--muted-foreground))"
+                  fill="var(--muted-foreground)"
                   fontSize="9"
                   fontFamily="monospace"
                   opacity="0.6"

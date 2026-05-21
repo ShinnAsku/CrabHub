@@ -286,7 +286,7 @@ function CreateDatabaseDialog({
   if (!isOpen) return null;
 
   const selectClass =
-    "w-full px-2 py-1.5 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] text-foreground";
+    "w-full px-2 py-1.5 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)] text-foreground";
   const inputClass = selectClass;
   const labelClass = "text-xs text-muted-foreground whitespace-nowrap w-20 shrink-0 text-right";
 
@@ -421,7 +421,7 @@ function CreateDatabaseDialog({
             onChange={(e) => setAllowConnections(e.target.checked)}
             className="sr-only peer"
           />
-          <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:bg-[hsl(var(--tab-active))] transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4" />
+          <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:bg-[var(--tab-active)] transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4" />
         </label>
       </div>
 
@@ -435,7 +435,7 @@ function CreateDatabaseDialog({
             onChange={(e) => setIsTemplate(e.target.checked)}
             className="sr-only peer"
           />
-          <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:bg-[hsl(var(--tab-active))] transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4" />
+          <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:bg-[var(--tab-active)] transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4" />
         </label>
       </div>
     </>

@@ -113,7 +113,7 @@ function ERSelectorDialog({ isOpen, onClose, onConfirm }: ERSelectorDialogProps)
                 <select
                   value={selectedConnId}
                   onChange={(e) => setSelectedConnId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
                 >
                   <option value="" disabled>{t('er.selectConnection')}</option>
                   {connectedConns.map((c) => (
@@ -140,7 +140,7 @@ function ERSelectorDialog({ isOpen, onClose, onConfirm }: ERSelectorDialogProps)
                       <select
                         value={selectedSchema}
                         onChange={(e) => setSelectedSchema(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+                        className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)]"
                         disabled={schemaList.length === 0}
                       >
                         {schemaList.length === 0 && <option value="">{t('er.selectSchema')}</option>}

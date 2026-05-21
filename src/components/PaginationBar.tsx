@@ -94,7 +94,7 @@ export default function PaginationBar({
           onBlur={handlePageInputCommit}
           onKeyDown={handlePageInputKeyDown}
           disabled={allDisabled}
-          className="w-10 text-center text-xs px-1 py-0.5 bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] disabled:opacity-40"
+          className="w-10 text-center text-xs px-1 py-0.5 bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)] disabled:opacity-40"
         />
         <span className="text-xs text-muted-foreground mx-0.5">/ {totalPages} {t('pagination.of')}</span>
 
@@ -123,7 +123,7 @@ export default function PaginationBar({
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
           disabled={allDisabled}
-          className="text-xs px-1 py-0.5 bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] disabled:opacity-40"
+          className="text-xs px-1 py-0.5 bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[var(--tab-active)] disabled:opacity-40"
         >
           {pageSizeOptions.map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
