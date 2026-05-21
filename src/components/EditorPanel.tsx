@@ -26,7 +26,7 @@ import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stor
 import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { executeQuery, executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
@@ -67,44 +67,6 @@ type ResultTab = "results" | "messages";
 // Configure Monaco Editor to use local files instead of CDN
 loader.config({ monaco });
 
-// Strip leading SQL comments (-- and /* */) to find the actual statement keyword
-function stripLeadingComments(sql: string): string {
-  let i = 0;
-  const len = sql.length;
-  while (i < len) {
-    const ch = sql.charAt(i);
-    if (/\s/.test(ch)) { i++; continue; }
-    if (ch === '-' && sql.charAt(i + 1) === '-') {
-      const nl = sql.indexOf('\n', i);
-      if (nl === -1) return '';
-      i = nl + 1;
-      continue;
-    }
-    if (ch === '/' && sql.charAt(i + 1) === '*') {
-      const end = sql.indexOf('*/', i + 2);
-      if (end === -1) return '';
-      i = end + 2;
-      continue;
-    }
-    break;
-  }
-  return sql.substring(i);
-}
-
-function isSelectQuery(sql: string): boolean {
-  const trimmed = stripLeadingComments(sql).trim().toUpperCase();
-  return (
-    trimmed.startsWith("SELECT") ||
-    trimmed.startsWith("SHOW") ||
-    trimmed.startsWith("DESCRIBE") ||
-    trimmed.startsWith("DESC ") ||
-    trimmed.startsWith("EXPLAIN") ||
-    trimmed.startsWith("WITH")
-  );
-}
-
-// Only SELECT and WITH queries should get auto-LIMIT injection
-// SHOW/DESCRIBE/EXPLAIN return small result sets, no need for pagination
 const QUERY_PAGE_SIZE = 500;
 
 // Split SQL text into individual statements, respecting strings, comments, dollar-quotes, and BEGIN...END blocks
@@ -736,33 +698,32 @@ function QueryEditor() {
     const newLoadMoreState: Record<number, { hasMore: boolean; currentOffset: number; originalSql: string }> = {};
 
     try {
-      // Execute all statements in parallel via Promise.all
-      const allResults = await Promise.all(statements.map(async (sql, idx) => {
-        const stmtStart = performance.now();
-        if (isSelectQuery(sql)) {
-          const pagedResult = await executeQueryPaged(effectiveConnectionId, sql, QUERY_PAGE_SIZE, 0);
-          const elapsed = performance.now() - stmtStart;
-          return { idx, sql, type: 'select' as const, result: pagedResult, hasMore: pagedResult.hasMore, elapsed };
-        } else {
-          const execResult = await executeSql(effectiveConnectionId, sql);
-          const elapsed = performance.now() - stmtStart;
-          return { idx, sql, type: 'exec' as const, elapsed, message: execResult.message };
-        }
-      }));
+      // Single IPC batch — all SQL at once, results in completion order
+      const batchStart = performance.now();
+      const rawResults = await executeBatch(effectiveConnectionId, statements);
+      const batchElapsed = performance.now() - batchStart;
 
-      // Process in original order
-      allResults.sort((a, b) => a.idx - b.idx);
-      for (const r of allResults) {
-        if (r.type === 'select') {
-          collectedResults.push(r.result);
-          newLoadMoreState[collectedResults.length - 1] = { hasMore: r.hasMore, currentOffset: r.result.rows.length, originalSql: r.sql };
-          const prefix = statements.length > 1 ? `[${allResults.indexOf(r) + 1}/${statements.length}] ` : '';
-          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(r.result.rowCount), ms: r.elapsed.toFixed(0) })}`);
-          addQueryHistory({ connectionId: effectiveConnectionId, sql: r.sql, duration: r.elapsed, timestamp: new Date(), rowCount: r.result.rowCount || 0 });
+      for (let i = 0; i < rawResults.length; i++) {
+        const raw = rawResults[i]!;
+        const sql = statements[i]!;
+        if (raw?.type === 'empty') continue;
+        if (raw?.type === 'error') {
+          allMessages.push(`[${i + 1}/${statements.length}] 错误: ${raw.message}`);
+          continue;
+        }
+        const stmtElapsed = batchElapsed / rawResults.length;
+        // Map result: PagedQueryResult has columns + rows
+        if (raw.columns) {
+          const qr = raw as QueryResult;
+          collectedResults.push(qr);
+          newLoadMoreState[collectedResults.length - 1] = { hasMore: raw.hasMore ?? false, currentOffset: qr.rows?.length ?? 0, originalSql: sql };
+          const prefix = statements.length > 1 ? `[${i + 1}/${statements.length}] ` : '';
+          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(qr.rowCount ?? 0), ms: stmtElapsed.toFixed(0) })}`);
+          addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: qr.rowCount || 0 });
         } else {
-          const prefix = statements.length > 1 ? `[${allResults.indexOf(r) + 1}/${statements.length}] ` : '';
-          allMessages.push(`${prefix}${t('editor.executeSuccess', { message: r.message || '', ms: r.elapsed.toFixed(0) })}`);
-          addQueryHistory({ connectionId: effectiveConnectionId, sql: r.sql, duration: r.elapsed, timestamp: new Date(), rowCount: 0 });
+          const prefix = statements.length > 1 ? `[${i + 1}/${statements.length}] ` : '';
+          allMessages.push(`${prefix}${t('editor.executeSuccess', { message: raw?.message ?? '', ms: stmtElapsed.toFixed(0) })}`);
+          addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: 0 });
         }
       }
 

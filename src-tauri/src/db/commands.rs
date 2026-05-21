@@ -63,7 +63,7 @@ pub async fn execute_query_paged(
 }
 
 /// Execute a batch of SQL statements in a single IPC call.
-/// Each statement is executed independently; results are returned in order.
+/// Statements execute sequentially on the same connection; results preserve order.
 #[tauri::command]
 pub async fn execute_batch(
     state: State<'_, Arc<ConnectionManager>>,
@@ -77,7 +77,6 @@ pub async fn execute_batch(
             results.push(serde_json::json!({"type": "empty"}));
             continue;
         }
-        // Auto-detect: SELECT/WITH/SHOW/DESCRIBE/EXPLAIN → query, everything else → execute
         let upper = trimmed.to_uppercase();
         let is_query = upper.starts_with("SELECT")
             || upper.starts_with("WITH")
