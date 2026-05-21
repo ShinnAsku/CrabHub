@@ -12,3 +12,4 @@ pub mod manager;
 pub mod commands;
 pub mod pg_compatible;
 pub mod sql_limiter;
+pub mod odbc_bridge;
