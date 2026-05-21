@@ -20,7 +20,7 @@ function StatusBar() {
   };
 
   return (
-    <div className="flex items-center justify-between h-6 px-3 border-t border-border bg-muted/30 text-[11px] text-muted-foreground select-none shrink-0">
+    <div className="flex items-center justify-between h-5 px-3 bg-muted/50 text-[10px] text-muted-foreground select-none shrink-0">
       {/* Left: Connection status */}
       <div className="flex items-center gap-2">
         <span className={`w-1.5 h-1.5 rounded-full ${activeConn?.connected ? 'bg-success' : 'bg-muted-foreground/40'}`} />

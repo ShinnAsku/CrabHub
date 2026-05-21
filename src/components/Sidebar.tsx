@@ -365,34 +365,32 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
 
   return (
     <div className="flex flex-col h-full bg-sidebar-bg/70 backdrop-blur-xl backdrop-saturate-150 border-r border-sidebar-border/50">
-      {/* Mini Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-sidebar-border shrink-0">
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => setView("connections")}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors ${
-              view === "connections"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-            title={t('sidebar.connections')}
-          >
-            <Database size={12} />
-            <span>{t('sidebar.connections')}</span>
-          </button>
-          <button
-            onClick={() => setView("history")}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors ${
-              view === "history"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-            title={t('sidebar.history')}
-          >
-            <Clock size={12} />
-            <span>{t('history.title')}</span>
-          </button>
-        </div>
+      {/* View toggle */}
+      <div className="flex items-center gap-1 px-2 py-1 shrink-0">
+        <button
+          onClick={() => setView("connections")}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+            view === "connections"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+          title={t('sidebar.connections')}
+        >
+          <Database size={12} />
+          <span>{t('sidebar.connections')}</span>
+        </button>
+        <button
+          onClick={() => setView("history")}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+            view === "history"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+          title={t('sidebar.history')}
+        >
+          <Clock size={12} />
+          <span>{t('history.title')}</span>
+        </button>
       </div>
 
       {/* Content */}
@@ -1534,7 +1532,7 @@ function ConnectionItem({
     <div
       className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer text-xs border-l-2 transition-colors ${
         isActive
-          ? "bg-[hsl(var(--tab-active))] text-primary-foreground border-[hsl(var(--tab-active))]"
+          ? "bg-[hsl(var(--tab-active))]/10 border-[hsl(var(--tab-active))] text-foreground"
           : "border-transparent hover:bg-muted/50 text-foreground"
       }`}
       onClick={onClick}
