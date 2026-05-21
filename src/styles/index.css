@@ -164,7 +164,11 @@ body {
 @utility text-success { color: hsl(var(--success)); }
 @utility text-warning { color: hsl(var(--warning)); }
 
+@utility bg-success { background-color: hsl(var(--success)); }
+@utility bg-warning { background-color: hsl(var(--warning)); }
+
 @utility border-border { border-color: hsl(var(--border)); }
+@utility border-warning { border-color: hsl(var(--warning)); }
 @utility border-sidebar-border { border-color: hsl(var(--sidebar-border)); }
 @utility border-input { border-color: hsl(var(--input)); }
 @utility border-primary { border-color: hsl(var(--primary)); }

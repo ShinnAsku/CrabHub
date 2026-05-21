@@ -364,7 +364,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl backdrop-saturate-150 border-r border-border/50">
+    <div className="flex flex-col h-full bg-sidebar-bg/70 backdrop-blur-xl backdrop-saturate-150 border-r border-sidebar-border/50">
       {/* Mini Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-0.5">
@@ -1534,7 +1534,7 @@ function ConnectionItem({
     <div
       className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer text-xs border-l-2 transition-colors ${
         isActive
-          ? "bg-[hsl(var(--tab-active))] text-white border-[hsl(var(--tab-active))]"
+          ? "bg-[hsl(var(--tab-active))] text-primary-foreground border-[hsl(var(--tab-active))]"
           : "border-transparent hover:bg-muted/50 text-foreground"
       }`}
       onClick={onClick}

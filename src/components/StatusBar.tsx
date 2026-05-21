@@ -23,14 +23,14 @@ function StatusBar() {
     <div className="flex items-center justify-between h-6 px-3 border-t border-border bg-muted/30 text-[11px] text-muted-foreground select-none shrink-0">
       {/* Left: Connection status */}
       <div className="flex items-center gap-2">
-        <span className={`w-1.5 h-1.5 rounded-full ${activeConn?.connected ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
+        <span className={`w-1.5 h-1.5 rounded-full ${activeConn?.connected ? 'bg-success' : 'bg-muted-foreground/40'}`} />
         <span>
           {activeConn
             ? `${activeConn.name} (${typeLabels[activeConn.type] || activeConn.type})`
             : t('status.notConnected')}
         </span>
         {isTxActive && (
-          <span className="text-yellow-500 text-[10px]">{t('status.transactionActive')}</span>
+          <span className="text-warning text-[10px]">{t('status.transactionActive')}</span>
         )}
         {activeConnections.length > 1 && (
           <span className="text-[10px] text-muted-foreground/70">

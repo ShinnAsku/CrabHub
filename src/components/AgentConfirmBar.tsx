@@ -11,10 +11,10 @@ interface AgentConfirmBarProps {
 
 export function AgentConfirmBar({ sql, reason, onApprove, onReject }: AgentConfirmBarProps) {
   return (
-    <div className="border border-yellow-500/30 rounded-lg p-3 bg-yellow-50 dark:bg-yellow-950/20 my-2">
+    <div className="border border-warning/30 rounded-lg p-3 bg-warning/10 my-2">
       <div className="flex items-center gap-2 mb-2">
-        <ShieldAlert size={16} className="text-yellow-600" />
-        <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+        <ShieldAlert size={16} className="text-warning" />
+        <span className="text-sm font-medium text-warning">
           {t('agent.confirmTitle')}
         </span>
       </div>
