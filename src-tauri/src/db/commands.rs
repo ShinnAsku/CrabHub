@@ -138,6 +138,12 @@ pub async fn get_databases(
         Some(DatabaseType::ClickHouse) => "SELECT name FROM system.databases ORDER BY name".to_string(),
         Some(DatabaseType::PostgreSQL | DatabaseType::GaussDB | DatabaseType::Plugin(_)) =>
             "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
+        Some(DatabaseType::OceanBase | DatabaseType::TiDB | DatabaseType::TDSQL) =>
+            "SHOW DATABASES".to_string(),
+        Some(DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::YashanDB
+             | DatabaseType::Oracle | DatabaseType::SQLServer
+             | DatabaseType::DaMeng | DatabaseType::GBase) =>
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
         None => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
     };
     let result = state.query_metadata(&id, &sql).await.map_err(|e| e.to_string())?;

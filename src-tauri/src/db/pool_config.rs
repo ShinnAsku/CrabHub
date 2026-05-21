@@ -15,19 +15,31 @@ pub fn pool_config_for(db_type: &DatabaseType) -> PoolConfig {
             max_lifetime_secs: 1800,
             acquire_timeout_secs: 10,
         },
-        DatabaseType::PostgreSQL | DatabaseType::GaussDB => PoolConfig {
+        DatabaseType::PostgreSQL
+        | DatabaseType::GaussDB
+        | DatabaseType::Kingbase
+        | DatabaseType::Vastbase
+        | DatabaseType::YashanDB => PoolConfig {
             max_connections: 10,
             idle_timeout_secs: 600,
             max_lifetime_secs: 1800,
             acquire_timeout_secs: 10,
         },
-        DatabaseType::MySQL => PoolConfig {
+        DatabaseType::MySQL
+        | DatabaseType::OceanBase
+        | DatabaseType::TiDB
+        | DatabaseType::TDSQL => PoolConfig {
             max_connections: 10,
             idle_timeout_secs: 600,
             max_lifetime_secs: 1800,
             acquire_timeout_secs: 10,
         },
-        DatabaseType::ClickHouse | DatabaseType::Plugin(_) => PoolConfig {
+        DatabaseType::ClickHouse
+        | DatabaseType::Oracle
+        | DatabaseType::SQLServer
+        | DatabaseType::DaMeng
+        | DatabaseType::GBase
+        | DatabaseType::Plugin(_) => PoolConfig {
             max_connections: 5,
             idle_timeout_secs: 600,
             max_lifetime_secs: 1800,

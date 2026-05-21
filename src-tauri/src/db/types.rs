@@ -16,6 +16,22 @@ pub enum DatabaseType {
     MySQL,
     SQLite,
     ClickHouse,
+    // 新增：PG 协议兼容
+    Kingbase,       // 人大金仓
+    Vastbase,       // 海量数据库
+    YashanDB,       // 崖山数据库
+
+    // 新增：MySQL 协议兼容
+    OceanBase,      // 蚂蚁 OceanBase
+    TiDB,           // PingCAP TiDB
+    TDSQL,          // 腾讯 TDSQL
+
+    // 新增：ODBC 桥接
+    Oracle,         // Oracle
+    SQLServer,      // Microsoft SQL Server
+    DaMeng,         // 达梦 DM
+    GBase,          // 南大通用 GBase 8a/8t
+
     GaussDB,
     Plugin(String),
 }
@@ -39,7 +55,56 @@ impl DatabaseType {
             DatabaseType::SQLite => "sqlite",
             DatabaseType::ClickHouse => "clickhouse",
             DatabaseType::GaussDB => "gaussdb",
+            DatabaseType::Kingbase => "kingbase",
+            DatabaseType::Vastbase => "vastbase",
+            DatabaseType::YashanDB => "yashandb",
+            DatabaseType::OceanBase => "oceanbase",
+            DatabaseType::TiDB => "tidb",
+            DatabaseType::TDSQL => "tdsql",
+            DatabaseType::Oracle => "oracle",
+            DatabaseType::SQLServer => "sqlserver",
+            DatabaseType::DaMeng => "dameng",
+            DatabaseType::GBase => "gbase",
             DatabaseType::Plugin(_) => "plugin",
+        }
+    }
+
+    pub fn category(&self) -> &str {
+        match self {
+            DatabaseType::PostgreSQL | DatabaseType::MySQL | DatabaseType::SQLite => "开源数据库",
+            DatabaseType::ClickHouse => "列存数据库",
+            DatabaseType::GaussDB
+            | DatabaseType::Kingbase
+            | DatabaseType::Vastbase
+            | DatabaseType::YashanDB
+            | DatabaseType::OceanBase
+            | DatabaseType::TiDB
+            | DatabaseType::TDSQL
+            | DatabaseType::DaMeng
+            | DatabaseType::GBase => "国产数据库",
+            DatabaseType::Oracle | DatabaseType::SQLServer => "商业数据库",
+            DatabaseType::Plugin(_) => "插件",
+        }
+    }
+
+    pub fn default_port(&self) -> u16 {
+        match self {
+            DatabaseType::PostgreSQL => 5432,
+            DatabaseType::MySQL => 3306,
+            DatabaseType::SQLite => 0,
+            DatabaseType::ClickHouse => 8123,
+            DatabaseType::GaussDB => 5432,
+            DatabaseType::Kingbase => 5432,
+            DatabaseType::Vastbase => 5432,
+            DatabaseType::YashanDB => 1688,
+            DatabaseType::OceanBase => 3306,
+            DatabaseType::TiDB => 3306,
+            DatabaseType::TDSQL => 3306,
+            DatabaseType::Oracle => 1521,
+            DatabaseType::SQLServer => 1433,
+            DatabaseType::DaMeng => 5236,
+            DatabaseType::GBase => 5258,
+            DatabaseType::Plugin(_) => 0,
         }
     }
 
@@ -49,6 +114,16 @@ impl DatabaseType {
             "mysql" => Some(DatabaseType::MySQL),
             "sqlite" => Some(DatabaseType::SQLite),
             "clickhouse" => Some(DatabaseType::ClickHouse),
+            "kingbase" => Some(DatabaseType::Kingbase),
+            "vastbase" => Some(DatabaseType::Vastbase),
+            "yashandb" => Some(DatabaseType::YashanDB),
+            "oceanbase" => Some(DatabaseType::OceanBase),
+            "tidb" => Some(DatabaseType::TiDB),
+            "tdsql" => Some(DatabaseType::TDSQL),
+            "oracle" => Some(DatabaseType::Oracle),
+            "sqlserver" => Some(DatabaseType::SQLServer),
+            "dameng" => Some(DatabaseType::DaMeng),
+            "gbase" => Some(DatabaseType::GBase),
             "gaussdb" | "opengauss" => Some(DatabaseType::GaussDB),
             other if other.starts_with("plugin:") => {
                 Some(DatabaseType::Plugin(other[7..].to_string()))
@@ -71,6 +146,8 @@ pub struct DriverCapabilities {
     pub is_file_based: bool,
     pub supports_indexes: bool,
     pub supports_foreign_keys: bool,
+    pub supports_partitions: bool,
+    pub supports_cancel: bool,
     pub identifier_quote: String,
     pub default_port: u16,
 }
@@ -86,6 +163,8 @@ impl Default for DriverCapabilities {
             is_file_based: false,
             supports_indexes: true,
             supports_foreign_keys: true,
+            supports_partitions: false,
+            supports_cancel: false,
             identifier_quote: "\"".to_string(),
             default_port: 5432,
         }
@@ -95,41 +174,132 @@ impl Default for DriverCapabilities {
 impl DatabaseType {
     pub fn capabilities(&self) -> DriverCapabilities {
         match self {
+            // PG-compatible group
             DatabaseType::PostgreSQL => DriverCapabilities {
                 supports_schemas: true, supports_manage_tables: true,
                 supports_views: true, supports_procedures: true,
                 supports_triggers: true, is_file_based: false,
                 supports_indexes: true, supports_foreign_keys: true,
-                identifier_quote: "\"".to_string(), default_port: 5432,
-            },
-            DatabaseType::MySQL => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                identifier_quote: "`".to_string(), default_port: 3306,
-            },
-            DatabaseType::SQLite => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: false,
-                supports_triggers: true, is_file_based: true,
-                supports_indexes: true, supports_foreign_keys: true,
-                identifier_quote: "\"".to_string(), default_port: 0,
-            },
-            DatabaseType::ClickHouse => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: false,
-                supports_triggers: false, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: false,
-                identifier_quote: "`".to_string(), default_port: 8123,
+                supports_partitions: true, supports_cancel: true,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
             },
             DatabaseType::GaussDB => DriverCapabilities {
                 supports_schemas: true, supports_manage_tables: true,
                 supports_views: true, supports_procedures: true,
                 supports_triggers: true, is_file_based: false,
                 supports_indexes: true, supports_foreign_keys: true,
-                identifier_quote: "\"".to_string(), default_port: 8000,
+                supports_partitions: true, supports_cancel: true,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
             },
+            DatabaseType::Kingbase => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: true, supports_cancel: true,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::Vastbase => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: true, supports_cancel: true,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::YashanDB => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: false, supports_cancel: true,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            // MySQL-compatible group
+            DatabaseType::MySQL => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: false, supports_cancel: true,
+                identifier_quote: "`".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::OceanBase => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: false, supports_cancel: true,
+                identifier_quote: "`".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::TiDB => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: true, supports_cancel: true,
+                identifier_quote: "`".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::TDSQL => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: false, supports_cancel: true,
+                identifier_quote: "`".to_string(), default_port: self.default_port(),
+            },
+            // File-based
+            DatabaseType::SQLite => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: false,
+                supports_triggers: true, is_file_based: true,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: false, supports_cancel: false,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            // Column-store
+            DatabaseType::ClickHouse => DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: false,
+                supports_triggers: false, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: false,
+                supports_partitions: false, supports_cancel: true,
+                identifier_quote: "`".to_string(), default_port: self.default_port(),
+            },
+            // ODBC bridge group
+            DatabaseType::Oracle => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: true, supports_cancel: false,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::SQLServer => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: true, supports_cancel: false,
+                identifier_quote: "[".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::DaMeng => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: true, supports_cancel: false,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::GBase => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: false, supports_cancel: false,
+                identifier_quote: "\"".to_string(), default_port: self.default_port(),
+            },
+            // Plugin: use defaults
             DatabaseType::Plugin(_) => DriverCapabilities::default(),
         }
     }
@@ -152,6 +322,16 @@ impl<'de> Deserialize<'de> for DatabaseType {
             "mysql" => DatabaseType::MySQL,
             "sqlite" => DatabaseType::SQLite,
             "clickhouse" => DatabaseType::ClickHouse,
+            "kingbase" => DatabaseType::Kingbase,
+            "vastbase" => DatabaseType::Vastbase,
+            "yashandb" => DatabaseType::YashanDB,
+            "oceanbase" => DatabaseType::OceanBase,
+            "tidb" => DatabaseType::TiDB,
+            "tdsql" => DatabaseType::TDSQL,
+            "oracle" => DatabaseType::Oracle,
+            "sqlserver" => DatabaseType::SQLServer,
+            "dameng" => DatabaseType::DaMeng,
+            "gbase" => DatabaseType::GBase,
             "gaussdb" | "opengauss" => DatabaseType::GaussDB,
             other if other.starts_with("plugin:") => {
                 DatabaseType::Plugin(other[7..].to_string())
@@ -333,6 +513,16 @@ impl std::fmt::Display for DatabaseType {
             DatabaseType::SQLite => write!(f, "sqlite"),
             DatabaseType::ClickHouse => write!(f, "clickhouse"),
             DatabaseType::GaussDB => write!(f, "gaussdb"),
+            DatabaseType::Kingbase => write!(f, "kingbase"),
+            DatabaseType::Vastbase => write!(f, "vastbase"),
+            DatabaseType::YashanDB => write!(f, "yashandb"),
+            DatabaseType::OceanBase => write!(f, "oceanbase"),
+            DatabaseType::TiDB => write!(f, "tidb"),
+            DatabaseType::TDSQL => write!(f, "tdsql"),
+            DatabaseType::Oracle => write!(f, "oracle"),
+            DatabaseType::SQLServer => write!(f, "sqlserver"),
+            DatabaseType::DaMeng => write!(f, "dameng"),
+            DatabaseType::GBase => write!(f, "gbase"),
             DatabaseType::Plugin(id) => write!(f, "plugin:{}", id),
         }
     }

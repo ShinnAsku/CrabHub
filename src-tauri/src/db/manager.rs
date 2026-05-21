@@ -129,10 +129,30 @@ impl ConnectionManager {
             DatabaseType::GaussDB => {
                 Ok(Box::new(GaussDBConnection::new(config).await?))
             }
+            // PG-compatible: use PostgresConnection as provisional driver
+            DatabaseType::Kingbase
+            | DatabaseType::Vastbase
+            | DatabaseType::YashanDB => {
+                Ok(Box::new(PostgresConnection::new(config).await?))
+            }
             DatabaseType::MySQL => Ok(Box::new(MySqlConnection::new(config).await?)),
+            // MySQL-compatible: use MySqlConnection as provisional driver
+            DatabaseType::OceanBase
+            | DatabaseType::TiDB
+            | DatabaseType::TDSQL => Ok(Box::new(MySqlConnection::new(config).await?)),
             DatabaseType::SQLite => Ok(Box::new(SQLiteConnection::new(config).await?)),
             DatabaseType::ClickHouse => {
                 Ok(Box::new(ClickHouseConnection::new(config).await?))
+            }
+            // ODBC bridge group: not yet implemented
+            DatabaseType::Oracle
+            | DatabaseType::SQLServer
+            | DatabaseType::DaMeng
+            | DatabaseType::GBase => {
+                Err(DbError::ConfigError(format!(
+                    "Driver for {:?} is not yet implemented",
+                    config.db_type
+                )))
             }
         }
     }
