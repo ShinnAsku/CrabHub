@@ -1701,7 +1701,7 @@ function TableContextMenu({
       onClick={() => { if (!disabled) { onClick(); onClose(); } }}
       disabled={disabled}
       className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-default ${
-        destructive ? 'text-red-400 hover:bg-red-500/10' : 'hover:bg-muted'
+        destructive ? 'text-destructive hover:bg-destructive/10' : 'hover:bg-muted'
       }`}
     >
       <span className="w-4 flex items-center justify-center">{icon}</span>
@@ -2284,7 +2284,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
           </span>
         )}
         {rows.length >= 10000 && !hasMore && (
-          <span className="text-yellow-500">({t('scroll.rowLimitReached')})</span>
+          <span className="text-warning">({t('scroll.rowLimitReached')})</span>
         )}
       </div>
     </div>

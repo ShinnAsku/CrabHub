@@ -1392,7 +1392,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
                     {/* Messages */}
                     {dataMessage && (
-                      <span className={`text-xs flex items-center gap-1 ${dataMessage.type === 'error' ? 'text-destructive' : 'text-green-500'}`}>
+                      <span className={`text-xs flex items-center gap-1 ${dataMessage.type === 'error' ? 'text-destructive' : 'text-success'}`}>
                         {dataMessage.type === 'error' ? <X size={10} /> : <Check size={10} />}
                         {dataMessage.text}
                       </span>

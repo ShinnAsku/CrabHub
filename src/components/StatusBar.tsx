@@ -41,7 +41,7 @@ function StatusBar() {
 
       {/* Center: Result info */}
       <div className="flex items-center gap-3">
-        {isAnyTabExecuting && <span className="text-yellow-500">{t('status.executing')}</span>}
+        {isAnyTabExecuting && <span className="text-warning">{t('status.executing')}</span>}
         {result && !isExecuting[activeTabId!] && result.rowCount > 0 && (
           <span>{result.rowCount} {t('status.rows')} | {result.duration.toFixed(0)}ms</span>
         )}
