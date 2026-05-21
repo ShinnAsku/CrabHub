@@ -67,6 +67,16 @@ export async function executeQuery(id: string, sql: string): Promise<QueryResult
   return mapRawQueryResult(raw);
 }
 
+export async function executeBatch(id: string, statements: string[]): Promise<any[]> {
+  const raw = await safeInvoke<any[]>("execute_batch", { id, statements });
+  return raw.map((r: any) => {
+    if (r.type === 'error') return r;
+    if (r.type === 'empty') return r;
+    if (r.columns) return { ...mapRawQueryResult(r), hasMore: r.hasMore ?? false };
+    return r; // ExecuteResult
+  });
+}
+
 export async function executeQueryPaged(id: string, sql: string, limit: number, offset: number): Promise<PagedQueryResult> {
   const raw = await safeInvoke<any>("execute_query_paged", { id, sql, limit, offset });
   return {

@@ -62,6 +62,43 @@ pub async fn execute_query_paged(
         .map_err(|e| e.to_string())
 }
 
+/// Execute a batch of SQL statements in a single IPC call.
+/// Each statement is executed independently; results are returned in order.
+#[tauri::command]
+pub async fn execute_batch(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+    statements: Vec<String>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut results = Vec::with_capacity(statements.len());
+    for sql in &statements {
+        let trimmed = sql.trim();
+        if trimmed.is_empty() {
+            results.push(serde_json::json!({"type": "empty"}));
+            continue;
+        }
+        // Auto-detect: SELECT/WITH/SHOW/DESCRIBE/EXPLAIN → query, everything else → execute
+        let upper = trimmed.to_uppercase();
+        let is_query = upper.starts_with("SELECT")
+            || upper.starts_with("WITH")
+            || upper.starts_with("SHOW")
+            || upper.starts_with("DESCRIBE")
+            || upper.starts_with("EXPLAIN");
+        if is_query {
+            match state.query_paged(&id, trimmed, 500, 0).await {
+                Ok(r) => results.push(serde_json::to_value(r).map_err(|e| e.to_string())?),
+                Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
+            }
+        } else {
+            match state.execute(&id, trimmed).await {
+                Ok(r) => results.push(serde_json::to_value(r).map_err(|e| e.to_string())?),
+                Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
+            }
+        }
+    }
+    Ok(results)
+}
+
 /// Execute a SQL statement (INSERT, UPDATE, DELETE, DDL)
 #[tauri::command]
 pub async fn execute_sql(

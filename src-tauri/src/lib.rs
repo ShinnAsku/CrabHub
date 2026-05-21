@@ -78,6 +78,7 @@ pub async fn run() {
             db::commands::disconnect_database,
             db::commands::execute_query,
             db::commands::execute_query_paged,
+            db::commands::execute_batch,
             db::commands::cancel_query,
             db::commands::get_driver_capabilities,
             db::commands::execute_sql,

@@ -26,7 +26,7 @@ import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stor
 import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQuery, executeQueryPaged, executeSql, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { executeQuery, executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
@@ -105,11 +105,6 @@ function isSelectQuery(sql: string): boolean {
 
 // Only SELECT and WITH queries should get auto-LIMIT injection
 // SHOW/DESCRIBE/EXPLAIN return small result sets, no need for pagination
-function shouldAutoLimit(sql: string): boolean {
-  const trimmed = stripLeadingComments(sql).trim().toUpperCase();
-  return trimmed.startsWith("SELECT") || trimmed.startsWith("WITH");
-}
-
 const QUERY_PAGE_SIZE = 500;
 
 // Split SQL text into individual statements, respecting strings, comments, dollar-quotes, and BEGIN...END blocks
@@ -741,45 +736,36 @@ function QueryEditor() {
     const newLoadMoreState: Record<number, { hasMore: boolean; currentOffset: number; originalSql: string }> = {};
 
     try {
-      // Execute ALL statements in parallel — database controls concurrency
-      const allResults = await Promise.all(statements.map(async (sql, idx) => {
-        const stmtStart = performance.now();
-        const ipcStart = performance.now();
-        let queryResult: QueryResult;
-        let hasMore = false;
-        if (isSelectQuery(sql)) {
-          if (shouldAutoLimit(sql)) {
-            const pagedResult: PagedQueryResult = await executeQueryPaged(effectiveConnectionId, sql, QUERY_PAGE_SIZE, 0);
-            queryResult = pagedResult;
-            hasMore = pagedResult.hasMore;
-          } else {
-            queryResult = await executeQuery(effectiveConnectionId, sql);
-          }
-        } else {
-          await executeSql(effectiveConnectionId, sql);
-          const elapsed = performance.now() - stmtStart;
-          return { idx, queryResult: { columns: [], rows: [], rowCount: 0, duration: elapsed }, hasMore: false, stmtElapsed: elapsed, dbTime: elapsed, overhead: 0, sql };
-        }
-        const ipcElapsed = performance.now() - ipcStart;
-        const dbTime = (queryResult as any).duration ?? (queryResult as any).executionTimeMs ?? 0;
-        return { idx, queryResult, hasMore, stmtElapsed: performance.now() - stmtStart, dbTime, overhead: ipcElapsed - dbTime, sql };
-      }));
+      // Single IPC call — send ALL statements at once
+      const batchStart = performance.now();
+      const rawResults = await executeBatch(effectiveConnectionId, statements);
+      const batchElapsed = performance.now() - batchStart;
 
-      // Process results in original statement order
-      allResults.sort((a, b) => a.idx - b.idx);
-      for (const { idx, queryResult, hasMore, stmtElapsed, dbTime, overhead, sql } of allResults) {
-        if (queryResult.columns.length > 0 || queryResult.rows.length > 0) {
+      for (let idx = 0; idx < rawResults.length; idx++) {
+        const sql = statements[idx]!;
+        const raw = rawResults[idx]!;
+        if (raw?.type === 'empty') continue;
+        if (raw?.type === 'error') {
+          allMessages.push(`[${idx + 1}/${statements.length}] 错误: ${raw.message}`);
+          continue;
+        }
+        const isSelect = isSelectQuery(sql);
+        const queryResult: QueryResult = isSelect ? raw : { columns: [], rows: [], rowCount: 0, duration: raw?.duration ?? 0 };
+        const hasMore = isSelect ? (raw?.hasMore ?? false) : false;
+        const dbTime = (queryResult as any).duration ?? (queryResult as any).executionTimeMs ?? 0;
+        // Distribute batch time evenly for display
+        const stmtElapsed = batchElapsed / rawResults.length;
+        if (queryResult.columns?.length > 0 || queryResult.rows?.length > 0) {
           const resultIdx = collectedResults.length;
           collectedResults.push(queryResult);
-          newLoadMoreState[resultIdx] = { hasMore, currentOffset: queryResult.rows.length, originalSql: sql };
+          newLoadMoreState[resultIdx] = { hasMore, currentOffset: queryResult.rows?.length ?? 0, originalSql: sql };
           const prefix = statements.length > 1 ? `[${idx + 1}/${statements.length}] ` : '';
-          const timingDetail = `(DB: ${dbTime.toFixed(0)}ms | 传输: ${Math.max(0, overhead).toFixed(0)}ms | 总计: ${stmtElapsed.toFixed(0)}ms)`;
-          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(queryResult.rowCount), ms: stmtElapsed.toFixed(0) })} ${timingDetail}`);
+          allMessages.push(`${prefix}${t('editor.querySuccess', { rows: String(queryResult.rowCount ?? 0), ms: stmtElapsed.toFixed(0) })} (DB: ${dbTime.toFixed(0)}ms | 总批: ${batchElapsed.toFixed(0)}ms)`);
           addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: queryResult.rowCount || 0 });
         } else {
           allMessages.push(
             statements.length > 1
-              ? `[${idx + 1}/${statements.length}] ${t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })}`
+              ? `[${idx + 1}/${statements.length}] ${t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })} (总批: ${batchElapsed.toFixed(0)}ms)`
               : t('editor.executeSuccess', { message: '', ms: stmtElapsed.toFixed(0) })
           );
           addQueryHistory({ connectionId: effectiveConnectionId, sql, duration: stmtElapsed, timestamp: new Date(), rowCount: 0 });
