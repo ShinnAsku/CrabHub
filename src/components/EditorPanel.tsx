@@ -415,26 +415,26 @@ function QueryEditor() {
         setSelectedDatabase(conn.database && dbs.includes(conn.database) ? conn.database : dbs[0] || "");
       }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
     } else {
-      getDatabases(effectiveConnectionId).then((dbs) => {
-        if (dbs.length > 0) {
-          dbCacheRef.current[effectiveConnectionId] = dbs;
-          setDatabaseList(dbs);
-          setSelectedDatabase(conn.database && dbs.includes(conn.database) ? conn.database : dbs[0] || "");
+      // For PG/GaussDB: prefer schemas (always works), fallback to databases
+      getSchemas(effectiveConnectionId).then((schemas) => {
+        if (schemas.length > 0) {
+          dbCacheRef.current[effectiveConnectionId] = schemas;
+          setDatabaseList(schemas);
+          setSelectedDatabase(schemas[0] || "");
         } else {
-          // Fallback: load schemas
-          getSchemas(effectiveConnectionId).then((schemas) => {
-            dbCacheRef.current[effectiveConnectionId] = schemas;
-            setDatabaseList(schemas);
-            setSelectedDatabase(schemas[0] || "");
+          getDatabases(effectiveConnectionId).then((dbs) => {
+            dbCacheRef.current[effectiveConnectionId] = dbs;
+            setDatabaseList(dbs);
+            setSelectedDatabase(dbs[0] || "");
           }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
           return;
         }
         setLoadingDatabases(false);
       }).catch(() => {
-        getSchemas(effectiveConnectionId).then((schemas) => {
-          dbCacheRef.current[effectiveConnectionId] = schemas;
-          setDatabaseList(schemas);
-          setSelectedDatabase(schemas[0] || "");
+        getDatabases(effectiveConnectionId).then((dbs) => {
+          dbCacheRef.current[effectiveConnectionId] = dbs;
+          setDatabaseList(dbs);
+          setSelectedDatabase(dbs[0] || "");
         }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
       });
     }
