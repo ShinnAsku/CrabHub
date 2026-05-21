@@ -20,8 +20,7 @@ export default function DatabaseIcon({ type, connected, size = 16, isActive = fa
   );
 }
 
-function getColor(type: string, connected: boolean, isActive: boolean): string {
-  if (isActive) return "#ffffff";
+function getColor(type: string, connected: boolean, _isActive: boolean): string {
   if (!connected) return "#9ca3af";
   switch (type) {
     case "postgresql": return "#4169E1";
