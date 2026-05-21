@@ -93,7 +93,7 @@ impl DatabaseType {
             DatabaseType::MySQL => 3306,
             DatabaseType::SQLite => 0,
             DatabaseType::ClickHouse => 8123,
-            DatabaseType::GaussDB => 5432,
+            DatabaseType::GaussDB => 8000,
             DatabaseType::Kingbase => 5432,
             DatabaseType::Vastbase => 5432,
             DatabaseType::YashanDB => 1688,

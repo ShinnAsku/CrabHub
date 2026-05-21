@@ -413,6 +413,8 @@ export interface DriverCapabilities {
   isFileBased: boolean;
   supportsIndexes: boolean;
   supportsForeignKeys: boolean;
+  supportsPartitions: boolean;
+  supportsCancel: boolean;
   identifierQuote: string;
   defaultPort: number;
 }
