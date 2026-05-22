@@ -6,8 +6,8 @@ use tokio::sync::RwLock;
 
 use super::clickhouse::ClickHouseConnection;
 use super::dialect::DialectConfig;
-use super::gaussdb::GaussDBConnection;
 use super::mysql::MySqlConnection;
+use super::odbc_bridge::OdbcConnection;
 use super::pg_compatible::PgCompatibleConnection;
 use super::postgres::PostgresConnection;
 use super::sqlite::SQLiteConnection;
@@ -129,18 +129,22 @@ impl ConnectionManager {
                 Ok(Box::new(PostgresConnection::new(config).await?))
             }
             DatabaseType::GaussDB => {
-                // Try sqlx PG driver first (much faster)
-                // Falls back to tokio-opengauss if auth fails
-                match PgCompatibleConnection::new(config, DialectConfig::gaussdb()).await {
-                    Ok(conn) => {
-                        log::info!("GaussDB connected via sqlx PG driver (fast path)");
-                        return Ok(Box::new(conn));
-                    }
-                    Err(e) => {
-                        log::warn!("sqlx PG driver failed for GaussDB: {}, falling back to tokio-opengauss", e);
-                    }
+                // Tier 1: Try sqlx PG driver (fastest — needs standard PG auth on server)
+                if let Ok(conn) = PgCompatibleConnection::new(config, DialectConfig::gaussdb()).await {
+                    log::info!("GaussDB connected via sqlx PG driver (fast path)");
+                    return Ok(Box::new(conn));
                 }
-                Ok(Box::new(GaussDBConnection::new(config).await?))
+                log::warn!("sqlx PG driver failed for GaussDB (SASL auth not supported), trying ODBC...");
+                // Tier 2: ODBC bridge — uses system GaussDB ODBC driver (fast, needs ODBC driver installed)
+                let odbc_conn_str = format!(
+                    "Driver={{GaussDB}};Server={};Port={};Database={};Uid={};Pwd={};",
+                    config.host.as_deref().unwrap_or("localhost"),
+                    config.port.unwrap_or(8000),
+                    config.database.as_deref().unwrap_or(""),
+                    config.username.as_deref().unwrap_or(""),
+                    config.password.as_deref().unwrap_or(""),
+                );
+                Ok(Box::new(OdbcConnection::new(DialectConfig::gaussdb(), odbc_conn_str)))
             }
             // PG-compatible: use PostgresConnection as provisional driver
             DatabaseType::Kingbase
