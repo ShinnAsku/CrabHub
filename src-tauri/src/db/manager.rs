@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 
 use super::clickhouse::ClickHouseConnection;
 use super::dialect::DialectConfig;
+use super::gauss_rs::GaussRsConnection;
 use super::gaussdb::GaussDBConnection;
 use super::mysql::MySqlConnection;
 use super::odbc_bridge::OdbcConnection;
@@ -130,37 +131,22 @@ impl ConnectionManager {
                 Ok(Box::new(PostgresConnection::new(config).await?))
             }
             DatabaseType::GaussDB => {
-                // Tier 1: Try sqlx PG driver (fastest — needs standard PG auth on server)
-                if let Ok(conn) = PgCompatibleConnection::new(config, DialectConfig::gaussdb()).await {
-                    log::info!("GaussDB connected via sqlx PG driver (fast path)");
-                    return Ok(Box::new(conn));
-                }
-                log::warn!("sqlx PG driver failed for GaussDB (SASL auth), trying ODBC...");
-                // Tier 2: ODBC bridge — needs ODBC driver installed
-                let odbc_conn_str = format!(
-                    "Driver={{GaussDB}};Server={};Port={};Database={};Uid={};Pwd={};",
-                    config.host.as_deref().unwrap_or("localhost"),
-                    config.port.unwrap_or(8000),
-                    config.database.as_deref().unwrap_or(""),
-                    config.username.as_deref().unwrap_or(""),
-                    config.password.as_deref().unwrap_or(""),
-                );
-                // ODBC connection is lazy — try it, fall back to native driver on first query failure
-                let odbc_conn = OdbcConnection::new(DialectConfig::gaussdb(), odbc_conn_str);
-                // Quick test: try a simple query to verify ODBC works
-                // Since ODBC is lazy, we can't test here — just use it and hope
-                // TODO: replace with gaussdb-rs once SASL is implemented
-                log::info!("GaussDB: using ODBC bridge with native driver fallback");
-                match GaussDBConnection::new(config).await {
+                // Tier 1: gaussdb-rs — our pure Rust driver
+                match GaussRsConnection::new(config).await {
                     Ok(conn) => {
-                        log::info!("GaussDB connected via tokio-opengauss (native driver)");
+                        log::info!("GaussDB connected via gaussdb-rs (our pure Rust driver)");
                         return Ok(Box::new(conn));
                     }
-                    Err(e) => {
-                        log::warn!("tokio-opengauss also failed: {}, trying ODBC only", e);
-                    }
+                    Err(e) => log::warn!("gaussdb-rs failed: {}, trying sqlx...", e),
                 }
-                Ok(Box::new(odbc_conn))
+                // Tier 2: Try sqlx PG driver
+                if let Ok(conn) = PgCompatibleConnection::new(config, DialectConfig::gaussdb()).await {
+                    log::info!("GaussDB connected via sqlx PG driver");
+                    return Ok(Box::new(conn));
+                }
+                // Tier 3: tokio-opengauss (slow but always works)
+                log::info!("Falling back to tokio-opengauss for GaussDB");
+                Ok(Box::new(GaussDBConnection::new(config).await?))
             }
             // PG-compatible: use PostgresConnection as provisional driver
             DatabaseType::Kingbase

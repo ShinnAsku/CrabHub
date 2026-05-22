@@ -42,6 +42,7 @@ reqwest = { version = "0.11", default-features = false, features = ["json", "rus
 dirs = "5.0.1"
 futures = "0.3"
 futures-util = "0.3"
+gaussdb-rs = { path = "D:/code/crab-gaussdb" }
 urlencoding = "2.1"
 regex = "1.10"
 aes-gcm = "0.10"

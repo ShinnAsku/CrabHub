@@ -6,6 +6,7 @@ pub mod pg_utils;
 pub mod postgres;
 pub mod mysql;
 pub mod sqlite;
+pub mod gauss_rs;
 pub mod gaussdb;
 pub mod clickhouse;
 pub mod manager;
