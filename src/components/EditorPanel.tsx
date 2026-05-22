@@ -26,7 +26,7 @@ import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stor
 import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQuery, executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getDatabases, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
@@ -357,13 +357,8 @@ function QueryEditor() {
   const dbTablesRef = useRef<{ name: string; schema?: string }[]>([]);
   const dbColumnsRef = useRef<Record<string, string[]>>({});
 
-  // Connection / Database selector state
+  // Connection selector state
   const [selectedConnId, setSelectedConnId] = useState<string | null>(activeConnectionId);
-  const [databaseList, setDatabaseList] = useState<string[]>([]);
-  const [selectedDatabase, setSelectedDatabase] = useState<string>("");
-  const [loadingDatabases, setLoadingDatabases] = useState(false);
-  // Cache database lists per connection to avoid re-fetching
-  const dbCacheRef = useRef<Record<string, string[]>>({});
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const result = activeTabId ? queryResults[activeTabId] : undefined;
@@ -379,88 +374,13 @@ function QueryEditor() {
     }
   }, [activeConnectionId]);
 
-  // Fetch database list when selected connection changes
-  useEffect(() => {
-    if (!effectiveConnectionId) {
-      setDatabaseList([]);
-      setSelectedDatabase("");
-      return;
-    }
-    const conn = connections.find((c) => c.id === effectiveConnectionId);
-    if (!conn || !conn.connected) {
-      setDatabaseList([]);
-      return;
-    }
-
-    // Return cached list if already loaded for this connection
-    if (dbCacheRef.current[effectiveConnectionId]) {
-      setDatabaseList(dbCacheRef.current[effectiveConnectionId]);
-      if (conn.database && dbCacheRef.current[effectiveConnectionId].includes(conn.database)) {
-        setSelectedDatabase(conn.database);
-      } else if (!selectedDatabase) {
-        setSelectedDatabase(dbCacheRef.current[effectiveConnectionId][0] || "");
-      }
-      return;
-    }
-
-    setLoadingDatabases(true);
-    if (conn.type === 'mysql') {
-      executeQuery(effectiveConnectionId, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME").then((res) => {
-        const dbs = res.rows.map((row: any) => {
-          const val = row['SCHEMA_NAME'] || row['schema_name'] || Object.values(row)[0];
-          return String(val);
-        }).filter((v: string) => v && v !== 'undefined');
-        dbCacheRef.current[effectiveConnectionId] = dbs;
-        setDatabaseList(dbs);
-        setSelectedDatabase(conn.database && dbs.includes(conn.database) ? conn.database : dbs[0] || "");
-      }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
-    } else {
-      // For PG/GaussDB: prefer schemas (always works), fallback to databases
-      getSchemas(effectiveConnectionId).then((schemas) => {
-        if (schemas.length > 0) {
-          dbCacheRef.current[effectiveConnectionId] = schemas;
-          setDatabaseList(schemas);
-          setSelectedDatabase(schemas[0] || "");
-        } else {
-          getDatabases(effectiveConnectionId).then((dbs) => {
-            dbCacheRef.current[effectiveConnectionId] = dbs;
-            setDatabaseList(dbs);
-            setSelectedDatabase(dbs[0] || "");
-          }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
-          return;
-        }
-        setLoadingDatabases(false);
-      }).catch(() => {
-        getDatabases(effectiveConnectionId).then((dbs) => {
-          dbCacheRef.current[effectiveConnectionId] = dbs;
-          setDatabaseList(dbs);
-          setSelectedDatabase(dbs[0] || "");
-        }).catch(() => setDatabaseList([])).finally(() => setLoadingDatabases(false));
-      });
-    }
-  }, [effectiveConnectionId]);
-
   // Handle connection change
   const handleConnectionChange = useCallback((connId: string) => {
     setSelectedConnId(connId);
-    setSelectedDatabase("");
-    setDatabaseList([]);
     useConnectionStore.getState().setActiveConnection(connId);
   }, []);
 
   // Handle database change
-  const handleDatabaseChange = useCallback(async (db: string) => {
-    setSelectedDatabase(db);
-    if (!effectiveConnectionId) return;
-    const conn = connections.find((c) => c.id === effectiveConnectionId);
-    if (conn?.type === 'mysql') {
-      try {
-        await executeSql(effectiveConnectionId, `USE \`${db}\``);
-      } catch (err) {
-        console.error('Failed to switch database:', err);
-      }
-    }
-  }, [effectiveConnectionId, connections]);
 
   // Load schemas, tables, and columns for autocomplete when connection changes
   useEffect(() => {
@@ -1173,24 +1093,6 @@ function QueryEditor() {
                 {conn.name}
               </option>
             ))}
-          </select>
-          {/* Database / Schema selector */}
-          <select
-            value={selectedDatabase}
-            onChange={(e) => handleDatabaseChange(e.target.value)}
-            disabled={!effectiveConnectionId || databaseList.length === 0}
-            className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[160px] truncate focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] disabled:opacity-40"
-            title="Database"
-          >
-            {loadingDatabases ? (
-              <option value="">Loading...</option>
-            ) : databaseList.length === 0 ? (
-              <option value="">Database</option>
-            ) : (
-              databaseList.map((db) => (
-                <option key={db} value={db}>{db}</option>
-              ))
-            )}
           </select>
           {isTxActive && (
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-warning/20 text-warning animate-pulse">
