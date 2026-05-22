@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git checkout *)",
+      "Bash(git -C d:/code/openCode/CrabHub add src/styles/)",
+      "Bash(git -C d:/code/openCode/CrabHub commit -m \"fix: align Tailwind 4 dark mode with app's data-theme attribute\")",
+      "Bash(git -C d:/code/openCode/CrabHub log --oneline -5)",
+      "Bash(git -C d:/code/openCode/CrabHub status --short)",
+      "Bash(git -C d:/code/openCode/CrabHub add src/components/MainLayout.tsx src/components/TabBar.tsx src/components/TitleBar.tsx src/components/Toolbar.tsx)",
+      "Bash(git -C d:/code/openCode/CrabHub commit -m \"feat: merge Toolbar+TabBar into unified navigation bar, move theme/lang to TitleBar\")",
+      "Bash(git -C d:/code/openCode/CrabHub log --oneline -8)",
+      "Bash(perl -pi -e 's/hsl\\\\\\(var\\\\\\(\\(--[\\\\w-]+\\)\\\\\\)\\\\\\)/var\\($1\\)/g' src/components/query-builder/*.tsx src/components/notebook/*.tsx)",
+      "Bash(tasklist)",
+      "Bash(git -C d:/code/openCode/CrabHub log --oneline)",
+      "Bash(git -C d:/code/openCode/CrabHub show 72f7b77:src/styles/index.css)",
+      "Bash(git -C d:/code/openCode/CrabHub show 72f7b77:src/components/Toolbar.tsx)",
+      "Bash(git -C d:/code/openCode/CrabHub diff 6b757a7..53e0c29 --name-only -- '*.tsx')",
+      "Bash(git -C d:/code/openCode/CrabHub diff 6b757a7..53e0c29 -- src/components/MainLayout.tsx)",
+      "Bash(git -C d:/code/openCode/CrabHub checkout 6b757a7 -- src/components/AIPanel.tsx src/components/ConnectionDialog.tsx src/components/CrabHubMainPanel.tsx src/components/CreateDatabaseDialog.tsx src/components/DataMigration.tsx src/components/ERDiagram.tsx src/components/ERSelectorDialog.tsx src/components/EditorPanel.tsx src/components/ImportExportDialog.tsx src/components/PaginationBar.tsx src/components/QueryAnalyzer.tsx src/components/SchemaDiffDialog.tsx src/components/Sidebar.tsx src/components/SnippetPanel.tsx src/components/TabBar.tsx src/components/TableDesigner.tsx src/components/notebook/SqlCell.tsx src/components/query-builder/VisualQueryBuilder.tsx src/components/MainLayout.tsx)",
+      "Bash(git -C d:/code/openCode/CrabHub add -A src/components/ src/styles/)",
+      "Bash(git -C d:/code/openCode/CrabHub commit -m \"fix: restore original plain-CSS utility class system — @theme/@utility rollback, revert hsl\\(var\\) format\")",
+      "Bash(git -C d:/code/openCode/CrabHub add src/styles/index.css)",
+      "Bash(git -C d:/code/openCode/CrabHub commit -m \"fix: remove invalid top-level CSS custom properties, ensure @import tailwindcss is first\")"
+    ]
+  }
+}
