@@ -1,8 +1,10 @@
-//! GaussDB connection via gaussdb-rs (our pure Rust PG wire protocol driver)
+//! GaussDB connection via tokio-gaussdb (Huawei official Rust driver, v0.1.1)
+//! Uses Extended Query (binary protocol) for performance comparable to DBeaver JDBC.
 
 use async_trait::async_trait;
+use std::sync::Arc;
 use tokio::sync::Mutex;
-use gaussdb_rs::{Client, Config as GConfig, QueryResult as GQueryResult, SslMode};
+use tokio_gaussdb::{Client as GClient, Config as GConfig, NoTls, Row, SimpleQueryMessage, config::SslMode};
 use serde_json::Value as JsonValue;
 
 use super::trait_def::DatabaseConnection;
@@ -11,13 +13,14 @@ use super::types::{
     QueryResult, TableInfo,
 };
 
-pub struct GaussRsConnection {
-    client: Mutex<Client>,
+pub struct GaussAsyncConnection {
+    client: Arc<Mutex<GClient>>,
 }
 
-impl GaussRsConnection {
+impl GaussAsyncConnection {
     pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
-        let gconfig = GConfig::new()
+        let mut gconfig = GConfig::new();
+        gconfig
             .host(config.host.as_deref().unwrap_or("localhost"))
             .port(config.port.unwrap_or(8000))
             .user(config.username.as_deref().unwrap_or("gaussdb"))
@@ -25,113 +28,106 @@ impl GaussRsConnection {
             .dbname(config.database.as_deref().unwrap_or(""))
             .ssl_mode(SslMode::Disable);
 
-        let client = Client::connect(&gconfig)
-            .await
-            .map_err(|e| DbError::ConnectionError(format!("gaussdb-rs: {}", e)))?;
+        let (client, connection) = gconfig.connect(NoTls).await.map_err(|e| {
+            DbError::ConnectionError(format!("tokio-gaussdb: {}", e))
+        })?;
 
-        Ok(Self { client: Mutex::new(client) })
+        // Spawn the background connection task
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                log::error!("tokio-gaussdb connection error: {}", e);
+            }
+        });
+
+        Ok(Self { client: Arc::new(Mutex::new(client)) })
     }
 }
 
 #[async_trait]
-impl DatabaseConnection for GaussRsConnection {
+impl DatabaseConnection for GaussAsyncConnection {
     async fn query_sql(&self, sql: &str) -> Result<QueryResult, DbError> {
-        let mut client = self.client.lock().await;
-        let gr = client.query(sql).await.map_err(|e| DbError::QueryError(e.to_string()))?;
-        Ok(convert_query_result(gr))
+        let client = self.client.lock().await;
+        // Use simple_query for SQL that may contain multiple statements or DDL
+        let messages = client.simple_query(sql).await.map_err(|e| DbError::QueryError(e.to_string()))?;
+        simple_query_to_result(messages)
     }
 
     async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError> {
-        let mut client = self.client.lock().await;
-        let er = client.execute(sql).await.map_err(|e| DbError::QueryError(e.to_string()))?;
-        Ok(ExecuteResult { rows_affected: er.rows_affected, execution_time_ms: 0 })
+        let client = self.client.lock().await;
+        let affected = client.execute(sql, &[]).await.map_err(|e| DbError::QueryError(e.to_string()))?;
+        Ok(ExecuteResult { rows_affected: affected, execution_time_ms: 0 })
     }
 
     fn db_type(&self) -> DatabaseType { DatabaseType::GaussDB }
 
-    async fn close(&self) {
-        if let Ok(mut c) = self.client.try_lock() { let _ = c.close().await; }
-    }
+    async fn close(&self) { /* connection task handles cleanup */ }
 
     async fn get_tables(&self) -> Result<Vec<TableInfo>, DbError> {
-        let result = self.query_sql(
-            "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema, table_name"
-        ).await?;
-        Ok(result.rows.iter().map(|r| TableInfo {
-            name: r.get("table_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
-            schema: r.get("table_schema").and_then(|v| v.as_str().map(String::from)),
-            table_type: r.get("table_type").and_then(|v| v.as_str()).unwrap_or("TABLE").to_string(),
-            row_count: None, comment: None, oid: None, owner: None, acl: None, primary_key: None,
-            partition_of: None, has_indexes: None, has_triggers: None,
-            engine: None, data_length: None, create_time: None, update_time: None, collation: None,
-        }).collect())
+        self.query_sql("SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema, table_name").await.map(|r| {
+            r.rows.iter().map(|row| TableInfo {
+                name: row.get("table_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
+                schema: row.get("table_schema").and_then(|v| v.as_str().map(String::from)),
+                table_type: row.get("table_type").and_then(|v| v.as_str()).unwrap_or("TABLE").to_string(),
+                row_count: None, comment: None, oid: None, owner: None, acl: None, primary_key: None,
+                partition_of: None, has_indexes: None, has_triggers: None,
+                engine: None, data_length: None, create_time: None, update_time: None, collation: None,
+            }).collect()
+        })
     }
 
     async fn get_columns(&self, table: &str, schema: Option<&str>) -> Result<Vec<ColumnInfo>, DbError> {
         let s = schema.unwrap_or("public");
-        let result = self.query_sql(&format!(
-            "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='{}' AND table_name='{}' ORDER BY ordinal_position", s, table
-        )).await?;
-        Ok(result.rows.iter().map(|r| ColumnInfo {
-            name: r.get("column_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
-            data_type: r.get("data_type").and_then(|v| v.as_str().map(String::from)).unwrap_or("text".into()),
-            nullable: r.get("is_nullable").and_then(|v| v.as_str()).unwrap_or("YES") == "YES",
-            is_primary_key: false,
-            default_value: r.get("column_default").and_then(|v| v.as_str().map(String::from)),
-            comment: None,
-            character_maximum_length: None, numeric_precision: None, numeric_scale: None,
-        }).collect())
+        self.query_sql(&format!("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='{}' AND table_name='{}' ORDER BY ordinal_position", s, table)).await.map(|r| {
+            r.rows.iter().map(|row| ColumnInfo {
+                name: row.get("column_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
+                data_type: row.get("data_type").and_then(|v| v.as_str().map(String::from)).unwrap_or("text".into()),
+                nullable: row.get("is_nullable").and_then(|v| v.as_str()).unwrap_or("YES") == "YES",
+                is_primary_key: false,
+                default_value: row.get("column_default").and_then(|v| v.as_str().map(String::from)),
+                comment: None, character_maximum_length: None, numeric_precision: None, numeric_scale: None,
+            }).collect()
+        })
     }
 
     async fn get_schemas(&self) -> Result<Vec<String>, DbError> {
-        let result = self.query_sql("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema') ORDER BY schema_name").await?;
-        Ok(result.rows.iter().filter_map(|r| r.get("schema_name").and_then(|v| v.as_str().map(String::from))).collect())
+        self.query_sql("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema') ORDER BY schema_name").await.map(|r| {
+            r.rows.iter().filter_map(|row| row.get("schema_name").and_then(|v| v.as_str().map(String::from))).collect()
+        })
     }
 
     async fn get_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
-        let filter = schema.map(|s| format!("AND table_schema='{}'", s)).unwrap_or_default();
-        let result = self.query_sql(&format!(
-            "SELECT table_schema, table_name FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog','information_schema') {} ORDER BY table_schema, table_name", filter
-        )).await?;
-        Ok(result.rows.iter().map(|r| TableInfo {
-            name: r.get("table_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
-            schema: r.get("table_schema").and_then(|v| v.as_str().map(String::from)),
-            table_type: "VIEW".into(),
-            row_count: None, comment: None, oid: None, owner: None, acl: None, primary_key: None,
-            partition_of: None, has_indexes: None, has_triggers: None,
-            engine: None, data_length: None, create_time: None, update_time: None, collation: None,
-        }).collect())
+        let f = schema.map(|s| format!("AND table_schema='{}'", s)).unwrap_or_default();
+        self.query_sql(&format!("SELECT table_schema, table_name FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog','information_schema') {} ORDER BY table_schema, table_name", f)).await.map(|r| {
+            r.rows.iter().map(|row| TableInfo {
+                name: row.get("table_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
+                schema: row.get("table_schema").and_then(|v| v.as_str().map(String::from)),
+                table_type: "VIEW".into(),
+                row_count: None, comment: None, oid: None, owner: None, acl: None, primary_key: None,
+                partition_of: None, has_indexes: None, has_triggers: None,
+                engine: None, data_length: None, create_time: None, update_time: None, collation: None,
+            }).collect()
+        })
     }
 
     async fn get_indexes(&self, table: &str, schema: Option<&str>) -> Result<Vec<JsonValue>, DbError> {
         let s = schema.unwrap_or("public");
-        let result = self.query_sql(&format!(
-            "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='{}' AND tablename='{}'", s, table
-        )).await?;
-        Ok(result.rows.iter().map(|r| serde_json::json!({
-            "index_name": r.get("indexname"),
-            "index_def": r.get("indexdef"),
-        })).collect())
+        self.query_sql(&format!("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='{}' AND tablename='{}'", s, table)).await.map(|r| {
+            r.rows.iter().map(|row| serde_json::json!({"index_name": row.get("indexname"), "index_def": row.get("indexdef")})).collect()
+        })
     }
 
     async fn get_foreign_keys(&self, table: &str, schema: Option<&str>) -> Result<Vec<JsonValue>, DbError> {
         let s = schema.unwrap_or("public");
-        let result = self.query_sql(&format!(
-            "SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS ft_schema, ccu.table_name AS ft_table, ccu.column_name AS ft_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='{}' AND tc.table_name='{}'", s, table
-        )).await?;
-        Ok(result.rows.iter().map(|r| serde_json::json!({
-            "constraint_name": r.get("constraint_name"),
-            "column_name": r.get("column_name"),
-            "foreign_schema": r.get("ft_schema"),
-            "foreign_table": r.get("ft_table"),
-            "foreign_column": r.get("ft_column"),
-        })).collect())
+        self.query_sql(&format!("SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS ft_schema, ccu.table_name AS ft_table, ccu.column_name AS ft_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='{}' AND tc.table_name='{}'", s, table)).await.map(|r| {
+            r.rows.iter().map(|row| serde_json::json!({"constraint_name": row.get("constraint_name"), "column_name": row.get("column_name"), "foreign_schema": row.get("ft_schema"), "foreign_table": row.get("ft_table"), "foreign_column": row.get("ft_column")})).collect()
+        })
     }
 
     async fn get_table_row_count(&self, table: &str, schema: Option<&str>) -> Result<u64, DbError> {
         let s = schema.unwrap_or("public");
-        let result = self.query_sql(&format!("SELECT COUNT(*) as cnt FROM \"{}\".\"{}\"", s, table)).await?;
-        Ok(result.rows.first().and_then(|r| r.get("cnt").and_then(|v| v.as_u64())).unwrap_or(0))
+        self.query_sql(&format!("SELECT COUNT(*) as cnt FROM \"{}\".\"{}\"", s, table)).await.map(|r| {
+            r.rows.first().and_then(|row| row.get("cnt").and_then(|v| v.as_u64())).unwrap_or(0)
+        })
     }
 
     async fn get_table_data(&self, table: &str, schema: Option<&str>, page: u32, page_size: u32, order_by: Option<&str>) -> Result<QueryResult, DbError> {
@@ -167,21 +163,42 @@ impl DatabaseConnection for GaussRsConnection {
         Ok((r, has_more))
     }
 
-    async fn export_table_sql(&self, _table: &str, _schema: Option<&str>) -> Result<String, DbError> {
-        Ok(String::new())
-    }
+    async fn export_table_sql(&self, _table: &str, _schema: Option<&str>) -> Result<String, DbError> { Ok(String::new()) }
 }
 
-fn convert_query_result(gr: GQueryResult) -> QueryResult {
-    let columns: Vec<ColumnInfo> = gr.columns.iter().map(|c| ColumnInfo {
-        name: c.clone(), data_type: "text".into(), nullable: true, is_primary_key: false,
-        default_value: None, comment: None,
-        character_maximum_length: None, numeric_precision: None, numeric_scale: None,
-    }).collect();
-    let rows: Vec<serde_json::Map<String, JsonValue>> = gr.rows.into_iter()
-        .map(|r| r.into_iter().collect())
-        .collect();
-    QueryResult { columns, rows, row_count: gr.row_count, execution_time_ms: 0 }
+/// Convert tokio-gaussdb simple_query results to CrabHub QueryResult
+fn simple_query_to_result(messages: Vec<SimpleQueryMessage>) -> Result<QueryResult, DbError> {
+    let mut columns: Vec<ColumnInfo> = Vec::new();
+    let mut rows: Vec<serde_json::Map<String, JsonValue>> = Vec::new();
+
+    for msg in messages {
+        match msg {
+            SimpleQueryMessage::Row(row) => {
+                if columns.is_empty() {
+                    columns = row.columns().iter().map(|c| ColumnInfo {
+                        name: c.name().to_string(),
+                        data_type: "text".into(),
+                        nullable: true, is_primary_key: false,
+                        default_value: None, comment: None,
+                        character_maximum_length: None, numeric_precision: None, numeric_scale: None,
+                    }).collect();
+                }
+                let mut map = serde_json::Map::new();
+                for (i, col) in row.columns().iter().enumerate() {
+                    let val: JsonValue = match row.try_get::<usize>(i) {
+                        Ok(Some(s)) => JsonValue::String(s.to_string()),
+                        _ => JsonValue::Null,
+                    };
+                    map.insert(col.name().to_string(), val);
+                }
+                rows.push(map);
+            }
+            SimpleQueryMessage::CommandComplete(_) => {}
+            _ => {}
+        }
+    }
+
+    Ok(QueryResult { columns, rows: rows.clone(), row_count: rows.len() as u64, execution_time_ms: 0 })
 }
 
 fn to_sql(val: &JsonValue) -> String {

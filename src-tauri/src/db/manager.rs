@@ -6,8 +6,7 @@ use tokio::sync::RwLock;
 
 use super::clickhouse::ClickHouseConnection;
 use super::dialect::DialectConfig;
-use super::gauss_rs::GaussRsConnection;
-use super::gaussdb::GaussDBConnection;
+use super::gauss_rs::GaussAsyncConnection;
 use super::mysql::MySqlConnection;
 use super::odbc_bridge::OdbcConnection;
 use super::pg_compatible::PgCompatibleConnection;
@@ -131,22 +130,20 @@ impl ConnectionManager {
                 Ok(Box::new(PostgresConnection::new(config).await?))
             }
             DatabaseType::GaussDB => {
-                // Tier 1: gaussdb-rs — our pure Rust driver
-                match GaussRsConnection::new(config).await {
+                // Tier 1: tokio-gaussdb v0.1.1 (Huawei official, binary protocol)
+                match GaussAsyncConnection::new(config).await {
                     Ok(conn) => {
-                        log::info!("GaussDB connected via gaussdb-rs (our pure Rust driver)");
+                        log::info!("GaussDB connected via tokio-gaussdb (Huawei official, binary protocol)");
                         return Ok(Box::new(conn));
                     }
-                    Err(e) => log::warn!("gaussdb-rs failed: {}, trying sqlx...", e),
+                    Err(e) => log::warn!("tokio-gaussdb failed: {}, trying sqlx...", e),
                 }
-                // Tier 2: Try sqlx PG driver
+                // Tier 2: sqlx PG driver (fallback)
                 if let Ok(conn) = PgCompatibleConnection::new(config, DialectConfig::gaussdb()).await {
                     log::info!("GaussDB connected via sqlx PG driver");
                     return Ok(Box::new(conn));
                 }
-                // Tier 3: tokio-opengauss (slow but always works)
-                log::info!("Falling back to tokio-opengauss for GaussDB");
-                Ok(Box::new(GaussDBConnection::new(config).await?))
+                Err(DbError::ConnectionError("All GaussDB drivers failed".into()))
             }
             // PG-compatible: use PostgresConnection as provisional driver
             DatabaseType::Kingbase

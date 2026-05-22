@@ -7,7 +7,7 @@ pub mod postgres;
 pub mod mysql;
 pub mod sqlite;
 pub mod gauss_rs;
-pub mod gaussdb;
+// pub mod gaussdb; // Replaced by gauss_rs + tokio-gaussdb v0.1.1 (Huawei official)
 pub mod clickhouse;
 pub mod manager;
 pub mod commands;
