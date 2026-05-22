@@ -1198,7 +1198,7 @@ function QueryEditor() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 ml-auto">
           {executionTime !== null && (
             <span className="text-[11px] text-muted-foreground mr-1">
               {executionTime.toFixed(0)} ms
