@@ -7,9 +7,7 @@ use tokio::sync::RwLock;
 use super::clickhouse::ClickHouseConnection;
 use super::dialect::DialectConfig;
 use super::gauss_rs::GaussAsyncConnection;
-use super::gaussdb::GaussDBConnection;
 use super::mysql::MySqlConnection;
-use super::odbc_bridge::OdbcConnection;
 use super::pg_compatible::PgCompatibleConnection;
 use super::postgres::PostgresConnection;
 use super::sqlite::SQLiteConnection;
@@ -131,30 +129,20 @@ impl ConnectionManager {
                 Ok(Box::new(PostgresConnection::new(config).await?))
             }
             DatabaseType::GaussDB => {
-                // Tier 1: tokio-gaussdb v0.1.1 (Huawei official, binary protocol)
+                // Tier 1: tokio-gaussdb (Huawei official, binary protocol)
                 match GaussAsyncConnection::new(config).await {
                     Ok(conn) => {
-                        log::info!("GaussDB connected via tokio-gaussdb (Huawei official, binary protocol)");
+                        log::info!("GaussDB connected via tokio-gaussdb (binary protocol)");
                         return Ok(Box::new(conn));
                     }
-                    Err(e) => log::warn!("tokio-gaussdb failed: {}, trying fallback...", e),
+                    Err(e) => log::warn!("tokio-gaussdb failed: {}, trying sqlx fallback...", e),
                 }
                 // Tier 2: sqlx PG driver
                 if let Ok(conn) = PgCompatibleConnection::new(config, DialectConfig::gaussdb()).await {
-                    log::info!("GaussDB connected via sqlx PG driver");
+                    log::info!("GaussDB connected via sqlx PG driver (fallback)");
                     return Ok(Box::new(conn));
                 }
-                // Tier 3: tokio-opengauss (always works as last resort)
-                match GaussDBConnection::new(config).await {
-                    Ok(conn) => {
-                        log::info!("GaussDB connected via tokio-opengauss (fallback)");
-                        return Ok(Box::new(conn));
-                    }
-                    Err(e) => {
-                        log::error!("All GaussDB drivers failed: {}", e);
-                        return Err(DbError::ConnectionError("All GaussDB drivers failed".into()));
-                    }
-                }
+                Err(DbError::ConnectionError("All GaussDB drivers failed".into()))
             }
             // PG-compatible: use PostgresConnection as provisional driver
             DatabaseType::Kingbase

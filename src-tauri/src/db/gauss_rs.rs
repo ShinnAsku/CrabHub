@@ -1,10 +1,9 @@
-//! GaussDB connection via tokio-gaussdb (Huawei official Rust driver, v0.1.1)
-//! Uses Extended Query (binary protocol) for performance comparable to DBeaver JDBC.
+//! GaussDB connection via tokio-gaussdb (Huawei official Rust driver)
+//! Uses Extended Query (binary protocol). Client is &self-based internally,
+//! so concurrent queries execute in parallel without a Mutex bottleneck.
 
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio_gaussdb::{Client as GClient, Config as GConfig, NoTls, Row, SimpleQueryMessage, config::SslMode};
+use tokio_gaussdb::{Client as GClient, Config as GConfig, NoTls, SimpleQueryMessage, config::SslMode};
 use serde_json::Value as JsonValue;
 
 use super::trait_def::DatabaseConnection;
@@ -14,21 +13,31 @@ use super::types::{
 };
 
 pub struct GaussAsyncConnection {
-    client: Arc<Mutex<GClient>>,
+    client: GClient,
 }
 
 impl GaussAsyncConnection {
     pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
+        let host = config.host.as_deref().unwrap_or("localhost");
+        let port = config.port.unwrap_or(8000);
+        let user = config.username.as_deref().unwrap_or("gaussdb");
+        let pass = config.password.as_deref().unwrap_or("");
+        let db = config.database.as_deref().unwrap_or("");
+
+        log::info!("tokio-gaussdb connecting: host={}, port={}, user={}, db={}, pass_len={}",
+            host, port, user, db, pass.len());
+
         let mut gconfig = GConfig::new();
         gconfig
-            .host(config.host.as_deref().unwrap_or("localhost"))
-            .port(config.port.unwrap_or(8000))
-            .user(config.username.as_deref().unwrap_or("gaussdb"))
-            .password(config.password.as_deref().unwrap_or(""))
-            .dbname(config.database.as_deref().unwrap_or(""))
+            .host(host)
+            .port(port)
+            .user(user)
+            .password(pass)
+            .dbname(db)
             .ssl_mode(SslMode::Disable);
 
         let (client, connection) = gconfig.connect(NoTls).await.map_err(|e| {
+            log::error!("tokio-gaussdb connect error: {}", e);
             DbError::ConnectionError(format!("tokio-gaussdb: {}", e))
         })?;
 
@@ -39,22 +48,29 @@ impl GaussAsyncConnection {
             }
         });
 
-        Ok(Self { client: Arc::new(Mutex::new(client)) })
+        Ok(Self { client })
     }
 }
 
 #[async_trait]
 impl DatabaseConnection for GaussAsyncConnection {
     async fn query_sql(&self, sql: &str) -> Result<QueryResult, DbError> {
-        let client = self.client.lock().await;
-        // Use simple_query for SQL that may contain multiple statements or DDL
-        let messages = client.simple_query(sql).await.map_err(|e| DbError::QueryError(e.to_string()))?;
+        log::info!("[gauss_rs] query_sql: {}", &sql[..std::cmp::min(sql.len(), 200)]);
+        let messages = self.client.simple_query(sql).await.map_err(|e| DbError::QueryError(e.to_string()))?;
+        log::info!("[gauss_rs] query_sql: got {} messages", messages.len());
+        for (i, msg) in messages.iter().enumerate() {
+            match msg {
+                tokio_gaussdb::SimpleQueryMessage::Row(_) => log::info!("[gauss_rs]   msg[{}]: Row", i),
+                tokio_gaussdb::SimpleQueryMessage::CommandComplete(n) => log::info!("[gauss_rs]   msg[{}]: CommandComplete({})", i, n),
+                tokio_gaussdb::SimpleQueryMessage::RowDescription(cols) => log::info!("[gauss_rs]   msg[{}]: RowDescription({} cols)", i, cols.len()),
+                _ => log::info!("[gauss_rs]   msg[{}]: other", i),
+            }
+        }
         simple_query_to_result(messages)
     }
 
     async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError> {
-        let client = self.client.lock().await;
-        let affected = client.execute(sql, &[]).await.map_err(|e| DbError::QueryError(e.to_string()))?;
+        let affected = self.client.execute(sql, &[]).await.map_err(|e| DbError::QueryError(e.to_string()))?;
         Ok(ExecuteResult { rows_affected: affected, execution_time_ms: 0 })
     }
 
@@ -90,9 +106,13 @@ impl DatabaseConnection for GaussAsyncConnection {
     }
 
     async fn get_schemas(&self) -> Result<Vec<String>, DbError> {
-        self.query_sql("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema') ORDER BY schema_name").await.map(|r| {
-            r.rows.iter().filter_map(|row| row.get("schema_name").and_then(|v| v.as_str().map(String::from))).collect()
-        })
+        let sql = "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname";
+        let result = self.query_sql(sql).await?;
+        let schemas: Vec<String> = result.rows.iter().filter_map(|row| {
+            row.get("nspname").and_then(|v| v.as_str().map(String::from))
+        }).collect();
+        log::info!("[gauss_rs] get_schemas: {} schemas", schemas.len());
+        Ok(schemas)
     }
 
     async fn get_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
@@ -155,9 +175,9 @@ impl DatabaseConnection for GaussAsyncConnection {
         self.execute_sql(&format!("DELETE FROM \"{}\".\"{}\" WHERE {}", s, table, where_clause)).await
     }
 
-    async fn query_sql_paged(&self, sql: &str, limit: u64, offset: u64) -> Result<(QueryResult, bool), DbError> {
-        let paged = format!("{} LIMIT {} OFFSET {}", sql, limit + 1, offset);
-        let mut r = self.query_sql(&paged).await?;
+    async fn query_sql_paged(&self, sql: &str, limit: u64, _offset: u64) -> Result<(QueryResult, bool), DbError> {
+        // SQL already has LIMIT limit+1 injected by sql_limiter::inject_limit_offset
+        let mut r = self.query_sql(sql).await?;
         let has_more = r.rows.len() as u64 > limit;
         if has_more { r.rows.truncate(limit as usize); }
         Ok((r, has_more))
