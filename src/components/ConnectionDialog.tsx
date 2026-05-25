@@ -85,6 +85,12 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
   const [keepaliveInterval, setKeepaliveInterval] = useState(30);
   const [autoReconnect, setAutoReconnect] = useState(true);
 
+  // Connection pool overrides (empty string = use backend default)
+  const [poolMaxConnections, setPoolMaxConnections] = useState<string>("");
+  const [poolIdleTimeoutSecs, setPoolIdleTimeoutSecs] = useState<string>("");
+  const [poolMaxLifetimeSecs, setPoolMaxLifetimeSecs] = useState<string>("");
+  const [poolAcquireTimeoutSecs, setPoolAcquireTimeoutSecs] = useState<string>("");
+
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -94,6 +100,26 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
 
 
   const isSQLite = type === "sqlite";
+
+  /** Convert the four pool-option text inputs into the typed object. */
+  const buildPoolOptions = (): ConnectionConfig["poolOptions"] => {
+    const parsePos = (s: string) => {
+      const n = Number(s);
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    const parseNonNeg = (s: string) => {
+      const n = Number(s);
+      return Number.isFinite(n) && n >= 0 ? n : undefined;
+    };
+    const out: NonNullable<ConnectionConfig["poolOptions"]> = {
+      maxConnections: parsePos(poolMaxConnections),
+      idleTimeoutSecs: parseNonNeg(poolIdleTimeoutSecs),
+      maxLifetimeSecs: parseNonNeg(poolMaxLifetimeSecs),
+      acquireTimeoutSecs: parsePos(poolAcquireTimeoutSecs),
+    };
+    const hasAny = Object.values(out).some((v) => v !== undefined);
+    return hasAny ? out : undefined;
+  };
 
   // 加载插件数据库类型
   useEffect(() => {
@@ -153,6 +179,11 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
         setSslEnabled(editConnection.enableSsl || false);
         setKeepaliveInterval(editConnection.keepaliveInterval ?? 30);
         setAutoReconnect(editConnection.autoReconnect ?? true);
+        const po = editConnection.poolOptions;
+        setPoolMaxConnections(po?.maxConnections != null ? String(po.maxConnections) : "");
+        setPoolIdleTimeoutSecs(po?.idleTimeoutSecs != null ? String(po.idleTimeoutSecs) : "");
+        setPoolMaxLifetimeSecs(po?.maxLifetimeSecs != null ? String(po.maxLifetimeSecs) : "");
+        setPoolAcquireTimeoutSecs(po?.acquireTimeoutSecs != null ? String(po.acquireTimeoutSecs) : "");
         setFilePath(editConnection.filePath || editConnection.database || "");
         loadPassword();
         
@@ -231,6 +262,10 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
       setSslClientKey("");
       setKeepaliveInterval(30);
       setAutoReconnect(true);
+      setPoolMaxConnections("");
+      setPoolIdleTimeoutSecs("");
+      setPoolMaxLifetimeSecs("");
+      setPoolAcquireTimeoutSecs("");
     }
   }, [isOpen, editConnection]);
 
@@ -259,6 +294,10 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
     setSslClientKey("");
     setKeepaliveInterval(30);
     setAutoReconnect(true);
+    setPoolMaxConnections("");
+    setPoolIdleTimeoutSecs("");
+    setPoolMaxLifetimeSecs("");
+    setPoolAcquireTimeoutSecs("");
   };
 
   const handleTest = useCallback(async () => {
@@ -278,6 +317,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
         keepaliveInterval,
         autoReconnect,
         filePath: isSQLite ? filePath : undefined,
+        poolOptions: buildPoolOptions(),
       };
       console.log("Testing connection with config:", config);
       const success = await testConnection(config);
@@ -398,6 +438,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
             keepaliveInterval,
             autoReconnect,
             filePath: isSQLite ? filePath : undefined,
+            poolOptions: buildPoolOptions(),
             sshTunnel: sshEnabled ? {
               host: sshHost,
               port: sshPort,
@@ -444,6 +485,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           enableSsl: sslEnabled,
           keepaliveInterval,
           autoReconnect,
+          poolOptions: buildPoolOptions(),
           sshTunnel: sshEnabled ? {
             host: sshHost,
             port: sshPort,
@@ -482,6 +524,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           enableSsl: sslEnabled,
           keepaliveInterval,
           autoReconnect,
+          poolOptions: buildPoolOptions(),
           connected,
         });
         console.log('Connection added to store');
@@ -705,6 +748,67 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+
+            {/* Connection pool overrides. Empty = use backend default for this DB type. */}
+            <div className="space-y-2 p-2.5 bg-muted/30 rounded border border-border/50">
+              <label className="text-xs font-medium text-muted-foreground">Connection Pool</label>
+              <p className="text-[10px] text-muted-foreground/60">
+                Leave blank to use the safe per-database defaults.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Max connections</label>
+                  <input
+                    type="number"
+                    value={poolMaxConnections}
+                    onChange={(e) => setPoolMaxConnections(e.target.value)}
+                    min={1}
+                    max={200}
+                    placeholder="auto"
+                    className="w-20 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Acquire timeout</label>
+                  <input
+                    type="number"
+                    value={poolAcquireTimeoutSecs}
+                    onChange={(e) => setPoolAcquireTimeoutSecs(e.target.value)}
+                    min={1}
+                    max={600}
+                    placeholder="auto"
+                    className="w-20 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
+                  />
+                  <span className="text-[10px] text-muted-foreground">s</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Idle timeout</label>
+                  <input
+                    type="number"
+                    value={poolIdleTimeoutSecs}
+                    onChange={(e) => setPoolIdleTimeoutSecs(e.target.value)}
+                    min={0}
+                    max={86400}
+                    placeholder="auto"
+                    className="w-20 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
+                  />
+                  <span className="text-[10px] text-muted-foreground">s</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Max lifetime</label>
+                  <input
+                    type="number"
+                    value={poolMaxLifetimeSecs}
+                    onChange={(e) => setPoolMaxLifetimeSecs(e.target.value)}
+                    min={0}
+                    max={86400}
+                    placeholder="auto"
+                    className="w-20 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
+                  />
+                  <span className="text-[10px] text-muted-foreground">s</span>
+                </div>
               </div>
             </div>
           </div>

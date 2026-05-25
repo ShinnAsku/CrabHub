@@ -1,12 +1,17 @@
 use serde::Serialize;
 
-use super::context::ContextBuilder;
 use super::safety::{SafetyAction, SafetyGate};
 use super::tools::get_tools;
 
-/// Events emitted during agent execution (sent to frontend via Tauri events)
+/// Events emitted during agent execution (sent to frontend via Tauri events).
+///
+/// NOTE: Only `tools_for_llm` is currently wired into a Tauri command
+/// (`ai::commands::get_agent_tools`). The richer agent runtime (event-emitting
+/// tool dispatch + safety gating) is partially built — the helpers below stay
+/// behind `#[allow(dead_code)]` until the frontend agent loop is implemented.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 pub enum AgentEvent {
     Thinking { content: String },
     ToolCall { name: String, params: serde_json::Value },
@@ -19,11 +24,6 @@ pub enum AgentEvent {
 pub struct AgentRuntime;
 
 impl AgentRuntime {
-    /// Build a complete system prompt for the agent
-    pub fn build_system_prompt(db_type: &str, schema_summary: &str) -> String {
-        ContextBuilder::build_system_prompt(db_type, 0, schema_summary)
-    }
-
     /// Convert tool definitions to OpenAI-compatible function calling format
     pub fn tools_for_llm() -> Vec<serde_json::Value> {
         get_tools()
@@ -41,7 +41,10 @@ impl AgentRuntime {
             .collect()
     }
 
-    /// Check if a tool call needs user confirmation
+    /// Check if a tool call needs user confirmation.
+    ///
+    /// Reserved for the in-progress agent dispatch loop; presently unused.
+    #[allow(dead_code)]
     pub fn check_safety(tool_name: &str, params: &serde_json::Value) -> SafetyAction {
         if tool_name == "execute_sql" {
             let sql = params["sql"].as_str().unwrap_or("");

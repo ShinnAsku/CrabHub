@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use reqwest::{Client, redirect};
+use sha2::{Digest, Sha256};
 use tempfile;
 use zip::ZipArchive;
 
@@ -80,6 +81,44 @@ impl PluginInstaller {
             }
         };
 
+        // Integrity check: if the registry pins a SHA-256 for this platform asset,
+        // verify the downloaded bytes before extracting. This is the primary defense
+        // against a tampered mirror / MITM substituting a malicious plugin payload.
+        // Registries that omit `sha256` log a warning but install proceeds, so first-
+        // party channels can roll out the field gradually.
+        let expected_sha = release.sha256.get(&platform)
+            .or_else(|| release.sha256.get("universal"));
+        match expected_sha {
+            Some(hex_expected) => {
+                let actual = Sha256::digest(&body);
+                let actual_hex = actual.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                let expected_norm = hex_expected.trim().to_ascii_lowercase();
+                if actual_hex != expected_norm {
+                    log::error!(
+                        "[PLUGIN-SEC] SHA-256 mismatch for plugin '{}' v{} (platform '{}'): expected {}, got {}",
+                        plugin_id, version, platform, expected_norm, actual_hex
+                    );
+                    return Err(format!(
+                        "Plugin integrity check failed for '{}' v{}: SHA-256 mismatch. \
+                         Refusing to install a potentially tampered archive.",
+                        plugin_id, version
+                    ));
+                }
+                log::info!(
+                    "[PLUGIN-SEC] SHA-256 verified for plugin '{}' v{} ({} bytes)",
+                    plugin_id, version, body.len()
+                );
+            }
+            None => {
+                log::warn!(
+                    "[PLUGIN-SEC] No SHA-256 checksum declared for plugin '{}' v{} (platform '{}'). \
+                     Installation proceeding without integrity verification — registries should \
+                     publish 'sha256' fields to prevent MITM / mirror substitution attacks.",
+                    plugin_id, version, platform
+                );
+            }
+        }
+
         // Extract zip
         let temp_dir = tempfile::tempdir().map_err(|e| e.to_string())?;
         let temp_zip = temp_dir.path().join("plugin.zip");
@@ -96,12 +135,30 @@ impl PluginInstaller {
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
-            let outpath = plugin_dir.join(file.name());
-            if (*file.name()).ends_with('/') {
+
+            // Security: validate archive entry path to prevent Zip Slip / path traversal.
+            // Use `enclosed_name()` which rejects absolute paths and `..` components,
+            // then double-check the resolved path stays under `plugin_dir`.
+            let entry_name = file.name().to_string();
+            let safe_rel = file
+                .enclosed_name()
+                .ok_or_else(|| format!("Unsafe entry path in archive: {}", entry_name))?
+                .to_path_buf();
+            let outpath = plugin_dir.join(&safe_rel);
+            if !outpath.starts_with(&plugin_dir) {
+                return Err(format!(
+                    "Path traversal detected in plugin archive: {}",
+                    entry_name
+                ));
+            }
+
+            if entry_name.ends_with('/') {
                 fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
             } else {
                 if let Some(p) = outpath.parent() {
-                    if !p.exists() { fs::create_dir_all(p).map_err(|e| e.to_string())?; }
+                    if !p.exists() {
+                        fs::create_dir_all(p).map_err(|e| e.to_string())?;
+                    }
                 }
                 let mut outfile = fs::File::create(&outpath).map_err(|e| e.to_string())?;
                 std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;

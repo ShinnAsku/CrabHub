@@ -1,10 +1,37 @@
-use crate::db::types::DatabaseType;
+use crate::db::types::{DatabaseType, PoolOptions};
 
+#[derive(Debug, Clone)]
 pub struct PoolConfig {
     pub max_connections: u32,
     pub idle_timeout_secs: u64,
     pub max_lifetime_secs: u64,
     pub acquire_timeout_secs: u64,
+}
+
+impl PoolConfig {
+    /// Merge user-supplied overrides on top of the per-database defaults.
+    /// Any field the user didn't set keeps the safe default.
+    /// Caps are applied to prevent pathological values (e.g. 100k connections,
+    /// 0-second acquire timeout) that would harm the host or DB server.
+    pub fn with_overrides(db_type: &DatabaseType, overrides: Option<&PoolOptions>) -> Self {
+        let mut cfg = pool_config_for(db_type);
+        if let Some(o) = overrides {
+            if let Some(v) = o.max_connections {
+                cfg.max_connections = v.clamp(1, 200);
+            }
+            if let Some(v) = o.idle_timeout_secs {
+                // 0 means disabled in sqlx; allow it but cap upper bound.
+                cfg.idle_timeout_secs = v.min(86_400);
+            }
+            if let Some(v) = o.max_lifetime_secs {
+                cfg.max_lifetime_secs = v.min(86_400);
+            }
+            if let Some(v) = o.acquire_timeout_secs {
+                cfg.acquire_timeout_secs = v.clamp(1, 600);
+            }
+        }
+        cfg
+    }
 }
 
 pub fn pool_config_for(db_type: &DatabaseType) -> PoolConfig {

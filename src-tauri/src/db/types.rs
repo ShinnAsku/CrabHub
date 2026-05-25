@@ -352,6 +352,18 @@ pub struct SshTunnelConfig {
     pub private_key: Option<String>,
 }
 
+/// Optional connection-pool overrides supplied by the user via the
+/// connection dialog. Any field left as `None` falls back to the
+/// per-database default returned by `pool_config_for`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolOptions {
+    pub max_connections: Option<u32>,
+    pub idle_timeout_secs: Option<u64>,
+    pub max_lifetime_secs: Option<u64>,
+    pub acquire_timeout_secs: Option<u64>,
+}
+
 /// Database connection configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -371,6 +383,8 @@ pub struct ConnectionConfig {
     #[serde(default = "default_auto_reconnect")]
     pub auto_reconnect: bool,
     pub ssh_tunnel: Option<SshTunnelConfig>,
+    #[serde(default)]
+    pub pool_options: Option<PoolOptions>,
 }
 
 /// Column metadata information
@@ -440,6 +454,20 @@ pub struct TableInfo {
 pub struct ExecuteResult {
     pub rows_affected: u64,
     pub execution_time_ms: u64,
+}
+
+/// Structured WHERE condition used by row-level UPDATE/DELETE on the data grid.
+///
+/// SECURITY: this type intentionally replaces the previous "WHERE clause string"
+/// API to eliminate SQL injection. Multiple conditions are AND-joined with
+/// equality semantics (`col = value`, or `col IS NULL` when value is null).
+/// Arbitrary boolean expressions, OR / subqueries / function calls cannot be
+/// expressed and therefore cannot be smuggled through the IPC boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhereCondition {
+    pub column: String,
+    pub value: serde_json::Value,
 }
 
 /// Database error types with structured error codes for frontend handling

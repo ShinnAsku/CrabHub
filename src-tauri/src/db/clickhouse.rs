@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use super::pool_config::PoolConfig;
 use super::trait_def::{json_value_to_sql, DatabaseConnection};
 use super::types::{
     ColumnInfo, ConnectionConfig, DatabaseType, DbError, ExecuteResult, QueryResult, TableInfo,
@@ -34,10 +35,13 @@ impl ClickHouseConnection {
 
         log::info!("Connecting to ClickHouse at {}", url);
 
+        // Apply per-connection pool overrides (max_connections → pool_max_idle_per_host,
+        // idle_timeout_secs → pool_idle_timeout, acquire_timeout_secs → request timeout).
+        let pool_cfg = PoolConfig::with_overrides(&DatabaseType::ClickHouse, config.pool_options.as_ref());
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .pool_max_idle_per_host(5)
-            .pool_idle_timeout(Some(std::time::Duration::from_secs(90)))
+            .timeout(std::time::Duration::from_secs(pool_cfg.acquire_timeout_secs.max(1)))
+            .pool_max_idle_per_host(pool_cfg.max_connections as usize)
+            .pool_idle_timeout(Some(std::time::Duration::from_secs(pool_cfg.idle_timeout_secs)))
             .build()
             .map_err(|e| {
                 DbError::ConnectionError(format!("Failed to create HTTP client: {}", e))
@@ -54,15 +58,18 @@ impl ClickHouseConnection {
             .send()
             .await
             .map_err(|e| {
-                DbError::ConnectionError(format!("Failed to connect to ClickHouse: {}", e))
+                DbError::ConnectionError(format!(
+                    "ClickHouse[{}/{}] handshake transport failed: {}",
+                    url, database, e
+                ))
             })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(DbError::ConnectionError(format!(
-                "ClickHouse connection failed ({}): {}",
-                status, body
+                "ClickHouse[{}/{}] handshake rejected ({}): {}",
+                url, database, status, body
             )));
         }
 
@@ -86,6 +93,13 @@ impl ClickHouseConnection {
             req = req.basic_auth(&self.username, None::<&str>);
         }
         req
+    }
+
+    /// Stable identifier used in every error message so support can correlate
+    /// failures across logs without leaking the password (we deliberately
+    /// include host/port/database but never credentials).
+    fn ctx(&self) -> String {
+        format!("ClickHouse[{}/{}]", self.url, self.database)
     }
 }
 
@@ -111,7 +125,7 @@ impl DatabaseConnection for ClickHouseConnection {
             .body(sql.to_string())
             .send()
             .await
-            .map_err(|e| DbError::QueryError(format!("ClickHouse request failed: {}", e)))?;
+            .map_err(|e| DbError::QueryError(format!("{} execute transport failed: {}", self.ctx(), e)))?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -119,8 +133,8 @@ impl DatabaseConnection for ClickHouseConnection {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(DbError::QueryError(format!(
-                "ClickHouse error ({}): {}",
-                status, body
+                "{} execute error ({}): {}",
+                self.ctx(), status, body
             )));
         }
 
@@ -162,7 +176,7 @@ impl DatabaseConnection for ClickHouseConnection {
             .body(formatted_sql)
             .send()
             .await
-            .map_err(|e| DbError::QueryError(format!("ClickHouse request failed: {}", e)))?;
+            .map_err(|e| DbError::QueryError(format!("{} query transport failed: {}", self.ctx(), e)))?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -170,15 +184,30 @@ impl DatabaseConnection for ClickHouseConnection {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(DbError::QueryError(format!(
-                "ClickHouse error ({}): {}",
-                status, body
+                "{} query error ({}): {}",
+                self.ctx(), status, body
             )));
+        }
+
+        // Defensive: ClickHouse honours the `FORMAT JSONEachRow` clause we add to
+        // every read query, but a misconfigured server / proxy could rewrite the
+        // response to e.g. text/html (error page) or text/tab-separated-values.
+        // If the content-type signals anything other than JSON variants, log a
+        // warning so support can spot silent format negotiation failures.
+        if let Some(ct) = resp.headers().get(reqwest::header::CONTENT_TYPE) {
+            let ct_str = ct.to_str().unwrap_or("");
+            if !ct_str.is_empty() && !ct_str.contains("json") && !ct_str.contains("x-ndjson") {
+                log::warn!(
+                    "{} unexpected Content-Type '{}' (expected JSONEachRow); rows may be dropped",
+                    self.ctx(), ct_str
+                );
+            }
         }
 
         let body = resp
             .text()
             .await
-            .map_err(|e| DbError::QueryError(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| DbError::QueryError(format!("{} failed to read response body: {}", self.ctx(), e)))?;
 
         if body.trim().is_empty() {
             return Ok(QueryResult {
@@ -199,7 +228,7 @@ impl DatabaseConnection for ClickHouseConnection {
             }
             let map: serde_json::Map<String, serde_json::Value> =
                 serde_json::from_str(line).map_err(|e| {
-                    DbError::QueryError(format!("Failed to parse ClickHouse response: {}", e))
+                    DbError::QueryError(format!("{} failed to parse JSONEachRow line: {}", self.ctx(), e))
                 })?;
 
             if columns.is_empty() {
@@ -509,8 +538,7 @@ impl DatabaseConnection for ClickHouseConnection {
         if let Some(row) = rows.rows.first() {
             if let Some(cnt) = row
                 .get("cnt")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
+                .and_then(|v| v.as_u64())
             {
                 return Ok(cnt);
             }
@@ -527,9 +555,12 @@ impl DatabaseConnection for ClickHouseConnection {
         order_by: Option<&str>,
     ) -> Result<QueryResult, DbError> {
         let full_table = ch_full_table(table, schema);
-        let order_clause = order_by
-            .map(|o| format!(" ORDER BY {}", o))
-            .unwrap_or_default();
+        let order_clause = if let Some(o) = order_by {
+            crate::db::trait_def::sanitize_order_by(o)?;
+            format!(" ORDER BY {}", o)
+        } else {
+            String::new()
+        };
         let offset = (page - 1) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
@@ -547,20 +578,22 @@ impl DatabaseConnection for ClickHouseConnection {
         table: &str,
         schema: Option<&str>,
         updates: &[(String, serde_json::Value)],
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        crate::db::trait_def::sanitize_where_clause(where_clause)
-            .map_err(|e| DbError::QueryError(e))?;
         let full_table = ch_full_table(table, schema);
         let set_clauses: Vec<String> = updates
             .iter()
             .map(|(col, val)| format!("{} = {}", ch_quote_ident(col), json_value_to_sql(val)))
             .collect();
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| ch_quote_ident(c),
+        )?;
         let sql = format!(
             "ALTER TABLE {} UPDATE {} WHERE {}",
             full_table,
             set_clauses.join(", "),
-            where_clause
+            where_sql
         );
         self.execute_sql(&sql).await
     }
@@ -587,14 +620,16 @@ impl DatabaseConnection for ClickHouseConnection {
         &self,
         table: &str,
         schema: Option<&str>,
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        crate::db::trait_def::sanitize_where_clause(where_clause)
-            .map_err(|e| DbError::QueryError(e))?;
         let full_table = ch_full_table(table, schema);
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| ch_quote_ident(c),
+        )?;
         let sql = format!(
             "ALTER TABLE {} DELETE WHERE {}",
-            full_table, where_clause
+            full_table, where_sql
         );
         self.execute_sql(&sql).await
     }

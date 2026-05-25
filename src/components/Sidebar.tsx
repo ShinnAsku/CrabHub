@@ -979,14 +979,16 @@ function DatabaseTree({
       const result = await executeQuery(connectionId, sql);
       if (result.rows && result.rows.length > 0) {
         const row = result.rows[0];
-        // Try common column names for definition
-        const def = row['definition'] || row['Definition'] || row['DEFINITION']
-          || row['Create View'] || row['Create Function'] || row['Create Procedure']
-          || row['Create Trigger'] || row['Create Event']
-          || row['sql'] || row['SQL Original Statement']
-          || Object.values(row).find((v: unknown) => typeof v === 'string' && (v as string).length > 20)
-          || '';
-        content += String(def);
+        if (row) {
+          // Try common column names for definition
+          const def = row['definition'] || row['Definition'] || row['DEFINITION']
+            || row['Create View'] || row['Create Function'] || row['Create Procedure']
+            || row['Create Trigger'] || row['Create Event']
+            || row['sql'] || row['SQL Original Statement']
+            || Object.values(row).find((v: unknown) => typeof v === 'string' && (v as string).length > 20)
+            || '';
+          content += String(def);
+        }
       } else {
         content += `-- 未找到 ${titlePrefix} "${node.name}" 的定义`;
       }

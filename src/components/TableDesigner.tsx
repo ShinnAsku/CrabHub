@@ -94,7 +94,10 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
       const cols = await getColumns(connId, editTable.name, editTable.schema);
       const columnDefs: ColumnDef[] = cols.map((c) => {
         const normalizedType = normalizeDbType(dbType, c.type);
-        const isAutoInc = isSequenceDefault(c.defaultValue);
+        // ColumnInfo.defaultValue is `unknown` (backend may return any JSON scalar).
+        // Normalize to string for the editor; null/undefined → empty.
+        const defaultStr = c.defaultValue == null ? "" : String(c.defaultValue);
+        const isAutoInc = isSequenceDefault(defaultStr);
         return {
           name: c.name,
           dataType: normalizedType,
@@ -104,7 +107,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
           nullable: !c.notNull,
           primaryKey: c.primaryKey,
           autoIncrement: isAutoInc,
-          defaultValue: isAutoInc ? "" : (c.defaultValue || ""),
+          defaultValue: isAutoInc ? "" : defaultStr,
           comment: c.description || "",
           unique: c.unique,
         };

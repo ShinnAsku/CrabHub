@@ -252,6 +252,13 @@ const translations: Record<Language, Record<string, string>> = {
     'ai.analyzeData': '分析数据',
     'ai.explainSql': '解释SQL',
     'ai.optimizeSql': '优化SQL',
+    'ai.prompt.writeSql': '帮我写一个查询用户表的 SQL 语句',
+    'ai.prompt.analyzePerformance': '帮我分析这个 SQL 的性能：',
+    'ai.prompt.designTable': '帮我根据需求设计表结构',
+    'ai.prompt.analyzeData': '帮我分析查询结果',
+    'ai.prompt.explainSql': '帮我解释这个 SQL 语句',
+    'ai.prompt.optimizeSql': '帮我优化这个 SQL：',
+    'ai.schemaInjected': 'Schema 已注入 · 可执行操作',
 
     // ===== Agent =====
     'agent.thinking': '思考中...',
@@ -974,6 +981,13 @@ const translations: Record<Language, Record<string, string>> = {
     'ai.analyzeData': 'Analyze Data',
     'ai.explainSql': 'Explain SQL',
     'ai.optimizeSql': 'Optimize SQL',
+    'ai.prompt.writeSql': 'Help me write a SQL query for the users table',
+    'ai.prompt.analyzePerformance': 'Help me analyze the performance of this SQL: ',
+    'ai.prompt.designTable': 'Help me design a table schema based on requirements',
+    'ai.prompt.analyzeData': 'Help me analyze the query result',
+    'ai.prompt.explainSql': 'Help me explain this SQL statement',
+    'ai.prompt.optimizeSql': 'Help me optimize this SQL: ',
+    'ai.schemaInjected': 'Schema injected · actions enabled',
 
     // ===== Agent =====
     'agent.thinking': 'Thinking...',
@@ -1486,10 +1500,5 @@ export function initLanguage(): Language {
   return currentLanguage;
 }
 
-// Format: t('editor.querySuccess', { rows: '100', ms: '45' })
-// Result: '查询成功，返回 100 行 (45 ms)'
-// Format: t('editor.querySuccess', { rows: '100', ms: '45' })
-// Result: '查询成功，返回 100 行 (45 ms)'
-
-// Format: t('editor.querySuccess', { rows: '100', ms: '45' })
+// Usage: t('editor.querySuccess', { rows: '100', ms: '45' }) => '查询成功，返回 100 行 (45 ms)'
 // Result: '查询成功，返回 100 行 (45 ms)'

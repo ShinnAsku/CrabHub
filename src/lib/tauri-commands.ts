@@ -3,6 +3,17 @@ import type { ConnectionConfig, QueryResult, PagedQueryResult, ExecuteResult, Ta
 import { getPassword } from "./secure-storage";
 import { isMockMode, mockInvoke } from "./tauri-commands-mock";
 
+/**
+ * Structured WHERE condition for row-level UPDATE/DELETE. Multiple conditions
+ * are AND-joined with equality semantics (or `IS NULL` when value is null).
+ * This shape eliminates SQL-injection risk at the IPC boundary — the frontend
+ * cannot send an arbitrary WHERE string.
+ */
+export interface WhereCondition {
+  column: string;
+  value: unknown;
+}
+
 // Update types
 export interface UpdateStatus {
   available: boolean;
@@ -31,6 +42,22 @@ export interface ConnectResult {
   detectedType: string;
 }
 
+/**
+ * Strip empty / zero entries from pool overrides so the backend falls back to
+ * its per-database defaults instead of receiving `0` and clamping later.
+ */
+function sanitizePoolOptions(
+  po: ConnectionConfig["poolOptions"]
+): ConnectionConfig["poolOptions"] | undefined {
+  if (!po) return undefined;
+  const out: NonNullable<ConnectionConfig["poolOptions"]> = {};
+  if (po.maxConnections && po.maxConnections > 0) out.maxConnections = po.maxConnections;
+  if (po.idleTimeoutSecs !== undefined && po.idleTimeoutSecs >= 0) out.idleTimeoutSecs = po.idleTimeoutSecs;
+  if (po.maxLifetimeSecs !== undefined && po.maxLifetimeSecs >= 0) out.maxLifetimeSecs = po.maxLifetimeSecs;
+  if (po.acquireTimeoutSecs && po.acquireTimeoutSecs > 0) out.acquireTimeoutSecs = po.acquireTimeoutSecs;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export async function connectDatabase(config: ConnectionConfig): Promise<ConnectResult> {
   // Get password from secure storage if not provided
   let password = config.password;
@@ -53,7 +80,8 @@ export async function connectDatabase(config: ConnectionConfig): Promise<Connect
     database: config.database || undefined,
     sslEnabled: config.enableSsl || false,
     keepaliveInterval: config.keepaliveInterval || 30,
-    autoReconnect: config.autoReconnect !== false
+    autoReconnect: config.autoReconnect !== false,
+    poolOptions: sanitizePoolOptions(config.poolOptions)
   };
   return safeInvoke<ConnectResult>("connect_to_database", { config: backendConfig });
 }
@@ -63,50 +91,96 @@ export async function disconnectDatabase(id: string): Promise<void> {
 }
 
 export async function executeQuery(id: string, sql: string): Promise<QueryResult> {
-  const raw = await safeInvoke<any>("execute_query", { id, sql });
+  const raw = await safeInvoke<RawQueryResult>("execute_query", { id, sql });
   return mapRawQueryResult(raw);
 }
 
-export async function executeBatch(id: string, statements: string[]): Promise<any[]> {
-  const raw = await safeInvoke<any[]>("execute_batch", { id, statements });
-  return raw.map((r: any) => {
-    if (r.type === 'error') return r;
-    if (r.type === 'empty') return r;
-    if (r.columns) return { ...mapRawQueryResult(r), hasMore: r.hasMore ?? false };
-    return r; // ExecuteResult
+export async function executeBatch(id: string, statements: string[]): Promise<BatchResultItem[]> {
+  const raw = await safeInvoke<RawBatchItem[]>("execute_batch", { id, statements });
+  return raw.map((r) => {
+    const item = r as BatchResultItem;
+    if (item.type === "error" || item.type === "empty") return item;
+    if ((r as RawQueryResult).columns) {
+      return { ...mapRawQueryResult(r as RawQueryResult), hasMore: (r as RawQueryResult).hasMore ?? false };
+    }
+    return item; // ExecuteResult-shape
   });
 }
 
 export async function executeQueryPaged(id: string, sql: string, limit: number, offset: number): Promise<PagedQueryResult> {
-  const raw = await safeInvoke<any>("execute_query_paged", { id, sql, limit, offset });
+  const raw = await safeInvoke<RawQueryResult>("execute_query_paged", { id, sql, limit, offset });
   return {
     ...mapRawQueryResult(raw),
     hasMore: raw.hasMore ?? false,
   };
 }
 
+// ---------------------------------------------------------------------------
+// Raw IPC shapes (mirror serde-camelCase output from the Rust backend).
+// ---------------------------------------------------------------------------
+
+interface RawColumn {
+  name: string;
+  dataType: string;
+  nullable?: boolean;
+  isPrimaryKey?: boolean;
+}
+
+type RawCell = string | number | boolean | null | Record<string, unknown> | unknown[];
+type RawRow = RawCell[] | Record<string, RawCell>;
+
+interface RawQueryResult {
+  columns?: RawColumn[];
+  rows?: RawRow[];
+  rowCount?: number;
+  executionTimeMs?: number;
+  hasMore?: boolean;
+}
+
+type RawBatchItem =
+  | RawQueryResult
+  | { type: "error"; message: string }
+  | { type: "empty" }
+  | { rowsAffected?: number; executionTimeMs?: number };
+
+export interface BatchResultItem {
+  /** Discriminator when the row carries no result set ("error" / "empty"). */
+  type?: "error" | "empty";
+  message?: string;
+  // QueryResult shape (set when the statement returned rows).
+  columns?: QueryResult["columns"];
+  rows?: QueryResult["rows"];
+  rowCount?: number;
+  duration?: number;
+  hasMore?: boolean;
+  // ExecuteResult shape (set when the statement did not return rows).
+  success?: boolean;
+  error?: string;
+}
+
 // Helper: map raw backend query result to frontend format
-function mapRawQueryResult(raw: any): QueryResult {
-  const columns = (raw.columns || []).map((c: any) => ({
+function mapRawQueryResult(raw: RawQueryResult): QueryResult {
+  const columns = (raw.columns || []).map((c) => ({
     name: c.name,
     dataType: c.dataType,
     nullable: c.nullable,
     isPrimaryKey: c.isPrimaryKey,
-  }));
+  })) as unknown as QueryResult["columns"];
 
   // Tauri v2 serializes serde_json::Value as plain JSON — no wrapper unwrapping needed.
   // null stays null for SQL NULL display; empty string would lose the distinction.
-  const rows = (raw.rows || []).map((row: any) => {
+  const rows = (raw.rows || []).map((row) => {
     if (Array.isArray(row) && columns.length > 0) {
-      const mapped: Record<string, any> = {};
-      row.forEach((value: any, index: number) => {
-        if (index < columns.length) {
-          mapped[columns[index].name] = value;
+      const mapped: Record<string, RawCell> = {};
+      row.forEach((value, index) => {
+        const col = columns[index];
+        if (col) {
+          mapped[col.name] = value;
         }
       });
       return mapped;
     }
-    return { ...row };
+    return { ...(row as Record<string, RawCell>) };
   });
 
   return {
@@ -197,7 +271,8 @@ export async function testConnection(config: ConnectionConfig): Promise<boolean>
     database: config.database || undefined,
     sslEnabled: config.enableSsl || false,
     keepaliveInterval: config.keepaliveInterval || 30,
-    autoReconnect: config.autoReconnect !== false
+    autoReconnect: config.autoReconnect !== false,
+    poolOptions: sanitizePoolOptions(config.poolOptions)
   };
   try {
     return await safeInvoke<boolean>("test_connection_cmd", { config: backendConfig });
@@ -276,7 +351,7 @@ export async function updateTableRows(
   id: string,
   table: string,
   updates: [string, any][],
-  whereClause: string,
+  whereConditions: WhereCondition[],
   schema?: string
 ): Promise<ExecuteResult> {
   const raw = await safeInvoke<any>("update_table_rows", {
@@ -284,7 +359,7 @@ export async function updateTableRows(
     table,
     schema: schema ?? null,
     updates,
-    where_clause: whereClause,
+    where_conditions: whereConditions,
   });
   return {
     success: true,
@@ -315,14 +390,14 @@ export async function insertTableRow(
 export async function deleteTableRows(
   id: string,
   table: string,
-  whereClause: string,
+  whereConditions: WhereCondition[],
   schema?: string
 ): Promise<ExecuteResult> {
   const raw = await safeInvoke<any>("delete_table_rows", {
     id,
     table,
     schema: schema ?? null,
-    where_clause: whereClause,
+    where_conditions: whereConditions,
   });
   return {
     success: true,

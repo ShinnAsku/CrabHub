@@ -86,21 +86,36 @@ impl ConnectionManager {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
 
-            let to_check: Vec<(String, bool)> = {
+            // Collect (id, is_stale, db_type, idle_secs, host) so the warning
+            // log line carries enough structured context for support to correlate
+            // heartbeat misses with network / firewall events.
+            let to_check: Vec<(String, bool, DatabaseType, u64, Option<String>)> = {
                 let connections = manager.connections.read().await;
                 connections
                     .iter()
                     .filter(|(_, e)| e.config.keepalive_interval != 0)
                     .map(|(id, e)| {
                         let idle_secs = e.last_heartbeat.lock().unwrap().elapsed().as_secs();
-                        (id.clone(), idle_secs > 120)
+                        (
+                            id.clone(),
+                            idle_secs > 120,
+                            e.config.db_type.clone(),
+                            idle_secs,
+                            e.config.host.clone(),
+                        )
                     })
                     .collect()
             };
 
-            for (id, is_stale) in &to_check {
+            for (id, is_stale, db_type, idle_secs, host) in &to_check {
                 if *is_stale {
-                    log::debug!("Heartbeat: connection '{}' idle for >120s, marking unhealthy", id);
+                    log::warn!(
+                        "[heartbeat] id={} db_type={:?} host={} idle_secs={} threshold=120 marking_unhealthy=true",
+                        id,
+                        db_type,
+                        host.as_deref().unwrap_or("?"),
+                        idle_secs
+                    );
                     let mut conns = manager.connections.write().await;
                     if let Some(e) = conns.get_mut(id) {
                         e.is_healthy = false;
@@ -323,6 +338,8 @@ impl ConnectionManager {
                 Err(DbError::Timeout("Query exceeded 5 minute limit".to_string()))
             }
         };
+        // Clean up the cancel sender regardless of outcome
+        self.cancel_tokens.write().await.remove(id);
         if let Ok(ref _r) = result {
             *entry.last_heartbeat.lock().unwrap() = Instant::now();
         }
@@ -331,25 +348,37 @@ impl ConnectionManager {
 
     /// Run a non-cancellable query (for metadata/internal use).
     /// Does NOT create a cancel token, so it doesn't interfere with user queries.
+    /// Has a 60-second timeout — metadata queries should be fast; anything longer
+    /// indicates a stuck connection.
     async fn query_inner(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let connections = self.connections.read().await;
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        let result = entry.connection.query_sql(sql).await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            entry.connection.query_sql(sql),
+        )
+        .await
+        .map_err(|_| DbError::Timeout("Metadata query exceeded 60s limit".to_string()))?;
         if let Ok(ref _r) = result {
             *entry.last_heartbeat.lock().unwrap() = Instant::now();
         }
         result
     }
 
-    /// Non-cancellable execute (for metadata/internal use).
+    /// Non-cancellable execute (for metadata/internal use). 60s timeout.
     async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
         let connections = self.connections.read().await;
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        let result = entry.connection.execute_sql(sql).await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            entry.connection.execute_sql(sql),
+        )
+        .await
+        .map_err(|_| DbError::Timeout("Execute exceeded 60s limit".to_string()))?;
         if let Ok(ref _r) = result {
             *entry.last_heartbeat.lock().unwrap() = Instant::now();
         }
@@ -368,9 +397,15 @@ impl ConnectionManager {
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
 
+        // 5-minute hard timeout matches the cancellable path; prevents runaway
+        // queries from holding a pool connection indefinitely.
+        let timeout = std::time::Duration::from_secs(300);
+
         // If the user already specified a LIMIT / TOP / FETCH, execute as-is
         if sql_limiter::has_user_limit(sql) {
-            let result = entry.connection.query_sql(sql).await?;
+            let result = tokio::time::timeout(timeout, entry.connection.query_sql(sql))
+                .await
+                .map_err(|_| DbError::Timeout("Query exceeded 5 minute limit".to_string()))??;
             return Ok(PagedQueryResult {
                 columns: result.columns,
                 rows: result.rows,
@@ -384,7 +419,12 @@ impl ConnectionManager {
         let db_type = entry.connection.db_type();
         let modified_sql =
             sql_limiter::inject_limit_offset(sql, &db_type, limit + 1, offset);
-        let (result, has_more) = entry.connection.query_sql_paged(&modified_sql, limit, offset).await?;
+        let (result, has_more) = tokio::time::timeout(
+            timeout,
+            entry.connection.query_sql_paged(&modified_sql, limit, offset),
+        )
+        .await
+        .map_err(|_| DbError::Timeout("Query exceeded 5 minute limit".to_string()))??;
 
         let row_count = result.rows.len() as u64;
         Ok(PagedQueryResult {
@@ -449,6 +489,11 @@ impl ConnectionManager {
                     tokio::spawn(async move { old.close().await; });
                     *entry.last_heartbeat.lock().unwrap() = Instant::now();
                     entry.is_healthy = true;
+                    // Reset attempt counter so future transient failures get a
+                    // full reconnect budget again. Without this, a single
+                    // successful reconnect "consumes" the budget and the next
+                    // failure can trip MAX_RECONNECT_ATTEMPTS prematurely.
+                    entry.reconnect_count = 0;
                     log::info!(
                         "Successfully reconnected connection '{}' on attempt {}",
                         id,
@@ -715,7 +760,7 @@ impl ConnectionManager {
         table: &str,
         schema: Option<&str>,
         updates: &[(String, serde_json::Value)],
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
         let connections = self.connections.read().await;
         let entry = connections
@@ -723,7 +768,7 @@ impl ConnectionManager {
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
         entry
             .connection
-            .update_table_rows(table, schema, updates, where_clause)
+            .update_table_rows(table, schema, updates, where_conditions)
             .await
     }
 
@@ -749,7 +794,7 @@ impl ConnectionManager {
         id: &str,
         table: &str,
         schema: Option<&str>,
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
         let connections = self.connections.read().await;
         let entry = connections
@@ -757,7 +802,7 @@ impl ConnectionManager {
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
         entry
             .connection
-            .delete_table_rows(table, schema, where_clause)
+            .delete_table_rows(table, schema, where_conditions)
             .await
     }
 
@@ -778,140 +823,6 @@ impl ConnectionManager {
             .connection
             .get_table_data(table, schema, page, page_size, order_by)
             .await
-    }
-}
-
-/// Dummy connection used as a placeholder when swapping connections during reconnect
-struct DummyConnection;
-
-#[async_trait]
-impl DatabaseConnection for DummyConnection {
-    async fn execute_sql(&self, _sql: &str) -> Result<ExecuteResult, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn query_sql(&self, _sql: &str) -> Result<QueryResult, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_tables(&self) -> Result<Vec<TableInfo>, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn query_sql_paged(
-        &self,
-        _sql: &str,
-        _limit: u64,
-        _offset: u64,
-    ) -> Result<(QueryResult, bool), DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_columns(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-    ) -> Result<Vec<ColumnInfo>, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_schemas(&self) -> Result<Vec<String>, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    fn db_type(&self) -> DatabaseType {
-        DatabaseType::PostgreSQL // placeholder
-    }
-    async fn close(&self) {}
-    async fn export_table_sql(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-    ) -> Result<String, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_views(&self, _schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_indexes(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-    ) -> Result<Vec<serde_json::Value>, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_foreign_keys(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-    ) -> Result<Vec<serde_json::Value>, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_table_row_count(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-    ) -> Result<u64, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn get_table_data(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-        _page: u32,
-        _page_size: u32,
-        _order_by: Option<&str>,
-    ) -> Result<QueryResult, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn update_table_rows(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-        _updates: &[(String, serde_json::Value)],
-        _where_clause: &str,
-    ) -> Result<ExecuteResult, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn insert_table_row(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-        _values: &[(String, serde_json::Value)],
-    ) -> Result<ExecuteResult, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
-    }
-    async fn delete_table_rows(
-        &self,
-        _table: &str,
-        _schema: Option<&str>,
-        _where_clause: &str,
-    ) -> Result<ExecuteResult, DbError> {
-        Err(DbError::ConnectionError(
-            "Connection is being reconnected".to_string(),
-        ))
     }
 }
 

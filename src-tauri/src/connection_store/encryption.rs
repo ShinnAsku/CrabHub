@@ -13,6 +13,15 @@ const PBKDF2_ITERATIONS: u32 = 100_000;
 
 static MASTER_KEY: OnceLock<Vec<u8>> = OnceLock::new();
 
+// Structured error codes for the encryption module. Callers see a prefixed
+// String so logs / UI can distinguish key-init failure from a tampered ciphertext.
+const E_KEY_NOT_INIT: &str = "[CRYPTO-E001] Master key not initialized";
+const E_BAD_BASE64: &str = "[CRYPTO-E002] Invalid base64";
+const E_TRUNCATED: &str = "[CRYPTO-E003] Ciphertext too short (missing nonce)";
+const E_AUTH_FAIL: &str = "[CRYPTO-E004] Authentication failure (data tampered or wrong key)";
+const E_INVALID_UTF8: &str = "[CRYPTO-E005] Decrypted plaintext is not valid UTF-8";
+const E_KEY_INIT: &str = "[CRYPTO-E006] Failed to set up master key";
+
 /// Initialize master key from system keyring
 pub fn init_master_key() -> Result<(), String> {
     if MASTER_KEY.get().is_some() {
@@ -40,7 +49,9 @@ pub fn init_master_key() -> Result<(), String> {
         }
     };
 
-    MASTER_KEY.set(master_key).map_err(|_| "Failed to initialize master key")?;
+    // Another thread may have raced us between the `is_some()` check above and
+    // here; that's fine, both derive the same key from the same keyring entry.
+    let _ = MASTER_KEY.set(master_key);
     Ok(())
 }
 
@@ -58,49 +69,58 @@ fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
 
 /// Encrypt sensitive data
 pub fn encrypt(data: &str) -> Result<String, String> {
-    let key = MASTER_KEY.get().ok_or("Master key not initialized")?;
+    let key = MASTER_KEY.get().ok_or(E_KEY_NOT_INIT)?;
     
-    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| format!("{}: {}", E_KEY_INIT, e))?;
     
     // Generate random nonce
     let mut nonce_bytes = [0u8; NONCE_SIZE];
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
     
-    // Encrypt
+    // Encrypt (AES-256-GCM appends a 16-byte authentication tag to the ciphertext)
     let ciphertext = cipher
         .encrypt(nonce, data.as_bytes())
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("[CRYPTO-E007] Encryption failed: {}", e))?;
     
-    // Combine salt + nonce + ciphertext
-    let mut result = Vec::new();
+    // Combine nonce + ciphertext||tag
+    let mut result = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
     result.extend_from_slice(&nonce_bytes);
     result.extend_from_slice(&ciphertext);
     
     Ok(base64_encode(&result))
 }
 
-/// Decrypt sensitive data
+/// Decrypt sensitive data.
+///
+/// Returns a categorised `[CRYPTO-Exxx]`-prefixed error so callers can
+/// distinguish setup failures (key not initialized, malformed input) from
+/// genuine integrity failures (E004 = the ciphertext was tampered with or the
+/// key changed). AES-256-GCM authenticates every byte; an E004 must be treated
+/// as a security event, not a corruption recoverable by retry.
 pub fn decrypt(encrypted_data: &str) -> Result<String, String> {
-    let key = MASTER_KEY.get().ok_or("Master key not initialized")?;
+    let key = MASTER_KEY.get().ok_or(E_KEY_NOT_INIT)?;
     
-    let data = base64_decode(encrypted_data)?;
+    let data = base64_decode(encrypted_data).map_err(|e| format!("{}: {}", E_BAD_BASE64, e))?;
     
     if data.len() < NONCE_SIZE {
-        return Err("Invalid encrypted data".to_string());
+        return Err(E_TRUNCATED.to_string());
     }
     
     let nonce_bytes = &data[..NONCE_SIZE];
     let ciphertext = &data[NONCE_SIZE..];
     
-    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| format!("{}: {}", E_KEY_INIT, e))?;
     let nonce = Nonce::from_slice(nonce_bytes);
     
+    // GCM verifies the 16-byte authentication tag during decrypt; any tampering
+    // (ciphertext, nonce, or tag) yields a generic aead error which we map to
+    // E_AUTH_FAIL so the caller cannot confuse it with a recoverable failure.
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| E_AUTH_FAIL.to_string())?;
     
-    String::from_utf8(plaintext).map_err(|e| e.to_string())
+    String::from_utf8(plaintext).map_err(|_| E_INVALID_UTF8.to_string())
 }
 
 /// Base64 encode
@@ -129,5 +149,47 @@ mod tests {
         
         assert_eq!(original, decrypted);
         assert_ne!(original, encrypted);
+    }
+
+    #[test]
+    fn test_tampered_ciphertext_is_rejected() {
+        init_master_key().unwrap();
+        let encrypted = encrypt("sensitive-payload").unwrap();
+
+        // Flip the last base64 character to corrupt the auth tag without
+        // breaking base64 framing.
+        let mut bytes = base64_decode(&encrypted).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0x01;
+        let tampered = base64_encode(&bytes);
+
+        let err = decrypt(&tampered).unwrap_err();
+        assert!(
+            err.starts_with("[CRYPTO-E004]"),
+            "expected E004 auth failure, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_truncated_ciphertext_is_rejected() {
+        init_master_key().unwrap();
+        let err = decrypt(&base64_encode(&[0u8; 4])).unwrap_err();
+        assert!(err.starts_with("[CRYPTO-E003]"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_bad_base64_is_rejected() {
+        init_master_key().unwrap();
+        let err = decrypt("not!!!base64@@@").unwrap_err();
+        assert!(err.starts_with("[CRYPTO-E002]"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_nonces_are_unique_per_encrypt() {
+        init_master_key().unwrap();
+        let a = encrypt("same input").unwrap();
+        let b = encrypt("same input").unwrap();
+        assert_ne!(a, b, "same plaintext must produce different ciphertexts (random nonce)");
     }
 }

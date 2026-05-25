@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, memo } from "react";
 import Editor, { type OnMount, loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -24,10 +24,10 @@ import {
 } from "lucide-react";
 import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
 import TabBar from "./TabBar";
-import type { QueryResult, PagedQueryResult } from "@/types";
+import type { QueryResult, PagedQueryResult, ColumnInfo, TableRow, Connection } from "@/types";
 import { t } from "@/lib/i18n";
 import { executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
-import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause } from "@/lib/export";
+import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause, buildWhereConditions } from "@/lib/export";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
 import TableDesigner from "./TableDesigner";
@@ -341,7 +341,7 @@ function QueryEditor() {
   const [resultTab, setResultTab] = useState<ResultTab>("results");
   const [messages, setMessages] = useState<string[]>([]);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
-  const [importPreview, setImportPreview] = useState<{ columns: string[]; rows: any[] } | null>(null);
+  const [importPreview, setImportPreview] = useState<{ columns: string[]; rows: TableRow[] } | null>(null);
   const [importTableName, setImportTableName] = useState("imported_data");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [multiResults, setMultiResults] = useState<QueryResult[]>([]);
@@ -362,7 +362,7 @@ function QueryEditor() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const result = activeTabId ? queryResults[activeTabId] : undefined;
-  const connectedConnections = connections.filter((c: any) => c.connected);
+  const connectedConnections = connections.filter((c: Connection) => c.connected);
   const effectiveConnectionId = selectedConnId || activeConnectionId;
   const activeConnection = connections.find((c) => c.id === effectiveConnectionId);
   const isTxActive = effectiveConnectionId ? !!transactionActive[effectiveConnectionId] : false;
@@ -915,7 +915,7 @@ function QueryEditor() {
     const selectedResult = multiResults[activeResultIdx];
     if (!selectedResult || selectedResult.columns.length === 0) return;
     setChartPanel({
-      columns: selectedResult.columns.map((c: any) => c.name),
+      columns: selectedResult.columns.map((c: ColumnInfo) => c.name),
       rows: selectedResult.rows,
     });
   }, [multiResults, activeResultIdx]);
@@ -1413,8 +1413,8 @@ function QueryEditor() {
                     for (const [rowIdx, updates] of rowGroups.entries()) {
                       const row = rows[rowIdx];
                       if (!row) continue;
-                      const whereClause = buildWhereClause(columns, row);
-                      await updateTableRows(effectiveConnectionId, activeTab.tableName, updates, whereClause, activeTab.schemaName);
+                      const whereConditions = buildWhereConditions(columns, row);
+                      await updateTableRows(effectiveConnectionId, activeTab.tableName, updates, whereConditions, activeTab.schemaName);
                     }
                     handleExecute();
                   }}
@@ -1425,8 +1425,8 @@ function QueryEditor() {
                     for (const idx of rowIndices) {
                       const row = result?.rows[idx];
                       if (!row) continue;
-                      const whereClause = buildWhereClause(result!.columns, row);
-                      await deleteTableRows(effectiveConnectionId, activeTab.tableName, whereClause, activeTab.schemaName);
+                      const whereConditions = buildWhereConditions(result!.columns, row);
+                      await deleteTableRows(effectiveConnectionId, activeTab.tableName, whereConditions, activeTab.schemaName);
                     }
                     handleExecute();
                   }}
@@ -1588,8 +1588,8 @@ function VirtualTableBody({
   sortConfig,
   onSort,
 }: {
-  rows: any[];
-  columns: any[];
+  rows: TableRow[];
+  columns: ColumnInfo[];
   virtualCount: number;
   hasMore: boolean;
   isLoadingMore: boolean;
@@ -1765,6 +1765,9 @@ function VirtualTableBody({
             }
             const row = rows[virtualRow.index];
             const rowIdx = virtualRow.index;
+            // virtualizer can briefly request indices past the data tail during
+            // load-more transitions; guard so noUncheckedIndexedAccess narrows.
+            if (!row) return null;
             const isSelected = selectedRows.has(rowIdx);
             return (
               <tr
@@ -1837,22 +1840,26 @@ function VirtualTableBody({
                                 });
                               }
                               setEditingCell(null);
-                              const colIdx = columns.findIndex((c: any) => c.name === col.name);
+                              const colIdx = columns.findIndex((c: ColumnInfo) => c.name === col.name);
                               if (e.shiftKey) {
                                 if (colIdx > 0) {
                                   const prevCol = columns[colIdx - 1];
-                                  setTimeout(() => {
-                                    setEditingCell({ rowIdx, colName: prevCol.name });
-                                    setEditValue(String(modifiedCells.get(`${rowIdx}:${prevCol.name}`) ?? row[prevCol.name] ?? ''));
-                                  }, 0);
+                                  if (prevCol) {
+                                    setTimeout(() => {
+                                      setEditingCell({ rowIdx, colName: prevCol.name });
+                                      setEditValue(String(modifiedCells.get(`${rowIdx}:${prevCol.name}`) ?? row[prevCol.name] ?? ''));
+                                    }, 0);
+                                  }
                                 }
                               } else {
                                 if (colIdx < columns.length - 1) {
                                   const nextCol = columns[colIdx + 1];
-                                  setTimeout(() => {
-                                    setEditingCell({ rowIdx, colName: nextCol.name });
-                                    setEditValue(String(modifiedCells.get(`${rowIdx}:${nextCol.name}`) ?? row[nextCol.name] ?? ''));
-                                  }, 0);
+                                  if (nextCol) {
+                                    setTimeout(() => {
+                                      setEditingCell({ rowIdx, colName: nextCol.name });
+                                      setEditValue(String(modifiedCells.get(`${rowIdx}:${nextCol.name}`) ?? row[nextCol.name] ?? ''));
+                                    }, 0);
+                                  }
                                 }
                               }
                             }
@@ -1921,9 +1928,10 @@ function VirtualTableBody({
             const selectedData = Array.from(selectedRows)
               .filter(i => i < rows.length)
               .sort((a, b) => a - b)
-              .map(i => rows[i]);
+              .map(i => rows[i])
+              .filter((r): r is TableRow => r !== undefined);
             const text = selectedData.map(row =>
-              columns.map((c: any) => String(row[c.name] ?? '')).join('\t')
+              columns.map((c: ColumnInfo) => String(row[c.name] ?? '')).join('\t')
             ).join('\n');
             navigator.clipboard.writeText(text);
           }}
@@ -1931,7 +1939,8 @@ function VirtualTableBody({
             const selectedData = Array.from(selectedRows)
               .filter(i => i < rows.length)
               .sort((a, b) => a - b)
-              .map(i => rows[i]);
+              .map(i => rows[i])
+              .filter((r): r is TableRow => r !== undefined);
             const md = rowsToMarkdown(columns, selectedData);
             await navigator.clipboard.writeText(md);
           }}
@@ -1939,7 +1948,8 @@ function VirtualTableBody({
             const selectedData = Array.from(selectedRows)
               .filter(i => i < rows.length)
               .sort((a, b) => a - b)
-              .map(i => rows[i]);
+              .map(i => rows[i])
+              .filter((r): r is TableRow => r !== undefined);
             const csv = exportToCSV(columns, selectedData);
             downloadFile(csv, 'selected_export.csv', 'text/csv');
           }}
@@ -1947,7 +1957,8 @@ function VirtualTableBody({
             const selectedData = Array.from(selectedRows)
               .filter(i => i < rows.length)
               .sort((a, b) => a - b)
-              .map(i => rows[i]);
+              .map(i => rows[i])
+              .filter((r): r is TableRow => r !== undefined);
             const json = exportToJSON(columns, selectedData);
             downloadFile(json, 'selected_export.json', 'application/json');
           }}
@@ -1955,7 +1966,8 @@ function VirtualTableBody({
             const selectedData = Array.from(selectedRows)
               .filter(i => i < rows.length)
               .sort((a, b) => a - b)
-              .map(i => rows[i]);
+              .map(i => rows[i])
+              .filter((r): r is TableRow => r !== undefined);
             const sql = exportToSQL(columns, selectedData, 'selected_data');
             downloadFile(sql, 'selected_export.sql', 'text/plain');
           }}
@@ -1963,9 +1975,12 @@ function VirtualTableBody({
             const idx = Array.from(selectedRows).sort((a, b) => a - b)[0];
             if (idx !== undefined && idx < rows.length && columns.length > 0) {
               const col = columns[0];
-              const val = rows[idx][col.name];
-              setEditValue(val === null ? '' : String(val));
-              setEditingCell({ rowIdx: idx, colName: col.name });
+              const targetRow = rows[idx];
+              if (col && targetRow) {
+                const val = targetRow[col.name];
+                setEditValue(val === null ? '' : String(val));
+                setEditingCell({ rowIdx: idx, colName: col.name });
+              }
             }
           }}
           onDeleteRows={() => {
@@ -1987,11 +2002,11 @@ function VirtualTableBody({
 
 interface ResultTableProps {
   result?: QueryResult;
-  importPreview?: { columns: string[]; rows: any[] } | null;
+  importPreview?: { columns: string[]; rows: TableRow[] } | null;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
-  onApplyChanges?: (modifiedCells: Map<string, any>, columns: any[], rows: any[]) => void;
+  onApplyChanges?: (modifiedCells: Map<string, unknown>, columns: ColumnInfo[], rows: TableRow[]) => void;
   onDeleteRows?: (rowIndices: number[]) => void;
   onGenerateDeleteSQL?: (rowIndices: number[]) => void;
   onGenerateChart?: () => void;
@@ -2175,7 +2190,10 @@ function WelcomeScreen() {
   );
 }
 
-export default EditorPanel;
+// EditorPanel takes no props; memo with default shallow-equal is safe and
+// prevents the heavy editor tree from re-rendering when MainLayout re-renders
+// for unrelated reasons (sidebar toggle, AI panel toggle, etc.).
+export default memo(EditorPanel);
 
 // ===== Editor Context Menu (Navicat-style) =====
 

@@ -78,11 +78,12 @@ impl PostgresConnection {
 
         log::info!("Connecting to PostgreSQL at {}:{}", host, port);
 
+        let pc = crate::db::pool_config::PoolConfig::with_overrides(&config.db_type, config.pool_options.as_ref());
         let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .idle_timeout(Duration::from_secs(600))
-            .max_lifetime(Duration::from_secs(1800))
-            .acquire_timeout(Duration::from_secs(10))
+            .max_connections(pc.max_connections)
+            .idle_timeout(Duration::from_secs(pc.idle_timeout_secs))
+            .max_lifetime(Duration::from_secs(pc.max_lifetime_secs))
+            .acquire_timeout(Duration::from_secs(pc.acquire_timeout_secs))
             .connect(&connection_string)
             .await
             .map_err(|e| {
@@ -485,8 +486,7 @@ impl DatabaseConnection for PostgresConnection {
         if let Some(row) = rows.rows.first() {
             if let Some(cnt) = row
                 .get("cnt")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
+                .and_then(|v| v.as_u64())
             {
                 return Ok(cnt);
             }
@@ -503,9 +503,12 @@ impl DatabaseConnection for PostgresConnection {
         order_by: Option<&str>,
     ) -> Result<QueryResult, DbError> {
         let full_table_ref = pg_utils::full_table(table, schema);
-        let order_clause = order_by
-            .map(|o| format!(" ORDER BY {}", o))
-            .unwrap_or_default();
+        let order_clause = if let Some(o) = order_by {
+            crate::db::trait_def::sanitize_order_by(o)?;
+            format!(" ORDER BY {}", o)
+        } else {
+            String::new()
+        };
         let offset = (page - 1) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
@@ -523,22 +526,23 @@ impl DatabaseConnection for PostgresConnection {
         table: &str,
         schema: Option<&str>,
         updates: &[(String, serde_json::Value)],
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        use crate::db::trait_def::{escape_identifier, sanitize_where_clause};
+        use crate::db::trait_def::{build_where_sql, escape_identifier};
         use crate::db::types::DatabaseType;
-        sanitize_where_clause(where_clause)
-            .map_err(|e| DbError::QueryError(e))?;
         let full_table_ref = pg_utils::full_table_quoted(table, schema);
         let set_clauses: Vec<String> = updates
             .iter()
             .map(|(col, val)| format!("{} = {}", escape_identifier(col, &DatabaseType::PostgreSQL), json_value_to_sql(val)))
             .collect();
+        let where_sql = build_where_sql(where_conditions, &|c| {
+            escape_identifier(c, &DatabaseType::PostgreSQL)
+        })?;
         let sql = format!(
             "UPDATE {} SET {} WHERE {}",
             full_table_ref,
             set_clauses.join(", "),
-            where_clause
+            where_sql
         );
         self.execute_sql(&sql).await
     }
@@ -569,13 +573,15 @@ impl DatabaseConnection for PostgresConnection {
         &self,
         table: &str,
         schema: Option<&str>,
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        use crate::db::trait_def::sanitize_where_clause;
-        sanitize_where_clause(where_clause)
-            .map_err(|e| DbError::QueryError(e))?;
+        use crate::db::trait_def::{build_where_sql, escape_identifier};
+        use crate::db::types::DatabaseType;
         let full_table_ref = pg_utils::full_table_quoted(table, schema);
-        let sql = format!("DELETE FROM {} WHERE {}", full_table_ref, where_clause);
+        let where_sql = build_where_sql(where_conditions, &|c| {
+            escape_identifier(c, &DatabaseType::PostgreSQL)
+        })?;
+        let sql = format!("DELETE FROM {} WHERE {}", full_table_ref, where_sql);
         self.execute_sql(&sql).await
     }
 

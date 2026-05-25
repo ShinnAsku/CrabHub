@@ -2,7 +2,11 @@ use std::collections::HashMap;
 use super::types::DatabaseType;
 
 /// 标识符引用风格
+//
+// `Bracket` is reserved for future SQL Server / GBase support; not currently
+// constructed but kept on the enum for forward compatibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum QuoteStyle {
     Double,   // "identifier" (PG, GaussDB, Kingbase, Oracle)
     Backtick, // `identifier` (MySQL, ClickHouse, TiDB)
@@ -10,7 +14,12 @@ pub enum QuoteStyle {
 }
 
 /// 分页语法
+//
+// `FetchNext` is set by the Oracle template (reserved for future driver); `TopN`
+// is reserved for SQL Server. Both stay on the enum even though no driver
+// currently dispatches on them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum LimitSyntax {
     LimitOffset,  // LIMIT N OFFSET M (PG, MySQL, SQLite)
     FetchNext,    // FETCH NEXT N ROWS ONLY (Oracle 12c+, DB2)
@@ -121,6 +130,9 @@ impl DialectConfig {
     }
 
     /// MySQL 标准方言
+    /// Standard MySQL profile (reserved for future MySQL-fork drivers; not
+    /// currently dispatched to).
+    #[allow(dead_code)]
     pub fn mysql_standard() -> Self {
         Self {
             db_type: DatabaseType::MySQL,
@@ -176,6 +188,8 @@ impl DialectConfig {
     }
 
     /// Kingbase 方言 — 基于 PG，覆盖差异
+    /// Reserved for future Kingbase driver support.
+    #[allow(dead_code)]
     pub fn kingbase() -> Self {
         let mut d = Self::pg_standard();
         d.db_type = DatabaseType::Kingbase;
@@ -186,6 +200,8 @@ impl DialectConfig {
     }
 
     /// Oracle 方言（ODBC 模式）
+    /// Reserved for future Oracle driver support.
+    #[allow(dead_code)]
     pub fn oracle() -> Self {
         Self {
             db_type: DatabaseType::Oracle,

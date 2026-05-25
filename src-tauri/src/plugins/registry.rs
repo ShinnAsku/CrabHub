@@ -26,6 +26,13 @@ pub struct PluginRelease {
     #[serde(alias = "min_tabularis_version")]
     pub min_crabhub_version: String,
     pub assets: HashMap<String, String>,
+    /// Optional per-platform SHA-256 checksums (hex) of the downloaded zip.
+    /// Keys match `assets` (e.g. "linux-x64", "universal"). When present, the
+    /// installer verifies the downloaded bytes against the hash before extracting.
+    /// Registries without this field log a security warning but install proceeds
+    /// for backward compatibility with first-party signed channels.
+    #[serde(default)]
+    pub sha256: HashMap<String, String>,
 }
 
 // Enhanced plugin info with status for frontend
@@ -57,7 +64,7 @@ impl PluginRegistry {
         let mut merged_plugins: Vec<PluginInfo> = Vec::new();
         let mut seen_ids = std::collections::HashSet::new();
 
-        match Self::load_local() {
+        match Self::load_local().await {
             Ok(local) => {
                 log::info!("Loaded {} plugins from local registry.json", local.plugins.len());
                 for p in local.plugins {
@@ -69,9 +76,10 @@ impl PluginRegistry {
         }
 
         // 1. Try cached registry
-        if let Ok(cached) = Self::load_cached() {
+        if let Ok(cached) = Self::load_cached().await {
             let cache_path = Self::cache_path();
-            let cache_fresh = std::fs::metadata(&cache_path)
+            let cache_fresh = tokio::fs::metadata(&cache_path)
+                .await
                 .and_then(|m| m.modified())
                 .map(|t| t.elapsed().map(|e| e.as_secs() < 86400).unwrap_or(false))
                 .unwrap_or(false);
@@ -116,7 +124,7 @@ impl PluginRegistry {
         }
 
         let registry = Self { schema_version: 1, plugins: merged_plugins };
-        let _ = registry.save_cached();
+        let _ = registry.save_cached().await;
         log::info!("Registry ready: {} plugins", registry.plugins.len());
         Ok(registry)
     }
@@ -142,49 +150,64 @@ impl PluginRegistry {
             .join("plugin_registry.json")
     }
 
-    fn load_local() -> Result<Self, String> {
-        // Try the bundled registry.json next to the executable
+    async fn load_local() -> Result<Self, String> {
+        // Try the bundled registry.json next to the executable.
+        // Use tokio::fs so we never block the runtime; cap each read at 5s in
+        // case the registry lives on a slow / unavailable mount.
+        let read_with_timeout = |path: std::path::PathBuf| async move {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::fs::read_to_string(path),
+            )
+            .await
+            .map_err(|_| "Read timed out (>5s)".to_string())?
+            .map_err(|e| format!("Read error: {}", e))
+        };
+
         if let Ok(exe) = std::env::current_exe() {
             let local = exe.parent().unwrap_or(std::path::Path::new("."))
                 .join("..").join("..").join("..").join("plugins").join("registry.json");
-            if local.exists() {
-                let content = std::fs::read_to_string(&local)
-                    .map_err(|e| format!("Read error: {}", e))?;
+            if tokio::fs::metadata(&local).await.is_ok() {
+                let content = read_with_timeout(local).await?;
                 return serde_json::from_str(&content)
                     .map_err(|e| format!("Parse error: {}", e));
             }
         }
         // Fallback: look relative to CWD (dev mode)
         let cwd_path = std::path::Path::new("plugins").join("registry.json");
-        if cwd_path.exists() {
-            let content = std::fs::read_to_string(&cwd_path)
-                .map_err(|e| format!("Read error: {}", e))?;
+        if tokio::fs::metadata(&cwd_path).await.is_ok() {
+            let content = read_with_timeout(cwd_path).await?;
             return serde_json::from_str(&content)
                 .map_err(|e| format!("Parse error: {}", e));
         }
         Err("Local registry not found".to_string())
     }
 
-    fn load_cached() -> Result<Self, String> {
+    async fn load_cached() -> Result<Self, String> {
         let cache_path = Self::cache_path();
-        if !cache_path.exists() {
+        if tokio::fs::metadata(&cache_path).await.is_err() {
             return Err("Cache not found".to_string());
         }
-        let cache_content = std::fs::read_to_string(&cache_path)
-            .map_err(|e| format!("Failed to read cache: {}", e))?;
+        let cache_content = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::fs::read_to_string(&cache_path),
+        )
+        .await
+        .map_err(|_| "Cache read timed out (>5s)".to_string())?
+        .map_err(|e| format!("Failed to read cache: {}", e))?;
         serde_json::from_str(&cache_content)
             .map_err(|e| format!("Failed to parse cached registry: {}", e))
     }
 
-    fn save_cached(&self) -> Result<(), String> {
+    async fn save_cached(&self) -> Result<(), String> {
         let cache_path = Self::cache_path();
         if let Some(parent) = cache_path.parent() {
-            std::fs::create_dir_all(parent)
+            tokio::fs::create_dir_all(parent).await
                 .map_err(|e| format!("Failed to create cache directory: {}", e))?;
         }
         let cache_content = serde_json::to_string(self)
             .map_err(|e| format!("Failed to serialize registry: {}", e))?;
-        std::fs::write(&cache_path, cache_content)
+        tokio::fs::write(&cache_path, cache_content).await
             .map_err(|e| format!("Failed to write cache: {}", e))?;
         Ok(())
     }

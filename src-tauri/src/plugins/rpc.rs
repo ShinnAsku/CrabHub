@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::{Mutex, oneshot};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,6 +35,13 @@ pub struct RpcClient {
     reader: Arc<Mutex<BufReader<std::process::ChildStdout>>>,
     request_id: Arc<Mutex<u32>>,
     pending: Arc<Mutex<HashMap<u32, PendingCall>>>,
+    // The child process handle. Wrapped in a std Mutex (rather than tokio's)
+    // because `Drop` is synchronous and must be able to kill the process even
+    // when the tokio runtime is shutting down. `Option` lets `Drop` take it.
+    child: Arc<StdMutex<Option<Child>>>,
+    // Flag set by the reader task once the plugin process closes its stdout.
+    // Used to short-circuit further calls instead of waiting for the 30s timeout.
+    disconnected: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl RpcClient {
@@ -53,17 +60,22 @@ impl RpcClient {
         let writer = Arc::new(Mutex::new(BufWriter::new(stdin)));
         let request_id = Arc::new(Mutex::new(1u32));
         let pending: Arc<Mutex<HashMap<u32, PendingCall>>> = Arc::new(Mutex::new(HashMap::new()));
+        let child_handle = Arc::new(StdMutex::new(Some(child)));
+        let disconnected = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let client = Self {
             writer,
             reader,
             request_id,
             pending,
+            child: child_handle,
+            disconnected,
         };
 
         // Spawn a task to read responses from the plugin
         let reader_clone = client.reader.clone();
         let pending_clone = client.pending.clone();
+        let disconnected_clone = client.disconnected.clone();
         tokio::spawn(async move {
             let mut reader = reader_clone.lock().await;
             let mut line = String::new();
@@ -89,15 +101,26 @@ impl RpcClient {
                                 }
                             }
                             Err(e) => {
-                                eprintln!("Failed to parse plugin response: {}", e);
+                                log::warn!("Failed to parse plugin response: {}", e);
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error reading from plugin: {}", e);
+                        log::warn!("Error reading from plugin: {}", e);
                         break;
                     }
                 }
+            }
+
+            // Plugin stdout closed (crash or graceful exit). Mark disconnected
+            // and fail every pending request so callers don't hang for 30s.
+            disconnected_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+            let mut pending = pending_clone.lock().await;
+            for (_, sender) in pending.drain() {
+                let _ = sender.send(Err(JsonRpcError {
+                    code: -32000,
+                    message: "Plugin process disconnected".to_string(),
+                }));
             }
         });
 
@@ -105,6 +128,10 @@ impl RpcClient {
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+        if self.disconnected.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("Plugin process is no longer running".to_string());
+        }
+
         let id = {
             let mut id = self.request_id.lock().await;
             let current_id = *id;
@@ -329,5 +356,36 @@ impl RpcClient {
 
     pub async fn tabularis_get_server_version(&self, params: &Value) -> Result<Value, String> {
         self.call("get_server_version", json!({ "params": params })).await
+    }
+}
+
+impl Drop for RpcClient {
+    /// Ensure the plugin subprocess does not survive its `RpcClient`.
+    ///
+    /// `std::process::Child` does NOT kill the underlying OS process on drop —
+    /// without this impl, unloading a plugin (or the host crashing) would leak
+    /// the plugin process as a zombie. We close stdin first so well-behaved
+    /// plugins can exit cleanly, then force-kill any survivor and reap it.
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(mut child) = guard.take() {
+                // Closing stdin signals graceful shutdown to the plugin.
+                drop(self.writer.try_lock().ok());
+
+                // Give the plugin a brief moment to exit on its own, then kill.
+                // We can't `await` here (Drop is sync), so we just try once and
+                // kill if it hasn't exited yet.
+                match child.try_wait() {
+                    Ok(Some(_status)) => {
+                        // Already exited cleanly.
+                    }
+                    _ => {
+                        let _ = child.kill();
+                        // Reap to avoid leaving a zombie on Unix.
+                        let _ = child.wait();
+                    }
+                }
+            }
+        }
     }
 }

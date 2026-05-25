@@ -12,3 +12,6 @@ pub mod manager;
 pub mod commands;
 pub mod pg_compatible;
 pub mod sql_limiter;
+
+#[cfg(test)]
+mod smoke_tests;

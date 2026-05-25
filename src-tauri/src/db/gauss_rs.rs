@@ -1,4 +1,4 @@
-//! GaussDB connection via tokio-gaussdb (Huawei official Rust driver)
+﻿//! GaussDB connection via tokio-gaussdb (Huawei official Rust driver)
 //! Uses Extended Query (binary protocol). Client is &self-based internally,
 //! so concurrent queries execute in parallel without a Mutex bottleneck.
 
@@ -26,6 +26,18 @@ impl GaussAsyncConnection {
 
         log::info!("tokio-gaussdb connecting: host={}, port={}, user={}, db={}, pass_len={}",
             host, port, user, db, pass.len());
+
+        // tokio-gaussdb exposes a single Client per connection (no built-in pool).
+        // Loudly inform users that the pool_options they configured are ignored
+        // for GaussDB so they don't silently expect tuning that isn't wired.
+        if config.pool_options.is_some() {
+            log::warn!(
+                "[gauss_rs] pool_options provided for connection '{}' but the tokio-gaussdb driver \
+                 does not support connection pooling; settings will be ignored. \
+                 Consider using the PostgreSQL driver via pg_compatible if pooling is required.",
+                config.name
+            );
+        }
 
         let mut gconfig = GConfig::new();
         gconfig
@@ -93,7 +105,9 @@ impl DatabaseConnection for GaussAsyncConnection {
 
     async fn get_columns(&self, table: &str, schema: Option<&str>) -> Result<Vec<ColumnInfo>, DbError> {
         let s = schema.unwrap_or("public");
-        self.query_sql(&format!("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='{}' AND table_name='{}' ORDER BY ordinal_position", s, table)).await.map(|r| {
+        let s_escaped = s.replace('\'', "''");
+        let t_escaped = table.replace('\'', "''");
+        self.query_sql(&format!("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='{}' AND table_name='{}' ORDER BY ordinal_position", s_escaped, t_escaped)).await.map(|r| {
             r.rows.iter().map(|row| ColumnInfo {
                 name: row.get("column_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
                 data_type: row.get("data_type").and_then(|v| v.as_str().map(String::from)).unwrap_or("text".into()),
@@ -116,7 +130,7 @@ impl DatabaseConnection for GaussAsyncConnection {
     }
 
     async fn get_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
-        let f = schema.map(|s| format!("AND table_schema='{}'", s)).unwrap_or_default();
+        let f = schema.map(|s| format!("AND table_schema='{}'", s.replace('\'', "''"))).unwrap_or_default();
         self.query_sql(&format!("SELECT table_schema, table_name FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog','information_schema') {} ORDER BY table_schema, table_name", f)).await.map(|r| {
             r.rows.iter().map(|row| TableInfo {
                 name: row.get("table_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
@@ -131,14 +145,18 @@ impl DatabaseConnection for GaussAsyncConnection {
 
     async fn get_indexes(&self, table: &str, schema: Option<&str>) -> Result<Vec<JsonValue>, DbError> {
         let s = schema.unwrap_or("public");
-        self.query_sql(&format!("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='{}' AND tablename='{}'", s, table)).await.map(|r| {
+        let s_escaped = s.replace('\'', "''");
+        let t_escaped = table.replace('\'', "''");
+        self.query_sql(&format!("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='{}' AND tablename='{}'", s_escaped, t_escaped)).await.map(|r| {
             r.rows.iter().map(|row| serde_json::json!({"index_name": row.get("indexname"), "index_def": row.get("indexdef")})).collect()
         })
     }
 
     async fn get_foreign_keys(&self, table: &str, schema: Option<&str>) -> Result<Vec<JsonValue>, DbError> {
         let s = schema.unwrap_or("public");
-        self.query_sql(&format!("SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS ft_schema, ccu.table_name AS ft_table, ccu.column_name AS ft_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='{}' AND tc.table_name='{}'", s, table)).await.map(|r| {
+        let s_escaped = s.replace('\'', "''");
+        let t_escaped = table.replace('\'', "''");
+        self.query_sql(&format!("SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS ft_schema, ccu.table_name AS ft_table, ccu.column_name AS ft_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='{}' AND tc.table_name='{}'", s_escaped, t_escaped)).await.map(|r| {
             r.rows.iter().map(|row| serde_json::json!({"constraint_name": row.get("constraint_name"), "column_name": row.get("column_name"), "foreign_schema": row.get("ft_schema"), "foreign_table": row.get("ft_table"), "foreign_column": row.get("ft_column")})).collect()
         })
     }
@@ -154,13 +172,18 @@ impl DatabaseConnection for GaussAsyncConnection {
         let s = schema.unwrap_or("public");
         let offset = (page.saturating_sub(1) as u64) * (page_size as u64);
         let order = order_by.unwrap_or("1");
+        crate::db::trait_def::sanitize_order_by(order)?;
         self.query_sql(&format!("SELECT * FROM \"{}\".\"{}\" ORDER BY {} LIMIT {} OFFSET {}", s, table, order, page_size, offset)).await
     }
 
-    async fn update_table_rows(&self, table: &str, schema: Option<&str>, updates: &[(String, JsonValue)], where_clause: &str) -> Result<ExecuteResult, DbError> {
+    async fn update_table_rows(&self, table: &str, schema: Option<&str>, updates: &[(String, JsonValue)], where_conditions: &[crate::db::types::WhereCondition]) -> Result<ExecuteResult, DbError> {
         let s = schema.unwrap_or("public");
         let set: Vec<String> = updates.iter().map(|(col, val)| format!("\"{}\"={}", col, to_sql(val))).collect();
-        self.execute_sql(&format!("UPDATE \"{}\".\"{}\" SET {} WHERE {}", s, table, set.join(","), where_clause)).await
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| format!("\"{}\"", c.replace('"', "\"\"")),
+        )?;
+        self.execute_sql(&format!("UPDATE \"{}\".\"{}\" SET {} WHERE {}", s, table, set.join(","), where_sql)).await
     }
 
     async fn insert_table_row(&self, table: &str, schema: Option<&str>, values: &[(String, JsonValue)]) -> Result<ExecuteResult, DbError> {
@@ -170,9 +193,13 @@ impl DatabaseConnection for GaussAsyncConnection {
         self.execute_sql(&format!("INSERT INTO \"{}\".\"{}\" ({}) VALUES ({})", s, table, cols.join(","), vals.join(","))).await
     }
 
-    async fn delete_table_rows(&self, table: &str, schema: Option<&str>, where_clause: &str) -> Result<ExecuteResult, DbError> {
+    async fn delete_table_rows(&self, table: &str, schema: Option<&str>, where_conditions: &[crate::db::types::WhereCondition]) -> Result<ExecuteResult, DbError> {
         let s = schema.unwrap_or("public");
-        self.execute_sql(&format!("DELETE FROM \"{}\".\"{}\" WHERE {}", s, table, where_clause)).await
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| format!("\"{}\"", c.replace('"', "\"\"")),
+        )?;
+        self.execute_sql(&format!("DELETE FROM \"{}\".\"{}\" WHERE {}", s, table, where_sql)).await
     }
 
     async fn query_sql_paged(&self, sql: &str, limit: u64, _offset: u64) -> Result<(QueryResult, bool), DbError> {
@@ -186,10 +213,30 @@ impl DatabaseConnection for GaussAsyncConnection {
     async fn export_table_sql(&self, _table: &str, _schema: Option<&str>) -> Result<String, DbError> { Ok(String::new()) }
 }
 
-/// Convert tokio-gaussdb simple_query results to CrabHub QueryResult
+/// Convert tokio-gaussdb simple_query results to CrabHub QueryResult.
+///
+/// Defensively prefer the explicit `RowDescription` message for column metadata
+/// when present -- it carries the canonical column names from the server. We
+/// fall back to inferring columns from the first `Row` only when no description
+/// was sent (older GaussDB releases may omit it for trivial result sets).
 fn simple_query_to_result(messages: Vec<SimpleQueryMessage>) -> Result<QueryResult, DbError> {
     let mut columns: Vec<ColumnInfo> = Vec::new();
     let mut rows: Vec<serde_json::Map<String, JsonValue>> = Vec::new();
+
+    // Pre-scan for RowDescription so we seed columns from the server's
+    // canonical metadata, regardless of the message order.
+    for msg in &messages {
+        if let SimpleQueryMessage::RowDescription(cols) = msg {
+            columns = cols.iter().map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: "text".into(),
+                nullable: true, is_primary_key: false,
+                default_value: None, comment: None,
+                character_maximum_length: None, numeric_precision: None, numeric_scale: None,
+            }).collect();
+            break;
+        }
+    }
 
     for msg in messages {
         match msg {

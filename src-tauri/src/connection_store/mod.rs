@@ -19,16 +19,32 @@ pub struct ConnectionStore {
 impl ConnectionStore {
     /// Create a new connection store
     pub fn new(db_path: &str) -> Result<Self, String> {
-        println!("[ConnectionStore] 初始化, 数据库路径: {}", db_path);
+        log::info!("[ConnectionStore] init, db_path={}", db_path);
         let conn = SqliteConnection::open(db_path).map_err(|e: rusqlite::Error| e.to_string())?;
-        
+
+        // WAL mode lets readers proceed in parallel with a single writer, and
+        // busy_timeout makes SQLite wait (instead of returning SQLITE_BUSY)
+        // when our BEGIN IMMEDIATE transactions in create/update contend with
+        // a concurrent writer. synchronous=NORMAL is the recommended pairing
+        // with WAL — durable across app crashes, faster than FULL, and only
+        // loses the last commit on OS/power failure (acceptable for a local
+        // metadata store).
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(|e: rusqlite::Error| format!("Failed to enable WAL: {}", e))?;
+        conn.pragma_update(None, "busy_timeout", 5000)
+            .map_err(|e: rusqlite::Error| format!("Failed to set busy_timeout: {}", e))?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(|e: rusqlite::Error| format!("Failed to set synchronous: {}", e))?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(|e: rusqlite::Error| format!("Failed to enable foreign_keys: {}", e))?;
+
         // Initialize tables
         Self::init_schema(&conn)?;
-        println!("[ConnectionStore] 数据库表结构初始化完成");
+        log::debug!("[ConnectionStore] schema initialized");
         
         // Initialize master key for encryption
         init_master_key()?;
-        println!("[ConnectionStore] 加密主密钥初始化完成");
+        log::debug!("[ConnectionStore] master key initialized");
         
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -105,17 +121,23 @@ impl ConnectionStore {
 
     // ===== Connection CRUD Operations =====
 
-    /// Create a new connection
+    /// Create a new connection.
+    ///
+    /// Wrapped in a `BEGIN IMMEDIATE` transaction so the UNIQUE(name) check
+    /// and the INSERT are atomic across concurrent callers; without this two
+    /// racing creates with the same name would both pass validation before
+    /// either commit.
     pub fn create_connection(&self, conn: &Connection) -> Result<(), String> {
-        println!("[ConnectionStore::create] id={}, name={}, db_type={:?}, host={:?}:{:?}", conn.id, conn.name, conn.db_type, conn.host, conn.port);
-        let db = self.db.lock().map_err(|e| e.to_string())?;
+        log::debug!("[ConnectionStore::create] id={}", conn.id);
+        let mut db = self.db.lock().map_err(|e| e.to_string())?;
         
         let now = Utc::now().to_rfc3339();
         
-        // Encrypt password if present
+        // Encrypt password if present. Errors are wrapped with the connection
+        // name so support can correlate [CRYPTO-Exxx] codes to the failing row.
         let password_encrypted = if let Some(ref password) = get_password_for_encryption(conn) {
-            println!("[ConnectionStore::create] 正在加密密码...");
-            Some(encrypt(password)?)
+            Some(encrypt(password)
+                .map_err(|e| format!("{} (connection '{}')", e, conn.name))?)
         } else {
             None
         };
@@ -124,13 +146,16 @@ impl ConnectionStore {
         let ssh_password_encrypted = if conn.ssh_tunnel_enabled {
             conn.ssh_password_encrypted
                 .as_ref()
-                .map(|pwd| encrypt(pwd))
+                .map(|pwd| encrypt(pwd)
+                    .map_err(|e| format!("{} (ssh for '{}')", e, conn.name)))
                 .transpose()?
         } else {
             None
         };
 
-        db.execute(
+        let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+        tx.execute(
             "INSERT INTO connections (
                 id, name, db_type, host, port, username, password_encrypted,
                 database, enable_ssl, ssl_ca_cert, ssl_client_cert, ssl_client_key,
@@ -166,14 +191,15 @@ impl ConnectionStore {
             ],
         )
         .map_err(|e: rusqlite::Error| e.to_string())?;
+        tx.commit().map_err(|e: rusqlite::Error| e.to_string())?;
 
-        println!("[ConnectionStore::create] 成功写入 SQLite, id={}", conn.id);
+        log::debug!("[ConnectionStore::create] wrote id={}", conn.id);
         Ok(())
     }
 
     /// Get all connections
     pub fn get_all_connections(&self) -> Result<Vec<Connection>, String> {
-        println!("[ConnectionStore::get_all] 查询所有连接...");
+        log::debug!("[ConnectionStore::get_all]");
         let db = self.db.lock().map_err(|e| e.to_string())?;
         
         let mut stmt = db
@@ -239,13 +265,13 @@ impl ConnectionStore {
             result.push(conn.map_err(|e| e.to_string())?);
         }
 
-        println!("[ConnectionStore::get_all] 查询到 {} 个连接", result.len());
+        log::debug!("[ConnectionStore::get_all] {} entries", result.len());
         Ok(result)
     }
 
     /// Get connection by ID
     pub fn get_connection(&self, id: &str) -> Result<Option<Connection>, String> {
-        println!("[ConnectionStore::get_by_id] 查询连接 id={}", id);
+        log::debug!("[ConnectionStore::get_by_id] id={}", id);
         let db = self.db.lock().map_err(|e| e.to_string())?;
         
         let mut stmt = db
@@ -306,16 +332,20 @@ impl ConnectionStore {
         Ok(conn)
     }
 
-    /// Update connection
+    /// Update connection.
+    ///
+    /// Atomic via `BEGIN IMMEDIATE` so the unique-name check inside SQLite
+    /// and the row update can't race with another update/create.
     pub fn update_connection(&self, conn: &Connection) -> Result<(), String> {
-        println!("[ConnectionStore::update] id={}, name={}, db_type={:?}", conn.id, conn.name, conn.db_type);
-        let db = self.db.lock().map_err(|e| e.to_string())?;
+        log::debug!("[ConnectionStore::update] id={}", conn.id);
+        let mut db = self.db.lock().map_err(|e| e.to_string())?;
         
         let now = Utc::now().to_rfc3339();
 
-        // Encrypt password if changed
+        // Encrypt password if changed. Add connection context for support diagnosis.
         let password_encrypted = if let Some(ref password) = get_password_for_encryption(conn) {
-            Some(encrypt(password)?)
+            Some(encrypt(password)
+                .map_err(|e| format!("{} (connection '{}')", e, conn.name))?)
         } else {
             None
         };
@@ -324,13 +354,16 @@ impl ConnectionStore {
         let ssh_password_encrypted = if conn.ssh_tunnel_enabled {
             conn.ssh_password_encrypted
                 .as_ref()
-                .map(|pwd| encrypt(pwd))
+                .map(|pwd| encrypt(pwd)
+                    .map_err(|e| format!("{} (ssh for '{}')", e, conn.name)))
                 .transpose()?
         } else {
             None
         };
 
-        db.execute(
+        let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+        tx.execute(
             "UPDATE connections SET
                 name = ?, db_type = ?, host = ?, port = ?, username = ?,
                 password_encrypted = ?, database = ?, enable_ssl = ?,
@@ -367,20 +400,21 @@ impl ConnectionStore {
             ],
         )
         .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e: rusqlite::Error| e.to_string())?;
 
-        println!("[ConnectionStore::update] 成功更新 SQLite, id={}", conn.id);
+        log::debug!("[ConnectionStore::update] updated id={}", conn.id);
         Ok(())
     }
 
     /// Delete connection
     pub fn delete_connection(&self, id: &str) -> Result<(), String> {
-        println!("[ConnectionStore::delete] 删除连接 id={}", id);
+        log::debug!("[ConnectionStore::delete] id={}", id);
         let db = self.db.lock().map_err(|e| e.to_string())?;
         
         db.execute("DELETE FROM connections WHERE id = ?", params![id])
             .map_err(|e| e.to_string())?;
 
-        println!("[ConnectionStore::delete] 成功从 SQLite 删除, id={}", id);
+        log::debug!("[ConnectionStore::delete] deleted id={}", id);
         Ok(())
     }
 

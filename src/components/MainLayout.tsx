@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Plug } from "lucide-react";
 import { useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
@@ -275,9 +275,14 @@ function MainLayout() {
     };
   }, [addTab, closeTab, activeTabId, tabs.length, toggleSidebar, toggleAIPanel]);
 
-  const activeConnection = activeConnectionId
-    ? connections.find((c) => c.id === activeConnectionId) || null
-    : null;
+  // Memoize the lookup so the Connection object reference is stable across
+  // renders when the underlying connection didn't change. Without this, every
+  // MainLayout re-render produced a new object that defeated React.memo on
+  // CrabHubMainPanel.
+  const activeConnection = useMemo(
+    () => (activeConnectionId ? connections.find((c) => c.id === activeConnectionId) || null : null),
+    [activeConnectionId, connections]
+  );
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">

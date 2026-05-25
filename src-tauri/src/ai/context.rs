@@ -28,6 +28,9 @@ impl ContextBuilder {
 5. 用中文思考和回答，SQL保持英文
 6. 每次回答以具体可操作的建议结束
 "#,
+            db_type = db_type,
+            table_count = table_count,
+            schema_text = schema_text,
         )
     }
 }

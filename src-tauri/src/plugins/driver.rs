@@ -270,12 +270,16 @@ impl DatabaseConnection for PluginDriver {
         })
     }
 
-    async fn update_table_rows(&self, table: &str, schema: Option<&str>, updates: &[(String, Value)], where_clause: &str) -> Result<ExecuteResult, DbError> {
+    async fn update_table_rows(&self, table: &str, _schema: Option<&str>, updates: &[(String, Value)], where_conditions: &[crate::db::types::WhereCondition]) -> Result<ExecuteResult, DbError> {
         // For Tabularis, we use raw SQL since update_record requires pk
         let set_clause = updates.iter()
-            .map(|(col, val)| format!("{} = {}", col, crate::db::trait_def::json_value_to_sql(val)))
+            .map(|(col, val)| format!("\"{}\" = {}", col.replace('"', "\"\""), crate::db::trait_def::json_value_to_sql(val)))
             .collect::<Vec<_>>().join(", ");
-        let sql = format!("UPDATE \"{}\" SET {} WHERE {}", table, set_clause, where_clause);
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| format!("\"{}\"", c.replace('"', "\"\"")),
+        )?;
+        let sql = format!("UPDATE \"{}\" SET {} WHERE {}", table, set_clause, where_sql);
         self.execute_sql(&sql).await
     }
 
@@ -297,8 +301,12 @@ impl DatabaseConnection for PluginDriver {
         self.execute_sql(&sql).await
     }
 
-    async fn delete_table_rows(&self, table: &str, _schema: Option<&str>, where_clause: &str) -> Result<ExecuteResult, DbError> {
-        let sql = format!("DELETE FROM \"{}\" WHERE {}", table, where_clause);
+    async fn delete_table_rows(&self, table: &str, _schema: Option<&str>, where_conditions: &[crate::db::types::WhereCondition]) -> Result<ExecuteResult, DbError> {
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| format!("\"{}\"", c.replace('"', "\"\"")),
+        )?;
+        let sql = format!("DELETE FROM \"{}\" WHERE {}", table, where_sql);
         self.execute_sql(&sql).await
     }
 }

@@ -142,6 +142,12 @@ export async function importFromJSON(file: File): Promise<{ columns: string[]; r
 /**
  * Build a WHERE clause for UPDATE/DELETE operations.
  * Uses primary key columns if available, otherwise falls back to all columns.
+ *
+ * SECURITY: This SQL-string variant is intended for displaying / generating
+ * editable SQL (e.g. the "Generate DELETE SQL" feature that pastes into the
+ * editor). For actual execution use `buildWhereConditions` and pass the result
+ * to `updateTableRows` / `deleteTableRows` — the structured form is parameterized
+ * at the IPC boundary and cannot be SQL-injected.
  */
 export function buildWhereClause(
   columns: { name: string; isPrimaryKey?: boolean }[],
@@ -165,6 +171,22 @@ export function buildWhereClause(
   });
 
   return conditions.join(" AND ");
+}
+
+/**
+ * Build structured WHERE conditions for safe row-level UPDATE/DELETE.
+ * Prefer this over `buildWhereClause` for anything that actually executes.
+ */
+export function buildWhereConditions(
+  columns: { name: string; isPrimaryKey?: boolean }[],
+  row: Record<string, any>
+): { column: string; value: unknown }[] {
+  const pkCols = columns.filter((c) => c.isPrimaryKey);
+  const targetCols = pkCols.length > 0 ? pkCols : columns;
+  return targetCols.map((col) => ({
+    column: col.name,
+    value: row[col.name] ?? null,
+  }));
 }
 
 /**

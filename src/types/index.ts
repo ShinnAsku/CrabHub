@@ -24,6 +24,16 @@ export interface ConnectionConfig {
   };
   keepaliveInterval?: number;
   autoReconnect?: boolean;
+  /**
+   * Optional connection-pool overrides. Any field left undefined uses the
+   * per-database default chosen by the backend.
+   */
+  poolOptions?: {
+    maxConnections?: number;
+    idleTimeoutSecs?: number;
+    maxLifetimeSecs?: number;
+    acquireTimeoutSecs?: number;
+  };
 }
 
 export interface Connection extends ConnectionConfig {
@@ -46,9 +56,18 @@ export interface ConnectionHealth {
   error?: string;
 }
 
+/**
+ * A single row from a query result. Cell values come back from the backend as
+ * already-serialized JSON-friendly primitives (string | number | boolean | null)
+ * or, for complex types (JSON/array/blob), a `JsonValue` shape. We keep this as
+ * `unknown` so consumers must narrow before use — the previous `any[]` swallowed
+ * column-name typos and shape drift silently.
+ */
+export type TableRow = Record<string, unknown>;
+
 export interface QueryResult {
   columns: ColumnInfo[];
-  rows: any[];
+  rows: TableRow[];
   rowCount: number;
   duration: number;
   error?: string;
@@ -98,7 +117,7 @@ export interface ColumnInfo {
   precision: number | null;
   scale: number | null;
   notNull: boolean;
-  defaultValue: any;
+  defaultValue: unknown;
   description: string;
   primaryKey: boolean;
   unique: boolean;

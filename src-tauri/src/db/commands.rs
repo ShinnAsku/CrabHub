@@ -302,10 +302,10 @@ pub async fn update_table_rows(
     table: String,
     schema: Option<String>,
     updates: Vec<(String, serde_json::Value)>,
-    where_clause: String,
+    where_conditions: Vec<crate::db::types::WhereCondition>,
 ) -> Result<ExecuteResult, String> {
     state
-        .update_table_rows(&id, &table, schema.as_deref(), &updates, &where_clause)
+        .update_table_rows(&id, &table, schema.as_deref(), &updates, &where_conditions)
         .await
         .map_err(|e| e.to_string())
 }
@@ -332,10 +332,10 @@ pub async fn delete_table_rows(
     id: String,
     table: String,
     schema: Option<String>,
-    where_clause: String,
+    where_conditions: Vec<crate::db::types::WhereCondition>,
 ) -> Result<ExecuteResult, String> {
     state
-        .delete_table_rows(&id, &table, schema.as_deref(), &where_clause)
+        .delete_table_rows(&id, &table, schema.as_deref(), &where_conditions)
         .await
         .map_err(|e| e.to_string())
 }

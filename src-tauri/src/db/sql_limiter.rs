@@ -199,7 +199,6 @@ pub fn strip_limit_offset(sql: &str) -> String {
 
     // Find LIMIT keyword position (only meaningful LIMIT — the last one before end)
     let mut limit_pos: Option<usize> = None;
-    let mut offset_pos: Option<usize> = None;
 
     // Scan backward to find LIMIT ... OFFSET ... at the end
     let mut i = n;
@@ -208,7 +207,6 @@ pub fn strip_limit_offset(sql: &str) -> String {
     if i >= 2 {
         if let (Token::Word(o), Token::Number(_) | Token::Word(_)) = (&tokens[i - 2], &tokens[i - 1]) {
             if o.to_uppercase() == "OFFSET" {
-                offset_pos = Some(i - 2);
                 has_offset = true;
                 i -= 2;
             }

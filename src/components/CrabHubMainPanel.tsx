@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import {
   Table,
   Eye,
@@ -26,10 +26,10 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useUIStore, useTabStore } from "@/stores/app-store";
-import type { SchemaNode, Connection, ColumnInfo, TableInfo } from "@/types";
+import type { SchemaNode, Connection, ColumnInfo, TableInfo, TableRow, QueryResult } from "@/types";
 import { t } from "@/lib/i18n";
 import { getTableData, exportTableSql, getColumns, getTables, executeSql, insertTableRow, updateTableRows, deleteTableRows, getTableRowCount } from "@/lib/tauri-commands";
-import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause, generateCopyTableName, buildDuplicateTableSQL } from "@/lib/export";
+import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereConditions, generateCopyTableName, buildDuplicateTableSQL } from "@/lib/export";
 import EditorPanel from "./EditorPanel";
 import PaginationBar from "./PaginationBar";
 
@@ -74,7 +74,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   const [error, setError] = useState<string | null>(null);
   
   // Table data cache
-  const [tableDataCache, setTableDataCache] = useState<Record<string, { data: any; ddl: string }>>({});
+  const [tableDataCache, setTableDataCache] = useState<Record<string, { data: QueryResult; ddl: string }>>({});
 
   // Column preview state (single-click)
   const [selectedColumns, setSelectedColumns] = useState<ColumnInfo[] | null>(null);
@@ -162,7 +162,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
     ? loadedTables.filter((t) => t.name.toLowerCase().includes(searchTerm.toLowerCase()))
     : loadedTables;
 
-  const formatValue = (value: any): string => {
+  const formatValue = (value: unknown): string => {
     if (value === null || value === undefined || value === "") {
       return "NULL";
     }
@@ -308,14 +308,14 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
       for (const [rowIdx, changes] of editedRows.entries()) {
         const originalRow = selectedTableData.rows[rowIdx];
         if (!originalRow) continue;
-        const updates: [string, any][] = Object.entries(changes);
+        const updates: [string, unknown][] = Object.entries(changes);
         if (updates.length === 0) continue;
 
-        const colsForWhere = (tableColumnInfoMap[activeTableTab.tableId] || selectedTableData.columns).map((c: any) => ({
+        const colsForWhere = (tableColumnInfoMap[activeTableTab.tableId] || selectedTableData.columns).map((c: ColumnInfo) => ({
           name: c.name,
-          isPrimaryKey: c.isPrimaryKey ?? c.primaryKey ?? false,
+          isPrimaryKey: c.primaryKey ?? false,
         }));
-        const where = buildWhereClause(colsForWhere, originalRow);
+        const where = buildWhereConditions(colsForWhere, originalRow);
         await updateTableRows(connId, tableName, updates, where, schema);
         totalAffected++;
       }
@@ -378,11 +378,11 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
       for (const rowIdx of existingRowIndices) {
         const row = selectedTableData.rows[rowIdx];
         if (!row) continue;
-        const colsForWhere = (tableColumnInfoMap[activeTableTab.tableId] || selectedTableData.columns).map((c: any) => ({
+        const colsForWhere = (tableColumnInfoMap[activeTableTab.tableId] || selectedTableData.columns).map((c: ColumnInfo) => ({
           name: c.name,
-          isPrimaryKey: c.isPrimaryKey ?? c.primaryKey ?? false,
+          isPrimaryKey: c.primaryKey ?? false,
         }));
-        const where = buildWhereClause(colsForWhere, row);
+        const where = buildWhereConditions(colsForWhere, row);
         await deleteTableRows(connId, tableName, where, schema);
       }
 
@@ -1443,7 +1443,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                 }}
                               />
                             </th>
-                            {selectedTableData.columns.map((col: any, idx: number) => (
+                            {selectedTableData.columns.map((col: ColumnInfo, idx: number) => (
                               <th key={idx} className="text-left px-2 py-1 font-medium text-white border border-white/30 whitespace-nowrap">
                                 {col.name}
                               </th>
@@ -1452,7 +1452,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                         </thead>
                         <tbody>
                           {/* Existing rows */}
-                          {selectedTableData.rows.map((row: any, rowIdx: number) => {
+                          {selectedTableData.rows.map((row: TableRow, rowIdx: number) => {
                             const isSelected = selectedRowIndices.has(rowIdx);
                             const rowEdits = editedRows.get(rowIdx);
                             return (
@@ -1474,7 +1474,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                     }}
                                   />
                                 </td>
-                                {selectedTableData.columns.map((col: any, colIdx: number) => {
+                                {selectedTableData.columns.map((col: ColumnInfo, colIdx: number) => {
                                   const isEditing = editingCell?.rowIdx === rowIdx && editingCell?.colName === col.name;
                                   const isModified = rowEdits && col.name in rowEdits;
                                   let value = rowEdits?.[col.name] ?? row[col.name];
@@ -1562,7 +1562,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
                                     }}
                                   />
                                 </td>
-                                {selectedTableData.columns.map((col: any, colIdx: number) => {
+                                {selectedTableData.columns.map((col: ColumnInfo, colIdx: number) => {
                                   const isEditing = editingCell?.rowIdx === globalIdx && editingCell?.colName === col.name;
                                   const value = row[col.name];
 
@@ -1730,4 +1730,19 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   );
 }
 
-export default CrabHubMainPanel;
+export default memo(CrabHubMainPanel, (prev, next) => {
+  // The Connection object identity may change even when the underlying
+  // connection is the same. Compare by id + a few primary fields plus the
+  // selected schema name, which is what the panel actually depends on.
+  const a = prev.activeConnection;
+  const b = next.activeConnection;
+  if (a === b) return prev.selectedSchemaName === next.selectedSchemaName;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.connected === b.connected &&
+    a.database === b.database &&
+    a.type === b.type &&
+    prev.selectedSchemaName === next.selectedSchemaName
+  );
+});

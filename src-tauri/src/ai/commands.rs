@@ -78,3 +78,58 @@ pub async fn check_sql_safety(sql: String) -> Result<serde_json::Value, String> 
     let action = SafetyGate::default().evaluate(&sql);
     serde_json::to_value(action).map_err(|e| e.to_string())
 }
+
+// ---------------------------------------------------------------------------
+// AI API-key storage (system keyring)
+// ---------------------------------------------------------------------------
+//
+// Keys are persisted in the OS keyring (libsecret / Keychain / Credential Manager)
+// under service `crabhub` and account `ai-<provider>`. Providers are validated
+// against a fixed allow-list so a malicious caller cannot use the command to
+// probe / overwrite arbitrary keyring entries.
+
+fn ai_keyring_entry(provider: &str) -> Result<keyring::Entry, String> {
+    const ALLOWED: &[&str] = &["deepseek", "qwen", "ollama", "openai"];
+    if !ALLOWED.contains(&provider) {
+        return Err(format!("Unsupported AI provider: {}", provider));
+    }
+    keyring::Entry::new("crabhub", &format!("ai-{}", provider)).map_err(|e| e.to_string())
+}
+
+/// Store an AI provider API key in the system keyring.
+/// Pass an empty string to delete the entry.
+#[tauri::command]
+pub async fn set_ai_api_key(provider: String, key: String) -> Result<(), String> {
+    let entry = ai_keyring_entry(&provider)?;
+    if key.is_empty() {
+        // Best-effort delete; ignore "not found" errors.
+        let _ = entry.delete_password();
+        Ok(())
+    } else {
+        entry.set_password(&key).map_err(|e| e.to_string())
+    }
+}
+
+/// Fetch an AI provider API key from the system keyring.
+/// Returns an empty string when no entry exists (so callers don't have to
+/// distinguish "missing" from "error" for first-run setup).
+#[tauri::command]
+pub async fn get_ai_api_key(provider: String) -> Result<String, String> {
+    let entry = ai_keyring_entry(&provider)?;
+    match entry.get_password() {
+        Ok(s) => Ok(s),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Remove an AI provider API key from the system keyring.
+#[tauri::command]
+pub async fn delete_ai_api_key(provider: String) -> Result<(), String> {
+    let entry = ai_keyring_entry(&provider)?;
+    match entry.delete_password() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}

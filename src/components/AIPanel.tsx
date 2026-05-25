@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useAppStore, useUIStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
+import { setAiApiKey, getAiApiKey, type AIProvider } from "@/lib/ai-commands";
 import { AgentToolCard } from "@/components/AgentToolCard";
 import { AgentConfirmBar } from "@/components/AgentConfirmBar";
 // Reserved for agent event rendering in chat messages
@@ -212,7 +213,18 @@ function AIPanel() {
   const [settings, setSettings] = useState<AISettings>(() => {
     try {
       const saved = localStorage.getItem("crabhub-ai-settings");
-      if (saved) return JSON.parse(saved) as AISettings;
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<AISettings>;
+        // Migration: any legacy plain-text apiKey is stripped here; the actual
+        // key is loaded asynchronously from the OS keyring below.
+        return {
+          provider: parsed.provider ?? "deepseek",
+          endpoint: parsed.endpoint ?? (DEFAULT_ENDPOINTS["deepseek"] as string),
+          apiKey: "",
+          model: parsed.model ?? (DEFAULT_MODELS["deepseek"] as string),
+          temperature: parsed.temperature ?? 0.3,
+        };
+      }
     } catch {
       // Ignore
     }
@@ -245,9 +257,67 @@ function AIPanel() {
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 });
 
-  // Save settings to localStorage
+  // One-time migration of any legacy plain-text key in localStorage into the
+  // keyring, plus initial keyring load for the current provider.
   useEffect(() => {
-    localStorage.setItem("crabhub-ai-settings", JSON.stringify(settings));
+    let cancelled = false;
+    (async () => {
+      try {
+        const saved = localStorage.getItem("crabhub-ai-settings");
+        if (saved) {
+          const parsed = JSON.parse(saved) as Partial<AISettings>;
+          if (parsed?.apiKey && parsed.provider) {
+            await setAiApiKey(parsed.provider as AIProvider, parsed.apiKey);
+            // Re-persist without the key so it never sits in localStorage again.
+            const stripped = { ...parsed, apiKey: "" };
+            localStorage.setItem("crabhub-ai-settings", JSON.stringify(stripped));
+          }
+        }
+      } catch {
+        // best-effort migration
+      }
+      try {
+        const key = await getAiApiKey(settings.provider);
+        if (!cancelled && key) {
+          setSettings((prev) => ({ ...prev, apiKey: key }));
+        }
+      } catch {
+        // ignore; user can re-enter
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally only on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-load key whenever the active provider changes (after first mount).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const key = await getAiApiKey(settings.provider);
+        if (!cancelled) {
+          setSettings((prev) =>
+            prev.apiKey === key ? prev : { ...prev, apiKey: key }
+          );
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.provider]);
+
+  // Save settings to localStorage WITHOUT the API key. The key lives in the
+  // OS keyring only.
+  useEffect(() => {
+    const { apiKey: _omit, ...safe } = settings;
+    void _omit;
+    localStorage.setItem("crabhub-ai-settings", JSON.stringify(safe));
   }, [settings]);
 
   // Auto-scroll to bottom
@@ -723,42 +793,42 @@ function AIPanel() {
           <div className="px-3 py-2 shrink-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
-                onClick={() => setInput("帮我写一个查询用户表的SQL语句")}
+                onClick={() => setInput(t('ai.prompt.writeSql'))}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Code size={10} />
                 <span>{t('ai.writeSql')}</span>
               </button>
               <button
-                onClick={() => setInput("帮我分析这个SQL的性能: ")}
+                onClick={() => setInput(t('ai.prompt.analyzePerformance'))}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Zap size={10} />
                 <span>{t('ai.analyzePerformance')}</span>
               </button>
               <button
-                onClick={() => setInput("帮我根据需求设计表结构")}
+                onClick={() => setInput(t('ai.prompt.designTable'))}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Database size={10} />
                 <span>{t('ai.designTable')}</span>
               </button>
               <button
-                onClick={() => setInput("帮我分析查询结果")}
+                onClick={() => setInput(t('ai.prompt.analyzeData'))}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <BarChart2 size={10} />
                 <span>{t('ai.analyzeData')}</span>
               </button>
               <button
-                onClick={() => setInput("帮我解释这个SQL语句")}
+                onClick={() => setInput(t('ai.prompt.explainSql'))}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Brain size={10} />
                 <span>{t('ai.explainSql')}</span>
               </button>
               <button
-                onClick={() => setInput("帮我优化这个SQL: ")}
+                onClick={() => setInput(t('ai.prompt.optimizeSql'))}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               >
                 <Lightbulb size={10} />
@@ -771,7 +841,7 @@ function AIPanel() {
           {activeConnectionId && (
             <div className="px-3 py-1 shrink-0">
               <span className="text-[11px] text-muted-foreground">
-                Schema已注入 · 可执行操作
+                {t('ai.schemaInjected')}
               </span>
             </div>
           )}
@@ -814,7 +884,13 @@ function AIPanel() {
       {showSettings && (
         <AISettingsDialog
           settings={settings}
-          onSave={setSettings}
+          onSave={(s) => {
+            setSettings(s);
+            // Persist key to OS keyring (never to localStorage).
+            void setAiApiKey(s.provider, s.apiKey).catch((err) => {
+              console.error("Failed to save AI API key to keyring:", err);
+            });
+          }}
           onClose={() => setShowSettings(false)}
         />
       )}

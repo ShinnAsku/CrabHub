@@ -91,3 +91,24 @@ export async function formatSQL(sql: string): Promise<string> {
     sql,
   });
 }
+
+// ---------------------------------------------------------------------------
+// AI API-key keyring helpers
+// ---------------------------------------------------------------------------
+
+export type AIProvider = "deepseek" | "qwen" | "ollama" | "openai";
+
+/** Persist the API key for `provider` in the OS keyring. Empty string deletes it. */
+export async function setAiApiKey(provider: AIProvider, key: string): Promise<void> {
+  return invoke("set_ai_api_key", { provider, key });
+}
+
+/** Read the API key for `provider` from the OS keyring. Returns "" if not set. */
+export async function getAiApiKey(provider: AIProvider): Promise<string> {
+  return invoke("get_ai_api_key", { provider });
+}
+
+/** Remove the API key for `provider` from the OS keyring. */
+export async function deleteAiApiKey(provider: AIProvider): Promise<void> {
+  return invoke("delete_ai_api_key", { provider });
+}

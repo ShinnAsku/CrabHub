@@ -48,11 +48,12 @@ impl PgCompatibleConnection {
             port
         );
 
+        let pc = crate::db::pool_config::PoolConfig::with_overrides(&config.db_type, config.pool_options.as_ref());
         let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .idle_timeout(Duration::from_secs(600))
-            .max_lifetime(Duration::from_secs(1800))
-            .acquire_timeout(Duration::from_secs(10))
+            .max_connections(pc.max_connections)
+            .idle_timeout(Duration::from_secs(pc.idle_timeout_secs))
+            .max_lifetime(Duration::from_secs(pc.max_lifetime_secs))
+            .acquire_timeout(Duration::from_secs(pc.acquire_timeout_secs))
             .connect(&conn_str)
             .await
             .map_err(|e| DbError::ConnectionError(format!("Failed to connect: {}", e)))?;
@@ -406,8 +407,7 @@ impl DatabaseConnection for PgCompatibleConnection {
         if let Some(row) = rows.rows.first() {
             if let Some(cnt) = row
                 .get("cnt")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
+                .and_then(|v| v.as_u64())
             {
                 return Ok(cnt);
             }
@@ -424,9 +424,12 @@ impl DatabaseConnection for PgCompatibleConnection {
         order_by: Option<&str>,
     ) -> Result<QueryResult, DbError> {
         let full_table_ref = pg_utils::full_table(table, schema);
-        let order_clause = order_by
-            .map(|o| format!(" ORDER BY {}", o))
-            .unwrap_or_default();
+        let order_clause = if let Some(o) = order_by {
+            crate::db::trait_def::sanitize_order_by(o)?;
+            format!(" ORDER BY {}", o)
+        } else {
+            String::new()
+        };
         let offset = (page - 1) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
@@ -444,9 +447,8 @@ impl DatabaseConnection for PgCompatibleConnection {
         table: &str,
         schema: Option<&str>,
         updates: &[(String, serde_json::Value)],
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        sanitize_where_clause(where_clause).map_err(|e| DbError::QueryError(e))?;
         let full_table_ref = pg_utils::full_table_quoted(table, schema);
         let set_clauses: Vec<String> = updates
             .iter()
@@ -458,11 +460,16 @@ impl DatabaseConnection for PgCompatibleConnection {
                 )
             })
             .collect();
+        let db_type = self.dialect.db_type.clone();
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| escape_identifier(c, &db_type),
+        )?;
         let sql = format!(
             "UPDATE {} SET {} WHERE {}",
             full_table_ref,
             set_clauses.join(", "),
-            where_clause
+            where_sql
         );
         self.execute_sql(&sql).await
     }
@@ -493,13 +500,17 @@ impl DatabaseConnection for PgCompatibleConnection {
         &self,
         table: &str,
         schema: Option<&str>,
-        where_clause: &str,
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        sanitize_where_clause(where_clause).map_err(|e| DbError::QueryError(e))?;
         let full_table_ref = pg_utils::full_table_quoted(table, schema);
+        let db_type = self.dialect.db_type.clone();
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| escape_identifier(c, &db_type),
+        )?;
         let sql = format!(
             "DELETE FROM {} WHERE {}",
-            full_table_ref, where_clause
+            full_table_ref, where_sql
         );
         self.execute_sql(&sql).await
     }

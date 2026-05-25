@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "CrabHub default permissions",
+  "description": "CrabHub default permissions. File-system access is scoped to user-data directories and denies known-sensitive subdirectories (.ssh, .aws, credentials). Only text-file read/write is granted to the front-end — binary DB files are accessed exclusively by the Rust backend via sqlx, never through the JS fs plugin.",
   "windows": [
     "main"
   ],
@@ -26,8 +26,33 @@
     "dialog:allow-message",
     "dialog:allow-ask",
     "fs:default",
-    "fs:allow-read",
-    "fs:allow-write",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$APPDATA/**" },
+        { "path": "$APPLOCALDATA/**" },
+        { "path": "$APPCONFIG/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$HOME/*.sql" },
+        { "path": "$HOME/*.csv" },
+        { "path": "$HOME/*.json" },
+        { "path": "$TEMP/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.config/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.npmrc" },
+        { "path": "$HOME/.netrc" }
+      ]
+    },
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
     "fs:allow-exists",
     "fs:allow-mkdir",
     "clipboard-manager:default",

@@ -107,6 +107,9 @@ pub async fn run() {
             ai::commands::format_sql,
             ai::commands::get_agent_tools,
             ai::commands::check_sql_safety,
+            ai::commands::set_ai_api_key,
+            ai::commands::get_ai_api_key,
+            ai::commands::delete_ai_api_key,
             // Plugin commands
             plugins::commands::list_plugins,
             plugins::commands::fetch_plugin_registry,
@@ -143,11 +146,31 @@ pub async fn run() {
                 )?;
             }
 
-            // Initialize ConnectionStore with SQLite
+            // Initialize ConnectionStore with SQLite. On failure, fall back to an
+            // in-memory store so the app can still start (user gets a startup-warning log,
+            // and saved connections become read-only / ephemeral for the session).
             let app_dir = app.path().app_data_dir().unwrap_or_default();
-            std::fs::create_dir_all(&app_dir).ok();
+            if let Err(e) = std::fs::create_dir_all(&app_dir) {
+                log::warn!("Could not create app data dir {:?}: {}", app_dir, e);
+            }
             let db_path = app_dir.join("connections.db");
-            let store = Arc::new(ConnectionStore::new(db_path.to_str().unwrap()).unwrap());
+            let store_path = db_path.to_str().unwrap_or(":memory:");
+            let store = match ConnectionStore::new(store_path) {
+                Ok(s) => Arc::new(s),
+                Err(e) => {
+                    log::error!(
+                        "Failed to open connection store at {:?}: {}. Falling back to in-memory store.",
+                        db_path, e
+                    );
+                    match ConnectionStore::new(":memory:") {
+                        Ok(s) => Arc::new(s),
+                        Err(e2) => {
+                            log::error!("In-memory store also failed: {}. Aborting startup.", e2);
+                            return Err(format!("ConnectionStore init failed: {}", e2).into());
+                        }
+                    }
+                }
+            };
             app.manage(store);
 
             // Initialize PluginManager - use Tabularis-compatible plugin directory
@@ -177,21 +200,11 @@ pub async fn run() {
                 }
             });
 
-            // Start MCP server for AI tool integration (TODO: Fix rmcp dependency)
-            // tauri::async_runtime::spawn(async move {
-            //     use rmcp::Server;
-            //     use rmcp::tool::ToolCollection;
-            //     
-            //     let tools = ToolCollection::default();
-            //     let server = Server::new(tools);
-            //     
-            //     if let Err(e) = server.serve("127.0.0.1:3031").await {
-            //         log::error!("Failed to start MCP server: {}", e);
-            //     }
-            // });
-
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running CrabHub application");
+        .unwrap_or_else(|e| {
+            log::error!("Fatal error while running CrabHub application: {}", e);
+            std::process::exit(1);
+        });
 }
