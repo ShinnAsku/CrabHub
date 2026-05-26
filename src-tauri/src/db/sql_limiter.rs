@@ -277,6 +277,7 @@ pub fn inject_limit_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::types::DatabaseType;
 
     #[test]
     fn detects_limit_n() {
