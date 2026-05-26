@@ -123,25 +123,25 @@ export default memo(function ObjectListView({
             <thead className="sticky top-0" style={{ backgroundColor: "hsl(var(--tab-active))" }}>
               {activeConnection?.type === "mysql" ? (
                 <tr>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("common.name")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.rows")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.dataLength")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.engine")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.createdDate")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.modifiedDate")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.collation")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.comment")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("common.name")}>{t("common.name")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.rows")}>{t("tableHeader.rows")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.dataLength")}>{t("tableHeader.dataLength")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.engine")}>{t("tableHeader.engine")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.createdDate")}>{t("tableHeader.createdDate")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.modifiedDate")}>{t("tableHeader.modifiedDate")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.collation")}>{t("tableHeader.collation")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.comment")}>{t("tableHeader.comment")}</th>
                 </tr>
               ) : (
                 <tr>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("common.name")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.oid")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.owner")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.acl")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.tableType")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.partitionOf")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.rows")}</th>
-                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("tableHeader.primaryKey")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("common.name")}>{t("common.name")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.oid")}>{t("tableHeader.oid")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.owner")}>{t("tableHeader.owner")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.acl")}>{t("tableHeader.acl")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.tableType")}>{t("tableHeader.tableType")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.partitionOf")}>{t("tableHeader.partitionOf")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.rows")}>{t("tableHeader.rows")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.primaryKey")}>{t("tableHeader.primaryKey")}</th>
                 </tr>
               )}
             </thead>
@@ -167,7 +167,7 @@ export default memo(function ObjectListView({
                           : "border-l-transparent"
                       }`}
                     >
-                      <td className="px-2 py-1 truncate border">
+                      <td className="px-2 py-1 truncate border" title={table.name}>
                         <span className="inline-flex items-center gap-1">
                           {table.type === "view" ? <Eye size={12} className="shrink-0" /> : <Table size={12} className="shrink-0" />}
                           <span className="truncate">{table.name}</span>
@@ -236,8 +236,8 @@ export default memo(function ObjectListView({
             <table className="w-full text-xs border-collapse border">
               <thead className="sticky top-0" style={{ backgroundColor: "hsl(var(--tab-active))" }}>
                 <tr>
-                  <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">{t("columnHeader.name")}</th>
-                  <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">{t("columnHeader.type")}</th>
+                  <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30 max-w-[150px] truncate" title={t("columnHeader.name")}>{t("columnHeader.name")}</th>
+                  <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30 max-w-[120px] truncate" title={t("columnHeader.type")}>{t("columnHeader.type")}</th>
                   <th className="text-center px-1 py-0.5 font-medium text-white border border-white/30">{t("columnHeader.pk")}</th>
                   <th className="text-center px-1 py-0.5 font-medium text-white border border-white/30">{t("columnHeader.nn")}</th>
                   <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">{t("columnHeader.defaultValue")}</th>
@@ -248,16 +248,16 @@ export default memo(function ObjectListView({
                   <tr key={idx} className="hover:bg-muted/30">
                     <td className="px-2 py-0.5 border flex items-center gap-1">
                       {col.primaryKey && <Key size={10} className="text-amber-500 shrink-0" />}
-                      <span className="truncate">{col.name}</span>
+                      <span className="truncate" title={col.name}>{col.name}</span>
                     </td>
-                    <td className="px-2 py-0.5 text-muted-foreground border">{col.type}</td>
+                    <td className="px-2 py-0.5 text-muted-foreground border truncate max-w-[120px]" title={col.type}>{col.type}</td>
                     <td className="text-center px-1 py-0.5 border">
                       {col.primaryKey && <span className="text-amber-500 text-[11px] font-bold">PK</span>}
                     </td>
                     <td className="text-center px-1 py-0.5 border">
                       {col.notNull && <span className="text-blue-500 text-[11px] font-bold">NN</span>}
                     </td>
-                    <td className="px-2 py-0.5 text-muted-foreground truncate max-w-[80px] border">
+                    <td className="px-2 py-0.5 text-muted-foreground truncate max-w-[80px] border" title={col.defaultValue != null ? String(col.defaultValue) : ""}>
                       {col.defaultValue != null ? String(col.defaultValue) : ""}
                     </td>
                   </tr>

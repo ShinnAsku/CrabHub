@@ -114,6 +114,20 @@ impl ConnectionStore {
             CREATE INDEX IF NOT EXISTS idx_connections_name ON connections(name);
             CREATE INDEX IF NOT EXISTS idx_connections_db_type ON connections(db_type);
             CREATE INDEX IF NOT EXISTS idx_groups_parent ON connection_groups(parent_id);
+
+            -- AI settings (stored as JSON in metadata)
+            -- key: 'ai_settings' → JSON blob
+
+            -- Chat history table
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id);
+            CREATE INDEX IF NOT EXISTS idx_chat_history_created ON chat_history(created_at);
             ",
         )
         .map_err(|e: rusqlite::Error| e.to_string())?;
@@ -500,6 +514,49 @@ impl ConnectionStore {
             .map_err(|e| e.to_string())?;
 
         Ok(result)
+    }
+
+    // ===== AI Settings Operations =====
+
+    pub fn save_ai_settings(&self, json: &str) -> Result<(), String> {
+        self.set_metadata("ai_settings", json)
+    }
+
+    pub fn load_ai_settings(&self) -> Result<Option<String>, String> {
+        self.get_metadata("ai_settings")
+    }
+
+    // ===== Chat History Operations =====
+
+    pub fn save_chat_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64, String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        db.execute(
+            "INSERT INTO chat_history (session_id, role, content) VALUES (?1, ?2, ?3)",
+            params![session_id, role, content],
+        ).map_err(|e| e.to_string())?;
+        Ok(db.last_insert_rowid())
+    }
+
+    pub fn load_chat_history(&self, session_id: &str) -> Result<Vec<(String, String, String)>, String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let mut stmt = db.prepare(
+            "SELECT role, content, created_at FROM chat_history WHERE session_id = ?1 ORDER BY id ASC"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        }).map_err(|e| e.to_string())?;
+        let mut history = Vec::new();
+        for row in rows {
+            history.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(history)
+    }
+
+    pub fn clear_chat_history(&self, session_id: &str) -> Result<(), String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        db.execute("DELETE FROM chat_history WHERE session_id = ?1", params![session_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

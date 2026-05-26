@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Plus,
   Save,
@@ -12,6 +13,56 @@ import {
 import type { QueryResult, ColumnInfo, TableRow, TableTab } from "@/types";
 import { t } from "@/lib/i18n";
 import PaginationBar from "../PaginationBar";
+
+// ===== Column resize =====
+
+function useColumnResize(columnCount: number) {
+  const [widths, setWidths] = useState<number[]>([]);
+  const resizing = useRef<{ idx: number; startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    if (columnCount > 0 && widths.length !== columnCount + 1) {
+      const def = 150; // default column width
+      const w: number[] = [40]; // checkbox column
+      for (let i = 0; i < columnCount; i++) w.push(def);
+      setWidths(w);
+    }
+  }, [columnCount]);
+
+  const onMouseDown = useCallback((idx: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizing.current = { idx, startX: e.clientX, startW: widths[idx] ?? 150 };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [widths]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const r = resizing.current;
+      if (!r) return;
+      const delta = e.clientX - r.startX;
+      setWidths(prev => {
+        const next = [...prev];
+        next[r.idx] = Math.max(40, r.startW + delta);
+        return next;
+      });
+    };
+    const onUp = () => {
+      resizing.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  return { widths, onMouseDown };
+}
 
 interface TableDataViewProps {
   activeTableTab: TableTab;
@@ -80,6 +131,9 @@ export default function TableDataView({
   onPageChange,
   onPageSizeChange,
 }: TableDataViewProps) {
+  const colCount = selectedTableData?.columns.length ?? 0;
+  const { widths, onMouseDown } = useColumnResize(colCount);
+
   return (
     <div className="h-full flex flex-col">
       {/* Data Toolbar */}
@@ -207,10 +261,15 @@ export default function TableDataView({
             </div>
           </div>
         ) : selectedTableData ? (
-          <table className="w-full text-xs border-collapse border">
+          <table className="w-full text-xs border-collapse border" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              {widths.map((w, i) => (
+                <col key={i} style={{ width: w }} />
+              ))}
+            </colgroup>
             <thead className="sticky top-0 z-10" style={{ backgroundColor: "hsl(var(--tab-active))" }}>
               <tr>
-                <th className="px-1 py-1 text-center border border-white/30 w-[30px]">
+                <th className="px-1 py-1 text-center border border-white/30 relative">
                   <input
                     type="checkbox"
                     className="w-3 h-3 accent-white"
@@ -227,8 +286,13 @@ export default function TableDataView({
                   />
                 </th>
                 {selectedTableData.columns.map((col: ColumnInfo, idx: number) => (
-                  <th key={idx} className="text-left px-2 py-1 font-medium text-white border border-white/30 whitespace-nowrap">
-                    {col.name}
+                  <th key={idx} className="text-left px-2 py-1 font-medium text-white border border-white/30 relative group" title={col.name}>
+                    <span className="block truncate">{col.name}</span>
+                    {/* Resize handle */}
+                    <div
+                      className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-white/30 group-hover:bg-white/20"
+                      onMouseDown={(e) => onMouseDown(idx + 1, e)}
+                    />
                   </th>
                 ))}
               </tr>
@@ -310,8 +374,9 @@ export default function TableDataView({
                       return (
                         <td
                           key={colIdx}
-                          className={`px-2 py-0.5 border cursor-text whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis ${isModified ? "bg-yellow-500/10" : ""}`}
+                          className={`px-2 py-0.5 border cursor-text max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap ${isModified ? "bg-yellow-500/10" : ""}`}
                           onDoubleClick={() => setEditingCell({ rowIdx, colName: col.name })}
+                          title={value === null ? "NULL" : String(value)}
                         >
                           {formatValue(value)}
                         </td>

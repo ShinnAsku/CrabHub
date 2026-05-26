@@ -54,3 +54,48 @@ pub async fn delete_connection(
     }
     result.map_err(|e| e.to_string())
 }
+
+// ===== AI Settings =====
+
+#[tauri::command]
+pub async fn save_ai_settings(
+    state: State<'_, Arc<ConnectionStore>>,
+    settings_json: String,
+) -> Result<(), String> {
+    state.save_ai_settings(&settings_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn load_ai_settings(
+    state: State<'_, Arc<ConnectionStore>>,
+) -> Result<Option<String>, String> {
+    state.load_ai_settings().map_err(|e| e.to_string())
+}
+
+// ===== Chat History =====
+
+#[tauri::command]
+pub async fn save_chat_message(
+    state: State<'_, Arc<ConnectionStore>>,
+    session_id: String,
+    role: String,
+    content: String,
+) -> Result<i64, String> {
+    state.save_chat_message(&session_id, &role, &content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn load_chat_history(
+    state: State<'_, Arc<ConnectionStore>>,
+    session_id: String,
+) -> Result<Vec<(String, String, String)>, String> {
+    state.load_chat_history(&session_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_chat_history(
+    state: State<'_, Arc<ConnectionStore>>,
+    session_id: String,
+) -> Result<(), String> {
+    state.clear_chat_history(&session_id).map_err(|e| e.to_string())
+}

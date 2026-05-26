@@ -354,11 +354,6 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
             readOnly={isEditMode}
           />
 
-          {connection && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-              {connection.name}
-            </span>
-          )}
         </div>
 
         {/* Messages */}
@@ -561,7 +556,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                   value={col.name}
                   onChange={(e) => updateColumn(index, { name: e.target.value })}
                   placeholder="column_name"
-                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                  className="w-full px-1.5 py-0.5 text-xs bg-background border border-border hover:border-muted-foreground/30 focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
                 />
               </td>
 
@@ -579,7 +574,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                       scale: newInfo?.hasScale ? col.scale : undefined,
                     });
                   }}
-                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                  className="w-full px-1.5 py-0.5 text-xs bg-background border border-border hover:border-muted-foreground/30 focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
                 >
                   {!allTypes.some((dt) => dt.name.toLowerCase() === col.dataType.toLowerCase()) && col.dataType && (
                     <option value={col.dataType}>{col.dataType}</option>
@@ -605,7 +600,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                       }
                     }}
                     placeholder={info?.hasLength ? "255" : "10"}
-                    className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                    className="w-full px-1.5 py-0.5 text-xs bg-background border border-border hover:border-muted-foreground/30 focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
                   />
                 ) : null}
               </td>
@@ -620,7 +615,7 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                       updateColumn(index, { scale: e.target.value ? Number(e.target.value) : undefined })
                     }
                     placeholder="2"
-                    className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                    className="w-full px-1.5 py-0.5 text-xs bg-background border border-border hover:border-muted-foreground/30 focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
                   />
                 ) : null}
               </td>
@@ -669,8 +664,8 @@ function FieldsPanel({ columns, selectedColumnIndex, setSelectedColumnIndex, upd
                   type="text"
                   value={col.comment || ""}
                   onChange={(e) => updateColumn(index, { comment: e.target.value })}
-                  placeholder=""
-                  className="w-full px-1.5 py-0.5 text-xs bg-transparent border border-transparent hover:border-border focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
+                  placeholder={t('designer.commentPlaceholder')}
+                  className="w-full px-1.5 py-0.5 text-xs bg-background border border-border hover:border-muted-foreground/30 focus:border-[hsl(var(--tab-active))] rounded outline-none text-foreground"
                 />
               </td>
             </tr>

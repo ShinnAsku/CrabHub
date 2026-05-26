@@ -174,7 +174,15 @@ impl DatabaseConnection for PgCompatibleConnection {
         schema: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, DbError> {
         let schema_name = schema.unwrap_or("public");
-        let sql = self.dialect.metadata_queries.list_columns;
+        let sql = "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, \
+                   c.ordinal_position, c.character_maximum_length, \
+                   c.numeric_precision, c.numeric_scale, \
+                   pg_catalog.col_description(pg_class.oid, c.ordinal_position) AS column_comment \
+                   FROM information_schema.columns c \
+                   JOIN pg_catalog.pg_class ON pg_class.relname = c.table_name \
+                   JOIN pg_catalog.pg_namespace nsp ON nsp.oid = pg_class.relnamespace AND nsp.nspname = c.table_schema \
+                   WHERE c.table_schema = $1 AND c.table_name = $2 \
+                   ORDER BY c.ordinal_position";
 
         // Fetch primary key columns
         let pk_sql = "SELECT kcu.column_name FROM information_schema.table_constraints tc \
@@ -215,7 +223,7 @@ impl DatabaseConnection for PgCompatibleConnection {
                     nullable: is_nullable == "YES",
                     is_primary_key: pk_columns.contains(&col_name),
                     default_value: row.get("column_default"),
-                    comment: None,
+                    comment: row.try_get::<String, _>("column_comment").ok(),
                     character_maximum_length: char_max_len.map(|v| v as i64),
                     numeric_precision: num_precision,
                     numeric_scale: num_scale,

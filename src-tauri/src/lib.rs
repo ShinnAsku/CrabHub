@@ -73,6 +73,11 @@ pub async fn run() {
             connection_store::add_connection,
             connection_store::update_connection,
             connection_store::delete_connection,
+            connection_store::save_ai_settings,
+            connection_store::load_ai_settings,
+            connection_store::save_chat_message,
+            connection_store::load_chat_history,
+            connection_store::clear_chat_history,
             // Database commands
             db::commands::connect_to_database,
             db::commands::disconnect_database,
@@ -102,6 +107,7 @@ pub async fn run() {
             db::commands::delete_table_rows,
             db::commands::get_table_data,
             // AI commands
+            ai::commands::test_ai_connection,
             ai::commands::ai_chat,
             ai::commands::analyze_sql,
             ai::commands::format_sql,

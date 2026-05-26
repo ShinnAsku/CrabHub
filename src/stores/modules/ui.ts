@@ -9,7 +9,7 @@ function loadTheme(): "light" | "dark" {
     const saved = localStorage.getItem("crabhub-theme");
     if (saved === "light" || saved === "dark") return saved;
   } catch {}
-  return "dark";
+  return "light";
 }
 
 // Apply theme class to document

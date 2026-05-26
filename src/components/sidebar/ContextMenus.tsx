@@ -20,6 +20,7 @@ import { t } from "@/lib/i18n";
 import { connectDatabase, disconnectDatabase } from "@/lib/tauri-commands";
 import { log } from "@/lib/log";
 import type { TreeNode } from "./types";
+import { createPortal } from "react-dom";
 
 // ===== Connection Context Menu =====
 
@@ -104,9 +105,9 @@ export function ContextMenu({
     onClose();
   };
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-[9999]" onClick={onClose} />
       <div
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
         style={{
@@ -185,7 +186,8 @@ export function ContextMenu({
           <span>{t("sidebar.delete")}</span>
         </button>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -270,9 +272,9 @@ export function TreeNodeContextMenu({
   ].includes(node.type);
   const canNewQuery = ["database", "schema", "table"].includes(node.type);
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-[9999]" onClick={onClose} />
       <div
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
         style={{
@@ -415,6 +417,7 @@ export function TreeNodeContextMenu({
           {t("sidebar.nodeType")}: {node.type}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

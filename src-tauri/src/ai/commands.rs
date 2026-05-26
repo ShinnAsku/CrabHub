@@ -18,6 +18,25 @@ pub struct OptimizationResult {
     rewritten_query: Option<String>,
 }
 
+/// Test AI provider connection by sending a minimal ping message.
+#[tauri::command]
+pub async fn test_ai_connection(
+    provider: String,
+    endpoint: String,
+    api_key: String,
+    model: String,
+) -> Result<String, String> {
+    let client = AIClient::new(&provider, &endpoint, &api_key, &model)
+        .map_err(|e| format!("Failed to create AI client: {}", e))?;
+    let messages = vec![Message {
+        role: "user".to_string(),
+        content: "ping".to_string(),
+    }];
+    let content = client.chat(&messages).await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+    Ok(content)
+}
+
 /// Chat with AI assistant (non-streaming)
 #[tauri::command]
 pub async fn ai_chat(
@@ -84,7 +103,7 @@ pub async fn check_sql_safety(sql: String) -> Result<serde_json::Value, String> 
 // probe / overwrite arbitrary keyring entries.
 
 fn ai_keyring_entry(provider: &str) -> Result<keyring::Entry, String> {
-    const ALLOWED: &[&str] = &["deepseek", "qwen", "ollama", "openai"];
+    const ALLOWED: &[&str] = &["deepseek", "qwen", "ollama", "openai", "custom"];
     if !ALLOWED.contains(&provider) {
         return Err(format!("Unsupported AI provider: {}", provider));
     }

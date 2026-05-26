@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useAppStore, useUIStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
-import { setAiApiKey, getAiApiKey, type AIProvider } from "@/lib/ai-commands";
+import { setAiApiKey, getAiApiKey, testAiConnection } from "@/lib/ai-commands";
 import { AgentToolCard } from "@/components/AgentToolCard";
 import { AgentConfirmBar } from "@/components/AgentConfirmBar";
 // Reserved for agent event rendering in chat messages
@@ -32,7 +32,7 @@ void AgentConfirmBar;
 // ===== AI Settings Types =====
 
 interface AISettings {
-  provider: "deepseek" | "qwen" | "ollama" | "openai";
+  provider: "deepseek" | "qwen" | "ollama" | "openai" | "custom";
   endpoint: string;
   apiKey: string;
   model: string;
@@ -58,6 +58,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   qwen: "Qwen",
   ollama: "Ollama",
   openai: "OpenAI",
+  custom: "Custom",
 };
 
 // ===== Message Types =====
@@ -82,13 +83,28 @@ function AISettingsDialog({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<AISettings>({ ...settings });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const resp = await testAiConnection(form.provider, form.endpoint, form.apiKey, form.model);
+      setTestResult({ ok: true, msg: resp.slice(0, 200) });
+    } catch (e: any) {
+      setTestResult({ ok: false, msg: String(e).slice(0, 300) });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const handleProviderChange = (provider: AISettings["provider"]) => {
     setForm({
       ...form,
       provider,
-      endpoint: DEFAULT_ENDPOINTS[provider] ?? "",
-      model: DEFAULT_MODELS[provider] ?? "",
+      endpoint: DEFAULT_ENDPOINTS[provider] ?? form.endpoint,
+      model: DEFAULT_MODELS[provider] ?? form.model,
     });
   };
 
@@ -182,22 +198,45 @@ function AISettingsDialog({
             />
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={() => {
-              onSave(form);
-              onClose();
-            }}
-            className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            {t('common.save')}
-          </button>
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTest}
+              disabled={testing}
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors disabled:opacity-50"
+            >
+              {testing ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 size={12} className="animate-spin" />
+                  {t('connection.testing')}
+                </span>
+              ) : (
+                t('connection.testConnection')
+              )}
+            </button>
+            {testResult && (
+              <span className={`text-[11px] ${testResult.ok ? 'text-green-500' : 'text-destructive'}`}>
+                {testResult.ok ? '✓ ' + t('connection.testSuccess') : '✗ ' + t('connection.testFailed')}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={() => {
+                onSave(form);
+                onClose();
+              }}
+              className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              {t('common.save')}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -210,43 +249,65 @@ function AIPanel() {
   const { connections, activeConnectionId, addTab, tabs, activeTabId, updateTabContent, toggleAIPanel } =
     useAppStore();
 
-  const [settings, setSettings] = useState<AISettings>(() => {
-    try {
-      const saved = localStorage.getItem("crabhub-ai-settings");
-      if (saved) {
-        const parsed = JSON.parse(saved) as Partial<AISettings>;
-        // Migration: any legacy plain-text apiKey is stripped here; the actual
-        // key is loaded asynchronously from the OS keyring below.
-        return {
-          provider: parsed.provider ?? "deepseek",
-          endpoint: parsed.endpoint ?? (DEFAULT_ENDPOINTS["deepseek"] as string),
-          apiKey: "",
-          model: parsed.model ?? (DEFAULT_MODELS["deepseek"] as string),
-          temperature: parsed.temperature ?? 0.3,
-        };
-      }
-    } catch {
-      // Ignore
-    }
-    return {
-      provider: "deepseek" as const,
-      endpoint: DEFAULT_ENDPOINTS["deepseek"] as string,
-      apiKey: "",
-      model: DEFAULT_MODELS["deepseek"] as string,
-      temperature: 0.3,
-    };
-  });
+  const [settings, setSettings] = useState<AISettings>(() => ({
+    provider: "deepseek" as const,
+    endpoint: DEFAULT_ENDPOINTS["deepseek"] as string,
+    apiKey: "",
+    model: DEFAULT_MODELS["deepseek"] as string,
+    temperature: 0.3,
+  }));
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content:
-        t('ai.welcome'),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const sessionIdRef = useRef(`session-${Date.now()}`);
+
+  // Load chat history from SQLite on mount
+  useEffect(() => {
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (!isTauri) { setHistoryLoaded(true); return; }
+    import("@tauri-apps/api/core").then(async ({ invoke }) => {
+      try {
+        const rows = await invoke("load_chat_history", { sessionId: sessionIdRef.current }) as [string, string, string][];
+        if (rows.length > 0) {
+          setMessages(rows.map((r, i) => ({
+            id: String(i + 1),
+            role: r[0] as "user" | "assistant",
+            content: r[1],
+          })));
+        }
+      } catch { /* ignore */ }
+      setHistoryLoaded(true);
+    });
+  }, []);
+
+  // Save new messages to SQLite
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (!isTauri) return;
+    import("@tauri-apps/api/core").then(async ({ invoke }) => {
+      try {
+        const existing = await invoke("load_chat_history", { sessionId: sessionIdRef.current }) as [string, string, string][];
+        const existingCount = existing.length;
+        if (messages.length > existingCount) {
+          for (let i = existingCount; i < messages.length; i++) {
+            const msg = messages[i]!;
+            if (!msg.streaming) {
+              await invoke("save_chat_message", {
+                sessionId: sessionIdRef.current,
+                role: msg.role,
+                content: msg.content,
+              });
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    });
+  }, [messages, historyLoaded]);
+
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -257,68 +318,56 @@ function AIPanel() {
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 });
 
-  // One-time migration of any legacy plain-text key in localStorage into the
-  // keyring, plus initial keyring load for the current provider.
+  // Resize state
+  const [panelWidth, setPanelWidth] = useState(380);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef({ mouseX: 0, startWidth: 380 });
+
+  // Load settings + API key on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const saved = localStorage.getItem("crabhub-ai-settings");
-        if (saved) {
-          const parsed = JSON.parse(saved) as Partial<AISettings>;
-          if (parsed?.apiKey && parsed.provider) {
-            await setAiApiKey(parsed.provider as AIProvider, parsed.apiKey);
-            // Re-persist without the key so it never sits in localStorage again.
-            const stripped = { ...parsed, apiKey: "" };
-            localStorage.setItem("crabhub-ai-settings", JSON.stringify(stripped));
+        const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+        if (isTauri) {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const json = await invoke("load_ai_settings") as string | null;
+          if (!cancelled && json) {
+            const saved = JSON.parse(json) as Partial<AISettings>;
+            setSettings(prev => ({
+              ...prev,
+              provider: saved.provider ?? prev.provider,
+              endpoint: saved.endpoint ?? prev.endpoint,
+              model: saved.model ?? prev.model,
+              temperature: saved.temperature ?? prev.temperature,
+            }));
           }
         }
-      } catch {
-        // best-effort migration
-      }
+      } catch { /* ignore */ }
       try {
-        const key = await getAiApiKey(settings.provider);
-        if (!cancelled && key) {
-          setSettings((prev) => ({ ...prev, apiKey: key }));
-        }
-      } catch {
-        // ignore; user can re-enter
-      }
+        const key = await getAiApiKey("deepseek");
+        if (!cancelled && key) setSettings(prev => ({ ...prev, apiKey: key }));
+      } catch { /* ignore */ }
+      setSettingsLoaded(true);
     })();
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally only on mount.
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-load key whenever the active provider changes (after first mount).
+  // Save settings to SQLite whenever they change
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const key = await getAiApiKey(settings.provider);
-        if (!cancelled) {
-          setSettings((prev) =>
-            prev.apiKey === key ? prev : { ...prev, apiKey: key }
-          );
-        }
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [settings.provider]);
-
-  // Save settings to localStorage WITHOUT the API key. The key lives in the
-  // OS keyring only.
-  useEffect(() => {
+    if (!settingsLoaded) return;
     const { apiKey: _omit, ...safe } = settings;
     void _omit;
-    localStorage.setItem("crabhub-ai-settings", JSON.stringify(safe));
-  }, [settings]);
+    try {
+      const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+      if (isTauri) {
+        import("@tauri-apps/api/core").then(({ invoke }) =>
+          invoke("save_ai_settings", { settingsJson: JSON.stringify(safe) })
+        ).catch(() => {});
+      }
+    } catch { /* ignore */ }
+  }, [settings, settingsLoaded]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -355,6 +404,27 @@ function AIPanel() {
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDragging]);
+
+  // Resize handlers
+  useEffect(() => {
+    if (!isResizing) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = resizeStartRef.current.mouseX - e.clientX;
+      const newWidth = Math.max(280, Math.min(800, resizeStartRef.current.startWidth + deltaX));
+      setPanelWidth(newWidth);
+    };
+    const handleMouseUp = () => setIsResizing(false);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizing]);
 
   // Build system prompt with database context
   const buildSystemPrompt = useCallback(() => {
@@ -398,7 +468,7 @@ function AIPanel() {
 
   // Extract SQL blocks from markdown
   const extractSqlBlocks = (text: string): string[] => {
-    const regex = /```sql\n([\s\S]*?)```/g;
+    const regex = /```sql\r?\n?([\s\S]*?)```/g;
     const blocks: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
@@ -634,12 +704,14 @@ function AIPanel() {
     [activeTabId, tabs, addTab, updateTabContent]
   );
 
-  // Simple markdown-like rendering
+  // Simple markdown-like rendering — extracts SQL blocks and renders
+  // them with copy/run/insert buttons, separated from conversation text.
   const renderContent = (content: string) => {
-    const parts = content.split(/(```sql\n[\s\S]*?```)/g);
+    const parts = content.split(/(```sql[\s\S]*?```)/g);
     return parts.map((part, i) => {
       if (part.startsWith("```sql")) {
-        const sql = part.replace(/```sql\n/, "").replace(/```$/, "").trim();
+        // Strip ```sql and trailing ```, handle optional newline after "sql"
+        const sql = part.replace(/^```sql\r?\n?/, "").replace(/```$/, "").trim();
         return (
           <div key={i} className="my-1.5">
             <pre className="bg-muted/80 rounded p-2 text-xs font-mono overflow-x-auto text-foreground border border-border/50">
@@ -686,11 +758,23 @@ function AIPanel() {
         right: panelOffset.x,
         top: panelOffset.y,
         bottom: "24px",
-        width: "380px",
+        width: `${panelWidth}px`,
         borderRadius: "6px 0 0 6px",
-        userSelect: isDragging ? "none" : undefined,
+        userSelect: isDragging || isResizing ? "none" : undefined,
       }}
     >
+      {/* Left resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-[hsl(var(--tab-active))]/30 transition-colors z-10"
+        style={{ left: -3 }}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsResizing(true);
+          resizeStartRef.current = { mouseX: e.clientX, startWidth: panelWidth };
+        }}
+      />
+
       {/* Drag Handle + Header */}
       <div
         className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0 select-none"

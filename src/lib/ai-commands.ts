@@ -96,7 +96,17 @@ export async function formatSQL(sql: string): Promise<string> {
 // AI API-key keyring helpers
 // ---------------------------------------------------------------------------
 
-export type AIProvider = "deepseek" | "qwen" | "ollama" | "openai";
+export type AIProvider = "deepseek" | "qwen" | "ollama" | "openai" | "custom";
+
+/** Test the AI provider connection with a minimal ping message. */
+export async function testAiConnection(
+  provider: string,
+  endpoint: string,
+  apiKey: string,
+  model: string,
+): Promise<string> {
+  return invoke("test_ai_connection", { provider, endpoint, apiKey, model });
+}
 
 /** Persist the API key for `provider` in the OS keyring. Empty string deletes it. */
 export async function setAiApiKey(provider: AIProvider, key: string): Promise<void> {

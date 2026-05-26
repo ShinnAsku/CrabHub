@@ -47,7 +47,7 @@ impl AIClient {
 
         let response = self
             .client
-            .post(&self.endpoint)
+            .post(format!("{}/chat/completions", self.endpoint))
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
@@ -96,7 +96,7 @@ impl AIClient {
 
         let response = self
             .client
-            .post(&self.endpoint)
+            .post(format!("{}/chat/completions", self.endpoint))
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
@@ -154,7 +154,7 @@ impl AIClient {
     pub async fn chat_raw(&self, request: &serde_json::Value) -> Result<String, AiError> {
         let response = self
             .client
-            .post(&self.endpoint)
+            .post(format!("{}/chat/completions", self.endpoint))
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(request)

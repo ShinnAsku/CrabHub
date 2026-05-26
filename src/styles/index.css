@@ -166,3 +166,18 @@ body {
 [data-panel-group-direction="horizontal"] > [data-resize-handle-active] {
   background-color: hsl(var(--tab-active) / 0.3);
 }
+
+/* ===== Select dropdowns ===== */
+select {
+  border-radius: 0.5rem;
+}
+select option {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 4px 8px;
+}
+select option:checked,
+select option:hover {
+  background: linear-gradient(hsl(var(--tab-active) / 0.3), hsl(var(--tab-active) / 0.3));
+  background-color: hsl(var(--tab-active) / 0.25);
+}

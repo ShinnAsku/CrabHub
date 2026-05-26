@@ -119,10 +119,13 @@ impl DatabaseConnection for GaussAsyncConnection {
             .unwrap_or_default();
 
         self.query_sql(&format!(
-            "SELECT column_name, data_type, is_nullable, column_default \
-             FROM information_schema.columns \
-             WHERE table_schema='{}' AND table_name='{}' \
-             ORDER BY ordinal_position",
+            "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, \
+             pg_catalog.col_description(pg_class.oid, c.ordinal_position) AS column_comment \
+             FROM information_schema.columns c \
+             JOIN pg_catalog.pg_class ON pg_class.relname = c.table_name \
+             JOIN pg_catalog.pg_namespace nsp ON nsp.oid = pg_class.relnamespace AND nsp.nspname = c.table_schema \
+             WHERE c.table_schema='{}' AND c.table_name='{}' \
+             ORDER BY c.ordinal_position",
             s_escaped, t_escaped
         )).await.map(|r| {
             r.rows.iter().map(|row| ColumnInfo {
@@ -132,7 +135,8 @@ impl DatabaseConnection for GaussAsyncConnection {
                 is_primary_key: row.get("column_name").and_then(|v| v.as_str())
                     .map(|name| pk_columns.contains(name)).unwrap_or(false),
                 default_value: row.get("column_default").and_then(|v| v.as_str().map(String::from)),
-                comment: None, character_maximum_length: None, numeric_precision: None, numeric_scale: None,
+                comment: row.get("column_comment").and_then(|v| v.as_str().map(String::from)),
+                character_maximum_length: None, numeric_precision: None, numeric_scale: None,
             }).collect()
         })
     }
