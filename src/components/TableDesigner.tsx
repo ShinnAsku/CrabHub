@@ -16,6 +16,7 @@ import { t } from "@/lib/i18n";
 import { DATA_TYPES, getDataTypeInfo, normalizeDbType, isSequenceDefault, type DataType } from "@/lib/data-types";
 import { generateCreateTable, generateAlterTable, type ColumnDef, type TableDef } from "@/lib/ddl-generator";
 import { executeSql, getColumns, getSchemas, getTableIndexes, getTableForeignKeys } from "@/lib/tauri-commands";
+import { log } from "@/lib/log";
 
 interface TableDesignerProps {
   connectionId?: string;
@@ -90,7 +91,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
     try {
       const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
       if (!isTauri) return;
-      console.log('[TableDesigner] Refreshing columns for:', editTable.name, 'schema:', editTable.schema);
+      log.debug('[TableDesigner] Refreshing columns for:', editTable.name, 'schema:', editTable.schema);
       const cols = await getColumns(connId, editTable.name, editTable.schema);
       const columnDefs: ColumnDef[] = cols.map((c) => {
         const normalizedType = normalizeDbType(dbType, c.type);
@@ -309,8 +310,7 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0 gap-2">
         <div className="flex items-center gap-1">
           {/* Save/Execute */}
-          <button
-            onClick={handleExecute}
+          <button aria-label={t('designer.save')} onClick={handleExecute}
             disabled={!sqlPreview || !connId || isExecuting}
             className="flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-500/10 rounded transition-colors disabled:opacity-30"
             title={t('designer.save')}
@@ -318,16 +318,14 @@ function TableDesigner({ connectionId, editTable }: TableDesignerProps) {
             {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           </button>
           {/* Add Column */}
-          <button
-            onClick={addColumn}
+          <button aria-label={t('designer.addColumn')} onClick={addColumn}
             className="flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-500/10 rounded transition-colors"
             title={t('designer.addColumn')}
           >
             <Plus size={14} />
           </button>
           {/* Refresh */}
-          <button
-            onClick={handleRefresh}
+          <button aria-label={t('designer.refresh')} onClick={handleRefresh}
             disabled={!isEditMode}
             className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:bg-muted rounded transition-colors disabled:opacity-30"
             title={t('designer.refresh')}

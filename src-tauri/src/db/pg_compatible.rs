@@ -1,11 +1,10 @@
 use async_trait::async_trait;
 use sqlx::{Column, Row};
 use std::time::{Duration, Instant};
-use tokio_util::sync::CancellationToken;
 
 use super::dialect::DialectConfig;
 use super::pg_utils;
-use super::trait_def::{escape_identifier, json_value_to_sql, sanitize_where_clause, DatabaseConnection};
+use super::trait_def::{escape_identifier, escape_sql_string, json_value_to_sql, DatabaseConnection};
 use super::types::{
     ColumnInfo, ConnectionConfig, DatabaseType, DbError, ExecuteResult, QueryResult, TableInfo,
 };
@@ -18,8 +17,6 @@ use super::types::{
 pub struct PgCompatibleConnection {
     pool: sqlx::PgPool,
     dialect: DialectConfig,
-    #[allow(dead_code)]
-    cancel_token: CancellationToken,
 }
 
 impl PgCompatibleConnection {
@@ -63,13 +60,7 @@ impl PgCompatibleConnection {
         Ok(Self {
             pool,
             dialect,
-            cancel_token: CancellationToken::new(),
         })
-    }
-
-    /// Cancel the current running query by signalling the cancellation token.
-    pub fn cancel(&self) {
-        self.cancel_token.cancel();
     }
 }
 
@@ -185,6 +176,24 @@ impl DatabaseConnection for PgCompatibleConnection {
         let schema_name = schema.unwrap_or("public");
         let sql = self.dialect.metadata_queries.list_columns;
 
+        // Fetch primary key columns
+        let pk_sql = "SELECT kcu.column_name FROM information_schema.table_constraints tc \
+             JOIN information_schema.key_column_usage kcu \
+             ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema \
+             WHERE tc.constraint_type = 'PRIMARY KEY' \
+             AND tc.table_schema = $1 AND tc.table_name = $2";
+        let pk_rows = sqlx::query(pk_sql)
+            .bind(schema_name)
+            .bind(table)
+            .fetch_all(&self.pool)
+            .await;
+
+        let pk_columns: std::collections::HashSet<String> = pk_rows
+            .map(|rows| rows.iter()
+                .filter_map(|r| r.try_get::<String, _>(0).ok())
+                .collect())
+            .unwrap_or_default();
+
         let rows = sqlx::query(sql)
             .bind(schema_name)
             .bind(table)
@@ -199,11 +208,12 @@ impl DatabaseConnection for PgCompatibleConnection {
                 let char_max_len: Option<i32> = row.get("character_maximum_length");
                 let num_precision: Option<i64> = row.get("numeric_precision");
                 let num_scale: Option<i64> = row.get("numeric_scale");
+                let col_name: String = row.get("column_name");
                 ColumnInfo {
-                    name: row.get("column_name"),
+                    name: col_name.clone(),
                     data_type: row.get("data_type"),
                     nullable: is_nullable == "YES",
-                    is_primary_key: false,
+                    is_primary_key: pk_columns.contains(&col_name),
                     default_value: row.get("column_default"),
                     comment: None,
                     character_maximum_length: char_max_len.map(|v| v as i64),
@@ -235,7 +245,7 @@ impl DatabaseConnection for PgCompatibleConnection {
             Some(s) => format!(
                 "{} AND table_schema = '{}'",
                 sql,
-                s.replace('\'', "''")
+                escape_sql_string(s)
             ),
             None => sql.to_string(),
         };
@@ -430,7 +440,7 @@ impl DatabaseConnection for PgCompatibleConnection {
         } else {
             String::new()
         };
-        let offset = (page - 1) * page_size;
+        let offset = (page.saturating_sub(1)) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
             full_table_ref, order_clause, page_size, offset

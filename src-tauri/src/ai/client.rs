@@ -1,10 +1,12 @@
 use crate::ai::types::{
-    ChatCompletionRequest, ChatCompletionResponse, Message, StreamChunk, StreamDelta, AiError,
+    ChatCompletionRequest, ChatCompletionResponse, Message, StreamChunk, AiError,
 };
+use futures_util::StreamExt;
 use reqwest;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AIClient {
     client: reqwest::Client,
     provider: String,
@@ -77,7 +79,9 @@ impl AIClient {
         }
     }
 
-    /// Send chat request with streaming support
+    /// Send chat request with streaming support.
+    /// Uses byte-stream to process SSE chunks incrementally without buffering
+    /// the entire response in memory.
     pub async fn chat_stream(
         &self,
         messages: &[Message],
@@ -112,36 +116,64 @@ impl AIClient {
             )));
         }
 
-        // Get response as text and parse SSE
-        let text = response
-            .text()
-            .await
-            .map_err(|e| AiError::StreamError(format!("Failed to read stream: {}", e)))?;
+        // Process SSE chunks incrementally via byte stream
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
 
-        // Parse SSE data from complete response
-        for line in text.lines() {
-            let line = line.trim();
-            if !line.starts_with("data: ") {
-                continue;
-            }
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| AiError::StreamError(format!("Stream error: {}", e)))?;
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-            let data = &line[6..];
-            if data == "[DONE]" {
-                continue;
-            }
+            // Process complete lines from buffer
+            while let Some(pos) = buffer.find('\n') {
+                let line = buffer[..pos].trim().to_string();
+                buffer.drain(..=pos);
 
-            if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data) {
-                if let Some(choice) = parsed.choices.first() {
-                    if let Some(content) = &choice.delta.content {
-                        tx.send(content.clone())
-                            .await
-                            .map_err(|e| AiError::StreamError(format!("Send error: {}", e)))?;
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data == "[DONE]" {
+                        continue;
+                    }
+                    if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data) {
+                        if let Some(choice) = parsed.choices.first() {
+                            if let Some(content) = &choice.delta.content {
+                                if tx.send(content.clone()).await.is_err() {
+                                    return Ok(()); // receiver dropped, stop gracefully
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// Send a raw JSON request and get the raw text response back.
+    /// Used by the agent loop which constructs its own request format.
+    pub async fn chat_raw(&self, request: &serde_json::Value) -> Result<String, AiError> {
+        let response = self
+            .client
+            .post(&self.endpoint)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| AiError::HttpError(format!("Request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AiError::ApiError(format!("API error ({}): {}", status, body)));
+        }
+
+        response.text().await
+            .map_err(|e| AiError::StreamError(format!("Failed to read response: {}", e)))
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
     pub fn get_provider(&self) -> &str {

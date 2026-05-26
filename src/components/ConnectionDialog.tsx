@@ -12,6 +12,7 @@ import {
   Lock,
   Server,
   Settings,
+  ChevronDown,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useConnectionStore } from "@/stores/modules/connection";
@@ -20,6 +21,7 @@ import { connectDatabase, disconnectDatabase, testConnection } from "@/lib/tauri
 import { storePassword, getPassword, removePassword } from "@/lib/secure-storage";
 import { t } from "@/lib/i18n";
 import { showMessage } from "./MessageDialog";
+import { log } from "@/lib/log";
 
 interface ConnectionDialogProps {
   isOpen: boolean;
@@ -31,9 +33,19 @@ interface ConnectionDialogProps {
 const BUILTIN_DB_TYPES: { value: string; label: string; port: number; color: string }[] = [
   { value: "postgresql", label: "PostgreSQL", port: 5432, color: "#336791" },
   { value: "mysql", label: "MySQL", port: 3306, color: "#4479A1" },
-  { value: "sqlite", label: "SQLite", port: 0, color: "#44A05E" },
+  { value: "gaussdb", label: "GaussDB", port: 8000, color: "#FF6B00" },
   { value: "clickhouse", label: "ClickHouse", port: 8123, color: "#FFCC00" },
-  { value: "gaussdb", label: "GaussDB (GaussDB/openGauss)", port: 5432, color: "#FF6B00" },
+  { value: "sqlite", label: "SQLite", port: 0, color: "#44A05E" },
+  { value: "kingbase", label: "Kingbase", port: 54321, color: "#D4212A" },
+  { value: "vastbase", label: "Vastbase", port: 5432, color: "#0067B8" },
+  { value: "yashandb", label: "YashanDB", port: 1688, color: "#00A870" },
+  { value: "oceanbase", label: "OceanBase", port: 3306, color: "#0077C8" },
+  { value: "tidb", label: "TiDB", port: 3306, color: "#E6005C" },
+  { value: "tdsql", label: "TDSQL", port: 3306, color: "#0052D9" },
+  { value: "oracle", label: "Oracle", port: 1521, color: "#F80000" },
+  { value: "sqlserver", label: "SQL Server", port: 1433, color: "#CC2927" },
+  { value: "dameng", label: "DaMeng", port: 5236, color: "#BA0C2F" },
+  { value: "gbase", label: "GBase", port: 5258, color: "#1E6C93" },
 ];
 
 // 插件数据库类型接口
@@ -138,7 +150,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           .filter(plugin => plugin.enabled ?? true)
           .map(plugin => ({
             value: `plugin:${plugin.id}`,
-            label: `Plugin: ${plugin.name}`,
+            label: plugin.name,
             port: plugin.default_port || 0,
             color: "#6c757d" // 灰色，代表插件
           }));
@@ -319,9 +331,9 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
         filePath: isSQLite ? filePath : undefined,
         poolOptions: buildPoolOptions(),
       };
-      console.log("Testing connection with config:", config);
+      log.debug("Testing connection with", { name: config.name, type: config.type, host: config.host, port: config.port, database: config.database });
       const success = await testConnection(config);
-      console.log("Connection test result:", success);
+      log.debug("Connection test result:", success);
       
       // 弹窗提示测试结果
       if (success) {
@@ -395,7 +407,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
   };
 
   const handleSave = async () => {
-    console.log('Save button clicked!');
+    log.debug('Save button clicked!');
     
     // Validate connection name - must be filled
     if (!name.trim()) {
@@ -407,6 +419,38 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
     if ((type === "postgresql" || type === "gaussdb") && !database.trim()) {
       await showMessage(t('connection.databaseRequired'));
       return;
+    }
+
+    // Network databases require host + valid port
+    if (!isSQLite) {
+      if (!host.trim()) {
+        await showMessage(t('connection.hostRequired'));
+        return;
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        await showMessage(t('connection.portInvalid'));
+        return;
+      }
+    }
+
+    // SSH tunnel validation
+    if (sshEnabled) {
+      if (!sshHost.trim()) {
+        await showMessage(t('connection.sshHostRequired'));
+        return;
+      }
+      if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
+        await showMessage(t('connection.sshPortInvalid'));
+        return;
+      }
+      if (!sshPassword && !sshPrivateKey) {
+        await showMessage(t('connection.sshAuthRequired'));
+        return;
+      }
+      if (sshPrivateKey && !/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(sshPrivateKey)) {
+        await showMessage(t('connection.sshKeyInvalid'));
+        return;
+      }
     }
 
     // Check for duplicate connection name
@@ -447,20 +491,20 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               privateKey: sshPrivateKey || undefined,
             } : undefined,
         };
-      console.log('Connection config:', config);
+      log.debug('Connection config:', { name: config.name, type: config.type, host: config.host, port: config.port, database: config.database });
 
       // Store password securely if not SQLite
       if (!isSQLite && password) {
-        console.log('Storing password for:', newId);
+        log.debug('Storing password for:', newId);
         await storePassword(newId, password);
       } else if (!isSQLite && !password && editConnection) {
         // Remove password if it's being cleared
-        console.log('Removing password for:', newId);
+        log.debug('Removing password for:', newId);
         await removePassword(newId);
       }
 
       if (editConnection) {
-        console.log('Updating existing connection:', editConnection.id);
+        log.debug('Updating existing connection:', editConnection.id);
         // If currently connected, disconnect and reconnect with new config
         if (editConnection.connected) {
           try {
@@ -494,9 +538,9 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
             privateKey: sshPrivateKey || undefined,
           } : undefined,
         });
-        console.log('Connection updated successfully');
+        log.debug('Connection updated successfully');
       } else {
-        console.log('Adding new connection');
+        log.debug('Adding new connection');
         // Try to connect
         let connected = false;
         let detectedType: string = type;
@@ -506,12 +550,12 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           if (result.detectedType) {
             detectedType = result.detectedType;
           }
-          console.log('Connection successful, detected type:', detectedType);
+          log.debug('Connection successful, detected type:', detectedType);
         } catch (error) {
           console.error('Connection failed:', error);
           // Save without connecting
         }
-        console.log('Adding connection to store...');
+        log.debug('Adding connection to store...');
         addConnection({
           id: newId,
           name: connectionName,
@@ -527,21 +571,21 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           poolOptions: buildPoolOptions(),
           connected,
         });
-        console.log('Connection added to store');
+        log.debug('Connection added to store');
         if (connected) {
           setActiveConnection(newId);
-          console.log('Active connection set to:', newId);
+          log.debug('Active connection set to:', newId);
         }
       }
 
-      console.log('Closing dialog and resetting form');
+      log.debug('Closing dialog and resetting form');
       onClose();
       resetForm();
     } catch (error) {
       console.error('Save error:', error);
     } finally {
       setSaving(false);
-      console.log('Save operation completed');
+      log.debug('Save operation completed');
     }
   };
 
@@ -571,18 +615,31 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as Connection["type"])}
-                  className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground cursor-pointer pr-8"
+                  className="w-full appearance-none pl-7 pr-8 py-2 text-xs bg-background border border-border rounded-md outline-none focus:border-[hsl(var(--tab-active))] focus:ring-1 focus:ring-[hsl(var(--tab-active))/30 transition-all text-foreground cursor-pointer hover:border-muted-foreground/30"
                 >
-                  {getAllDbTypes().map((db) => (
+                  {BUILTIN_DB_TYPES.map((db) => (
                     <option key={db.value} value={db.value}>
                       {db.label}
                     </option>
                   ))}
+                  {pluginDbTypes.length > 0 && (
+                    <optgroup label={pluginDbTypes.length > 0 ? "────────── Plugin ──────────" : undefined as any}>
+                      {pluginDbTypes.map((db) => (
+                        <option key={db.value} value={db.value}>
+                          {db.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <Database
+                  size={14}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: getAllDbTypes().find((d) => d.value === type)?.color }}
+                />
+                <ChevronDown
                   size={12}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                  style={{ color: getAllDbTypes().find((d) => d.value === type)?.color }}
                 />
               </div>
             </div>
@@ -628,8 +685,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                       placeholder={sqliteMode === "new" ? t('connection.sqliteNewPlaceholder') : "/path/to/database.db"}
                       className="flex-1 px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
                     />
-                    <button
-                      onClick={handleBrowse}
+                    <button aria-label={t('connection.browse')} onClick={handleBrowse}
                       className="p-1.5 bg-muted border border-border rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                       title={t('connection.browse')}
                     >
@@ -753,13 +809,11 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
 
             {/* Connection pool overrides. Empty = use backend default for this DB type. */}
             <div className="space-y-2 p-2.5 bg-muted/30 rounded border border-border/50">
-              <label className="text-xs font-medium text-muted-foreground">Connection Pool</label>
-              <p className="text-[10px] text-muted-foreground/60">
-                Leave blank to use the safe per-database defaults.
-              </p>
+              <label className="text-xs font-medium text-muted-foreground">{t('connection.poolTitle')}</label>
+              <p className="text-[10px] text-muted-foreground/60">{t('connection.poolHint')}</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-2">
-                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Max connections</label>
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">{t('connection.poolMaxConnections')}</label>
                   <input
                     type="number"
                     value={poolMaxConnections}
@@ -771,7 +825,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Acquire timeout</label>
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">{t('connection.poolAcquireTimeout')}</label>
                   <input
                     type="number"
                     value={poolAcquireTimeoutSecs}
@@ -784,7 +838,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   <span className="text-[10px] text-muted-foreground">s</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Idle timeout</label>
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">{t('connection.poolIdleTimeout')}</label>
                   <input
                     type="number"
                     value={poolIdleTimeoutSecs}
@@ -797,7 +851,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   <span className="text-[10px] text-muted-foreground">s</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">Max lifetime</label>
+                  <label className="text-[11px] text-muted-foreground whitespace-nowrap w-28">{t('connection.poolMaxLifetime')}</label>
                   <input
                     type="number"
                     value={poolMaxLifetimeSecs}

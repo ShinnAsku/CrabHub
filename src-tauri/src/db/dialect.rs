@@ -2,11 +2,8 @@ use std::collections::HashMap;
 use super::types::DatabaseType;
 
 /// 标识符引用风格
-//
-// `Bracket` is reserved for future SQL Server / GBase support; not currently
-// constructed but kept on the enum for forward compatibility.
+/// `Bracket` for SQL Server, `Backtick` for MySQL/ClickHouse, `Double` for others.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum QuoteStyle {
     Double,   // "identifier" (PG, GaussDB, Kingbase, Oracle)
     Backtick, // `identifier` (MySQL, ClickHouse, TiDB)
@@ -19,7 +16,6 @@ pub enum QuoteStyle {
 // is reserved for SQL Server. Both stay on the enum even though no driver
 // currently dispatches on them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum LimitSyntax {
     LimitOffset,  // LIMIT N OFFSET M (PG, MySQL, SQLite)
     FetchNext,    // FETCH NEXT N ROWS ONLY (Oracle 12c+, DB2)
@@ -188,20 +184,31 @@ impl DialectConfig {
     }
 
     /// Kingbase 方言 — 基于 PG，覆盖差异
-    /// Reserved for future Kingbase driver support.
-    #[allow(dead_code)]
     pub fn kingbase() -> Self {
         let mut d = Self::pg_standard();
         d.db_type = DatabaseType::Kingbase;
         d.default_port = 54321;
-        // Kingbase 某些版本用 SYSDATE 代替 NOW()
         d.function_map.insert("NOW()", "SYSDATE");
         d
     }
 
+    /// Vastbase 方言 — 基于 PG
+    pub fn vastbase() -> Self {
+        let mut d = Self::pg_standard();
+        d.db_type = DatabaseType::Vastbase;
+        d
+    }
+
+    /// YashanDB 方言 — 基于 PG，默认端口 1688
+    pub fn yashandb() -> Self {
+        let mut d = Self::pg_standard();
+        d.db_type = DatabaseType::YashanDB;
+        d.default_port = 1688;
+        d
+    }
+
     /// Oracle 方言（ODBC 模式）
-    /// Reserved for future Oracle driver support.
-    #[allow(dead_code)]
+    /// Oracle 方言（ODBC 模式）— provides metadata query templates for ODBC bridge.
     pub fn oracle() -> Self {
         Self {
             db_type: DatabaseType::Oracle,

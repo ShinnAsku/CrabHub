@@ -141,82 +141,76 @@ const SqlCell: React.FC<SqlCellProps> = ({
   const availableColumns = cell.result?.columns || [];
 
   return (
-    <div className={`border rounded-lg overflow-hidden ${isActive ? "border-[hsl(var(--tab-active))]" : "border-border"} ${isExpanded ? "" : "h-12"}`}>
+    <div className={`border rounded overflow-hidden ${isActive ? "border-[hsl(var(--tab-active))]" : "border-border"} ${isExpanded ? "" : "h-8"}`}>
       {/* Cell Header */}
-      <div className="flex items-center justify-between bg-muted px-4 py-2">
-        <div className="flex items-center space-x-2">
-          <Code className="w-4 h-4 text-primary" />
+      <div className="flex items-center justify-between bg-muted/30 px-2 py-0.5">
+        <div className="flex items-center gap-1">
+          <Code size={14} className="text-[hsl(var(--tab-active))] shrink-0" />
           {isEditingName ? (
             <form onSubmit={handleNameSubmit} className="flex items-center">
               <input
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="bg-background text-foreground px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] border border-border"
+                className="bg-background text-foreground px-1.5 py-0.5 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] border border-border w-40"
                 autoFocus
                 onBlur={handleNameSubmit}
               />
             </form>
           ) : (
-            <span 
-              className="text-sm font-medium cursor-pointer hover:text-primary"
+            <span
+              className="text-xs font-medium cursor-pointer hover:text-[hsl(var(--tab-active))] truncate max-w-[200px]"
               onClick={() => setIsEditingName(true)}
             >
               {cell.name}
             </span>
           )}
         </div>
-        
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={handleRunClick}
+
+        <div className="flex items-center gap-0.5">
+          <button aria-label={t('notebook.runCell')} onClick={handleRunClick}
             disabled={cell.isRunning}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors disabled:opacity-40"
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
             title={t('notebook.runCell')}
           >
-            {cell.isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {cell.isRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
           </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={isExpanded ? t('common.collapse') : t('common.expand')}
           >
-            {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {isExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
           </button>
-          <button
-            onClick={onAddSqlAfter}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.addSqlCell')} onClick={onAddSqlAfter}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.addSqlCell')}
           >
-            <Plus className="w-4 h-4" />
+            <Plus size={12} />
           </button>
-          <button
-            onClick={onAddMarkdownAfter}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.addMarkdownCell')} onClick={onAddMarkdownAfter}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.addMarkdownCell')}
           >
-            <FileText className="w-4 h-4" />
+            <FileText size={12} />
           </button>
-          <button
-            onClick={onMoveUp}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.moveUp')} onClick={onMoveUp}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.moveUp')}
           >
-            <ArrowUp className="w-4 h-4" />
+            <ArrowUp size={12} />
           </button>
-          <button
-            onClick={onMoveDown}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.moveDown')} onClick={onMoveDown}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.moveDown')}
           >
-            <ArrowDown className="w-4 h-4" />
+            <ArrowDown size={12} />
           </button>
-          <button
-            onClick={onDelete}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+          <button aria-label={t('notebook.deleteCell')} onClick={onDelete}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
             title={t('notebook.deleteCell')}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 size={12} />
           </button>
         </div>
       </div>
@@ -225,7 +219,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
       {isExpanded && (
         <div className="flex flex-col">
           {/* Monaco Editor */}
-          <div className="h-48 border-b border-border">
+          <div className="h-32 border-b border-border">
             <Editor
               height="100%"
               language="sql"
@@ -252,13 +246,13 @@ const SqlCell: React.FC<SqlCellProps> = ({
           </div>
 
           {/* Cell Result */}
-          <div className="p-4">
+          <div className="p-2">
             {cell.executed && cell.result && (
-              <div className="bg-card rounded p-4 border border-border">
+              <div className="bg-card rounded p-2 border border-border">
                 {/* Result View Tabs */}
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
+                <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-medium text-foreground">Results</h4>
+                    <span className="text-xs font-medium text-foreground">Results</span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setViewMode("table")}
@@ -333,7 +327,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
                       <thead>
                         <tr>
                           {cell.result.columns.map((column: string, index: number) => (
-                            <th key={index} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider max-w-[300px]">
+                            <th key={index} className="px-2 py-0.5 text-left text-[11px] font-medium text-muted-foreground uppercase max-w-[300px]">
                               <span className="truncate block">{column}</span>
                             </th>
                           ))}
@@ -343,7 +337,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
                         {cell.result.rows.slice(0, 100).map((row: any[], index: number) => (
                           <tr key={index} className="hover:bg-muted/50">
                             {row.map((value: any, colIndex: number) => (
-                              <td key={colIndex} className="px-4 py-2 text-sm text-foreground">
+                              <td key={colIndex} className="px-2 py-0.5 text-xs text-foreground">
                                 {value === null ? (
                                   <span className="text-muted-foreground">NULL</span>
                                 ) : (
@@ -420,8 +414,8 @@ const SqlCell: React.FC<SqlCellProps> = ({
 
             {cell.executed && cell.error && (
               <div className="bg-destructive/20 border border-destructive rounded p-4">
-                <h4 className="text-sm font-medium mb-2 text-destructive">Error</h4>
-                <p className="text-sm text-destructive">{cell.error}</p>
+                <h4 className="text-xs font-medium mb-1 text-destructive">Error</h4>
+                <p className="text-xs text-destructive">{cell.error}</p>
               </div>
             )}
           </div>

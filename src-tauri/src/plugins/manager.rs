@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::driver::PluginDriver;
 use super::rpc::RpcClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,17 +104,23 @@ impl PluginManager {
             let path = entry.path();
 
             if path.is_dir() {
-                if let Ok(plugin) = self.load_plugin(&path).await {
-                    plugins.insert(plugin.id.clone(), plugin.clone());
-                    // Enable plugin by default if not explicitly disabled
-                    if !enabled.contains(&plugin.id) {
-                        enabled.insert(plugin.id.clone());
+                match self.load_plugin(&path).await {
+                    Ok(plugin) => {
+                        log::info!("Loaded plugin: {} v{}", plugin.id, plugin.version);
+                        plugins.insert(plugin.id.clone(), plugin.clone());
+                        if !enabled.contains(&plugin.id) {
+                            enabled.insert(plugin.id.clone());
+                        }
+                        loaded_plugins.push(plugin);
                     }
-                    loaded_plugins.push(plugin);
+                    Err(e) => {
+                        log::warn!("Skipping plugin in {}: {}", path.display(), e);
+                    }
                 }
             }
         }
 
+        log::info!("Loaded {} plugin(s) from {}", loaded_plugins.len(), self.plugins_dir.display());
         Ok(loaded_plugins)
     }
 
@@ -125,11 +130,19 @@ impl PluginManager {
         let manifest_content = fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
 
-        let plugin: PluginInfo = serde_json::from_str(&manifest_content)
+        let mut plugin: PluginInfo = serde_json::from_str(&manifest_content)
             .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
 
-        // Verify executable exists
-        let executable_path = plugin_path.join(&plugin.executable);
+        // Verify executable exists (try .exe suffix on Windows)
+        let mut executable_path = plugin_path.join(&plugin.executable);
+        #[cfg(target_os = "windows")]
+        if !executable_path.exists() {
+            let with_exe = plugin_path.join(format!("{}.exe", plugin.executable));
+            if with_exe.exists() {
+                executable_path = with_exe;
+                plugin.executable = format!("{}.exe", plugin.executable);
+            }
+        }
         if !executable_path.exists() {
             return Err(format!("Executable not found: {}", executable_path.display()));
         }
@@ -144,6 +157,12 @@ impl PluginManager {
 
     pub async fn get_all_plugins(&self) -> Vec<PluginInfo> {
         let plugins = self.plugins.read().await;
+        if plugins.is_empty() {
+            drop(plugins);
+            // Auto-load if not yet populated (startup background load may not have finished)
+            let _ = self.load_plugins().await;
+            return self.plugins.read().await.values().cloned().collect();
+        }
         plugins.values().cloned().collect()
     }
 

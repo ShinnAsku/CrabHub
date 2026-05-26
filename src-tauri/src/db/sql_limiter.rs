@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Scaffold: items reserved for upcoming features
+
 use super::types::DatabaseType;
 
 // ============================================================================
@@ -263,6 +265,9 @@ pub fn inject_limit_offset(
     let base = strip_limit_offset(trimmed);
 
     match db_type {
+        DatabaseType::SQLServer => {
+            format!("{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY", base, offset, limit)
+        }
         _ => {
             format!("{} LIMIT {} OFFSET {}", base, limit, offset)
         }

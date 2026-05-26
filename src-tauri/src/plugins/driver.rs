@@ -228,7 +228,8 @@ impl DatabaseConnection for PluginDriver {
 
     async fn get_table_row_count(&self, table: &str, schema: Option<&str>) -> Result<u64, DbError> {
         // Tabularis doesn't have a dedicated row count RPC; use execute_query
-        let sql = format!("SELECT COUNT(*) AS count FROM \"{}\"", table);
+        let escaped_table = table.replace('"', "\"\"");
+        let sql = format!("SELECT COUNT(*) AS count FROM \"{}\"", escaped_table);
         let result = if self.is_tabularis {
             self.client.tabularis_execute_query(&self.params, &sql, None, None, schema).await
         } else {
@@ -250,10 +251,12 @@ impl DatabaseConnection for PluginDriver {
     }
 
     async fn get_table_data(&self, table: &str, schema: Option<&str>, page: u32, page_size: u32, order_by: Option<&str>) -> Result<QueryResult, DbError> {
+        let escaped_table = table.replace('"', "\"\"");
         let sql = if let Some(order) = order_by {
-            format!("SELECT * FROM \"{}\" ORDER BY {} LIMIT {} OFFSET {}", table, order, page_size, (page - 1) * page_size)
+            crate::db::trait_def::sanitize_order_by(order)?;
+            format!("SELECT * FROM \"{}\" ORDER BY {} LIMIT {} OFFSET {}", escaped_table, order, page_size, (page - 1) * page_size)
         } else {
-            format!("SELECT * FROM \"{}\" LIMIT {} OFFSET {}", table, page_size, (page - 1) * page_size)
+            format!("SELECT * FROM \"{}\" LIMIT {} OFFSET {}", escaped_table, page_size, (page - 1) * page_size)
         };
         let result = if self.is_tabularis {
             self.client.tabularis_execute_query(&self.params, &sql, Some(page_size as u64), Some(page as u64), schema).await

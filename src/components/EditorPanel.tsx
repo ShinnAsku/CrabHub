@@ -7,61 +7,33 @@ import {
   Play,
   AlignLeft,
   Loader2,
-  ChevronRight,
+  Copy,
   Database,
   RotateCcw,
   CheckCircle2,
   XCircle,
   Code2,
-  Scissors,
-  Copy,
-  ClipboardPaste,
-  MousePointerClick,
   TextCursorInput,
   Brain,
   Lightbulb,
   BarChart3,
 } from "lucide-react";
 import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
-import TabBar from "./TabBar";
 import type { QueryResult, PagedQueryResult, ColumnInfo, TableRow, Connection } from "@/types";
 import { t } from "@/lib/i18n";
 import { executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause, buildWhereConditions } from "@/lib/export";
+import { SQL_KEYWORDS, splitSqlStatements, rowsToMarkdown } from "@/lib/sql-utils";
 import { format as formatSQL } from "sql-formatter";
 import ERDiagram from "./ERDiagram";
 import TableDesigner from "./TableDesigner";
-import QueryAnalyzer from "./QueryAnalyzer";
 import NotebookView from "./notebook/NotebookView";
 import VisualQueryBuilder from "./query-builder/VisualQueryBuilder";
 import QuickChartPanel from "./QuickChartPanel";
+import WelcomeScreen from "./WelcomeScreen";
+import { EditorContextMenu } from "./EditorContextMenu";
 
 // SQL keywords for autocompletion
-const SQL_KEYWORDS = [
-  "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-  "CREATE", "TABLE", "ALTER", "DROP", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-  "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL", "ON", "USING",
-  "AND", "OR", "NOT", "IN", "EXISTS", "BETWEEN", "LIKE", "ILIKE", "IS", "NULL",
-  "AS", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "UNION", "ALL",
-  "DISTINCT", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "COALESCE",
-  "COUNT", "SUM", "AVG", "MIN", "MAX", "ASC", "DESC", "NULLS", "FIRST", "LAST",
-  "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CHECK", "DEFAULT",
-  "CONSTRAINT", "NOT", "NULL", "AUTO_INCREMENT", "SERIAL", "BIGSERIAL",
-  "INTEGER", "INT", "BIGINT", "SMALLINT", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC",
-  "VARCHAR", "CHAR", "TEXT", "BOOLEAN", "BOOL", "DATE", "TIME", "TIMESTAMP",
-  "TIMESTAMPTZ", "JSON", "JSONB", "UUID", "BYTEA", "BLOB", "CLOB",
-  "IF", "ELSE", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "TRANSACTION",
-  "GRANT", "REVOKE", "WITH", "RECURSIVE", "RETURNING", "EXPLAIN", "ANALYZE",
-  "TRUNCATE", "CASCADE", "RESTRICT", "TRIGGER", "FUNCTION", "PROCEDURE",
-  "EXECUTE", "REPLACE", "MERGE", "UPSERT", "CONFLICT", "DO", "NOTHING",
-  "PARTITION", "OVER", "WINDOW", "ROW_NUMBER", "RANK", "DENSE_RANK",
-  "LAG", "LEAD", "FIRST_VALUE", "LAST_VALUE", "NTH_VALUE", "NTILE",
-  "FETCH", "NEXT", "ROWS", "ONLY", "PERCENT", "TOP", "PIVOT", "UNPIVOT",
-  "SHOW", "DESCRIBE", "DESC", "USE", "RENAME", "TO", "ADD", "COLUMN",
-  "MATERIALIZED", "REFRESH", "CONCURRENTLY", "LATERAL", "TABLESAMPLE",
-  "GROUPING", "SETS", "CUBE", "ROLLUP", "FILTER", "WITHIN", "ARRAY",
-];
-
 type ResultTab = "results" | "messages";
 
 // Configure Monaco Editor to use local files instead of CDN
@@ -70,248 +42,100 @@ loader.config({ monaco });
 const QUERY_PAGE_SIZE = 500;
 
 // Split SQL text into individual statements, respecting strings, comments, dollar-quotes, and BEGIN...END blocks
-function splitSqlStatements(sql: string): string[] {
-  const statements: string[] = [];
-  let current = '';
-  let i = 0;
-  const len = sql.length;
-  let blockDepth = 0;
-
-  // Check if current context is a block-creating statement (CREATE FUNCTION/PROCEDURE/TRIGGER, DO)
-  function isBlockContext(): boolean {
-    const stripped = current.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').toUpperCase().trim();
-    return /\b(CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE|TRIGGER))\b/.test(stripped) ||
-           /^\s*DO\b/.test(stripped);
-  }
-
-  // Try to read a word (identifier/keyword) at position i
-  function readWord(): string | null {
-    const m = sql.substring(i).match(/^[a-zA-Z_]\w*/);
-    return m ? m[0] : null;
-  }
-
-  while (i < len) {
-    const ch = sql.charAt(i);
-
-    // Single-line comment
-    if (ch === '-' && sql.charAt(i + 1) === '-') {
-      const nl = sql.indexOf('\n', i);
-      if (nl === -1) { current += sql.substring(i); break; }
-      current += sql.substring(i, nl + 1);
-      i = nl + 1;
-      continue;
-    }
-
-    // Multi-line comment
-    if (ch === '/' && sql.charAt(i + 1) === '*') {
-      const end = sql.indexOf('*/', i + 2);
-      if (end === -1) { current += sql.substring(i); break; }
-      current += sql.substring(i, end + 2);
-      i = end + 2;
-      continue;
-    }
-
-    // String literal (single quote)
-    if (ch === "'") {
-      let j = i + 1;
-      while (j < len) {
-        if (sql.charAt(j) === "'" && sql.charAt(j + 1) === "'") { j += 2; }
-        else if (sql.charAt(j) === "'") { break; }
-        else { j++; }
-      }
-      current += sql.substring(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-
-    // Dollar-quoted string (PostgreSQL)
-    if (ch === '$') {
-      const tagMatch = sql.substring(i).match(/^\$([a-zA-Z_]*)\$/);
-      if (tagMatch) {
-        const tag = tagMatch[0];
-        const endIdx = sql.indexOf(tag, i + tag.length);
-        if (endIdx !== -1) {
-          current += sql.substring(i, endIdx + tag.length);
-          i = endIdx + tag.length;
-          continue;
-        }
-      }
-    }
-
-    // Word token - track BEGIN/END block nesting
-    if (/[a-zA-Z_]/.test(ch)) {
-      const word = readWord();
-      if (word) {
-        const upper = word.toUpperCase();
-        current += word;
-        i += word.length;
-
-        if (upper === 'BEGIN') {
-          if (blockDepth > 0 || isBlockContext()) {
-            blockDepth++;
-          }
-          // else: standalone BEGIN (transaction) - don't track
-        } else if (upper === 'END' && blockDepth > 0) {
-          blockDepth--;
-        }
-        continue;
-      }
-    }
-
-    // Semicolon - statement boundary only when not inside a BEGIN...END block
-    if (ch === ';') {
-      if (blockDepth > 0) {
-        // Inside a block - keep the semicolon as part of the statement
-        current += ch;
-        i++;
-        continue;
-      }
-      const stmt = current.trim();
-      if (stmt) { statements.push(stmt); }
-      current = '';
-      i++;
-      continue;
-    }
-
-    current += ch;
-    i++;
-  }
-
-  let lastStmt = current.trim();
-  // Filter out standalone '/' (Oracle/GaussDB block terminator)
-  if (lastStmt === '/') { lastStmt = ''; }
-  if (lastStmt) { statements.push(lastStmt); }
-
-  // Also filter out any standalone '/' statements in the array
-  return statements.filter(s => s !== '/');
-}
-
-function rowsToMarkdown(
-  columns: { name: string }[],
-  rows: Record<string, unknown>[]
-): string {
-  if (rows.length === 0) return "";
-  const headers = columns.map(c => c.name);
-  const separator = headers.map(() => "---");
-
-  const body = rows.map(row =>
-    "| " + headers.map(h => {
-      const val = row[h];
-      if (val === null || val === undefined) return "";
-      return String(val).replace(/\|/g, "\\|").replace(/\n/g, " ");
-    }).join(" | ") + " |"
-  );
-
-  return [
-    "| " + headers.join(" | ") + " |",
-    "| " + separator.join(" | ") + " |",
-    ...body,
-  ].join("\n");
-}
-
 function EditorPanel() {
-  const { tabs, activeTabId, connections, addTab, closeTab } = useAppStore();
-
+  const { tabs, activeTabId, addTab, closeTab } = useAppStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
-  // Handle different tab types
   if (!activeTab) {
     return <WelcomeScreen />;
   }
 
-  if (activeTab.type === "er") {
-    return (
-      <div className="flex-1 min-h-0">
+  // Heavy tab types: keep mounted, CSS visibility toggle (preserves state + scroll)
+  const HEAVY_TYPES = ["er", "designer", "notebook", "query-builder"];
+  const heavyTabs = tabs.filter(t => HEAVY_TYPES.includes(t.type));
+
+  // Query / diff / migration: render conditionally as before
+  if (activeTab.type === "query" || activeTab.type === "diff" || activeTab.type === "migration") {
+    if (activeTab.type === "diff") {
+      return (
+        <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+          {t('layout.schemaDiffHint')}
+        </div>
+      );
+    }
+    return <QueryEditor />;
+  }
+
+  return (
+    <>
+      {heavyTabs.map(tab => (
+        <div
+          key={tab.id}
+          className="h-full overflow-auto"
+          style={{ display: tab.id === activeTabId ? undefined : "none" }}
+        >
+          <HeavyTabContent tab={tab} tabs={tabs} addTab={addTab} closeTab={closeTab} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+// ===== Heavy Tab Content (always mounted, CSS visibility toggle) =====
+
+function HeavyTabContent({ tab, tabs, addTab, closeTab }: {
+  tab: NonNullable<ReturnType<typeof useAppStore>["tabs"]>[number];
+  tabs: ReturnType<typeof useAppStore>["tabs"];
+  addTab: ReturnType<typeof useAppStore>["addTab"];
+  closeTab: ReturnType<typeof useAppStore>["closeTab"];
+}) {
+  switch (tab.type) {
+    case "er":
+      return (
         <ERDiagram
           embedded={true}
-          connectionId={activeTab.connectionId || ""}
-          schemaName={activeTab.schemaName}
+          connectionId={tab.connectionId || ""}
+          schemaName={tab.schemaName}
         />
-      </div>
-    );
-  }
-
-  if (activeTab.type === "diff") {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-        {t('layout.schemaDiffHint')}
-      </div>
-    );
-  }
-
-  if (activeTab.type === "designer") {
-    const editTable = activeTab.tableName
-      ? { name: activeTab.tableName, schema: activeTab.schemaName }
-      : undefined;
-    return (
-      <div className="flex-1 min-h-0">
+      );
+    case "designer": {
+      const editTable = tab.tableName
+        ? { name: tab.tableName, schema: tab.schemaName }
+        : undefined;
+      return (
         <TableDesigner
-          connectionId={activeTab.connectionId || ""}
+          connectionId={tab.connectionId || ""}
           editTable={editTable}
         />
-      </div>
-    );
-  }
-
-  if (activeTab.type === "analyzer") {
-    const activeConnection = connections.find((c) => c.id === activeTab.connectionId);
-    return (
-      <div className="flex-1 min-h-0">
-        <QueryAnalyzer
-          connectionId={activeTab.connectionId || null}
-          dbType={activeConnection?.type || "postgresql"}
-          onInsertQuery={(sql) => {
-            // Create a new query tab with the SQL
-            const queryCount = tabs.filter((t) => t.type === "query").length + 1;
-            addTab({
-              title: `${t('tab.query')} ${queryCount}`,
-              type: "query",
-              content: sql,
-              connectionId: activeTab.connectionId,
-              
-            });
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (activeTab.type === "notebook") {
-    return (
-      <div className="flex-1 min-h-0">
+      );
+    }
+    case "notebook":
+      return (
         <NotebookView
-          connectionId={activeTab.connectionId || ""}
-          onClose={() => activeTabId && closeTab(activeTabId)}
+          connectionId={tab.connectionId || ""}
+          onClose={() => closeTab(tab.id)}
         />
-      </div>
-    );
-  }
-
-  if (activeTab.type === "query-builder") {
-    return (
-      <div className="flex-1 min-h-0">
+      );
+    case "query-builder":
+      return (
         <VisualQueryBuilder
-          connectionId={activeTab.connectionId || ""}
-          onClose={() => activeTabId && closeTab(activeTabId)}
+          connectionId={tab.connectionId || ""}
+          onClose={() => closeTab(tab.id)}
           onQueryGenerated={(sql) => {
-            // Create a new query tab with the generated SQL
             const queryCount = tabs.filter((t) => t.type === "query").length + 1;
             const newTabId = addTab({
               title: `${t('tab.query')} ${queryCount}`,
               type: "query",
               content: sql,
-              connectionId: activeTab.connectionId,
+              connectionId: tab.connectionId,
             });
-            // Activate the new tab
             useTabStore.getState().setActiveTab(newTabId);
           }}
         />
-      </div>
-    );
+      );
+    default:
+      return null;
   }
-
-  // Default: query tab
-  return <QueryEditor />;
 }
 
 // ===== Query Editor (with result panel) =====
@@ -1073,10 +897,6 @@ function QueryEditor() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full">
-      {/* Tabs row */}
-      <div className="flex items-center h-8 border-b border-border shrink-0 bg-muted/20 overflow-hidden">
-        <TabBar />
-      </div>
       {/* Controls row */}
       <div className="flex items-center h-8 border-b border-border shrink-0 bg-muted/20">
         <div className="flex items-center gap-2 px-2">
@@ -1138,16 +958,14 @@ function QueryEditor() {
               </button>
             </>
           )}
-          <button
-            onClick={handleFormat}
+          <button aria-label={t('editor.formatSql')} onClick={handleFormat}
             className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors"
             title={t('editor.formatSql')}
           >
             <AlignLeft size={12} />
             {t('editor.format')}
           </button>
-          <button
-            onClick={toggleSnippetPanel}
+          <button aria-label={t('editor.snippet')} onClick={toggleSnippetPanel}
             className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors"
             title={t('editor.snippet')}
           >
@@ -2146,167 +1964,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
   );
 }
 
-// ===== Welcome Screen =====
-
-function WelcomeScreen() {
-  const { addTab, toggleAIPanel } = useAppStore();
-
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-      <div className="flex flex-col items-center gap-3">
-        {/* Crab Logo */}
-        <svg width="72" height="72" viewBox="0 0 32 32" fill="none" className="opacity-50"><circle cx="16" cy="16" r="15" fill="white" /><g transform="translate(3,3) scale(0.95)"><ellipse cx="13" cy="16" rx="8" ry="6" fill="#EF4444" stroke="#DC2626" strokeWidth="0.8" /><circle cx="10" cy="13" r="1.8" fill="white" /><circle cx="16" cy="13" r="1.8" fill="white" /><circle cx="10" cy="12.8" r="0.9" fill="#1a1a1a" /><circle cx="16" cy="12.8" r="0.9" fill="#1a1a1a" /><path d="M11 17.5 Q13 19, 15 17.5" stroke="#991B1B" strokeWidth="0.6" fill="none" /><path d="M5 15 C5 15, -1 10, -2 6 C-3 3, 0 3, 1 6 L3 10" fill="#EF4444" stroke="#DC2626" strokeWidth="0.8" /><path d="M-2 6 C-2 6, -4 4, -3 2 C-2 0, -1 2, 0 4" fill="#DC2626" stroke="#991B1B" strokeWidth="0.5" /><path d="M21 15 C21 15, 27 10, 28 6 C29 3, 26 3, 25 6 L23 10" fill="#EF4444" stroke="#DC2626" strokeWidth="0.8" /><path d="M28 6 C28 6, 30 4, 29 2 C28 0, 27 2, 26 4" fill="#DC2626" stroke="#991B1B" strokeWidth="0.5" /><path d="M7 17 L2 19 L1 21" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M7 18 L3 21 L2 23" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M8 19 L4 22 L3 24" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M19 17 L24 19 L25 21" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M19 18 L23 21 L24 23" stroke="#DC2626" strokeWidth="0.7" fill="none" /><path d="M18 19 L22 22 L23 24" stroke="#DC2626" strokeWidth="0.7" fill="none" /></g></svg>
-        <h2 className="text-base font-medium text-foreground/60">CrabHub</h2>
-        <p className="text-xs text-muted-foreground/60 text-center max-w-[240px]">
-          {t('welcome.description')}{" "}
-          <kbd className="px-1 py-0.5 bg-muted rounded text-[11px]">Ctrl+N</kbd>{" "}
-          {t('welcome.newQuery')}
-        </p>
-        <div className="flex items-center gap-2 mt-2">
-          <button
-            onClick={() =>
-              addTab({
-                title: t('welcome.query1'),
-                type: "query",
-                content: "",
-
-              })
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent hover:bg-muted rounded transition-colors text-foreground"
-          >
-            <ChevronRight size={13} />
-            {t('welcome.newQueryBtn')}
-          </button>
-          <button
-            onClick={toggleAIPanel}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent hover:bg-muted rounded transition-colors text-foreground"
-          >
-            <Code2 size={13} />
-            {t('welcome.aiAssistant')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // EditorPanel takes no props; memo with default shallow-equal is safe and
 // prevents the heavy editor tree from re-rendering when MainLayout re-renders
 // for unrelated reasons (sidebar toggle, AI panel toggle, etc.).
 export default memo(EditorPanel);
-
-// ===== Editor Context Menu (Navicat-style) =====
-
-// Platform-adaptive modifier key
-const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-const modKey = isMac ? '⌘' : 'Ctrl+';
-
-interface EditorContextMenuProps {
-  x: number;
-  y: number;
-  hasSelection: boolean;
-  onClose: () => void;
-  onRunAll: () => void;
-  onRunSelected: () => void;
-  onFormat: () => void;
-  onCut: () => void;
-  onCopy: () => void;
-  onPaste: () => void;
-  onSelectAll: () => void;
-  onSelectCurrentStatement: () => void;
-}
-
-function EditorContextMenu({
-  x,
-  y,
-  hasSelection,
-  onClose,
-  onRunAll,
-  onRunSelected,
-  onFormat,
-  onCut,
-  onCopy,
-  onPaste,
-  onSelectAll,
-  onSelectCurrentStatement,
-}: EditorContextMenuProps) {
-  // Adjust position to stay within viewport
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ x, y });
-
-  useEffect(() => {
-    if (menuRef.current) {
-      const rect = menuRef.current.getBoundingClientRect();
-      let adjustedX = x;
-      let adjustedY = y;
-      if (x + rect.width > window.innerWidth) {
-        adjustedX = window.innerWidth - rect.width - 4;
-      }
-      if (y + rect.height > window.innerHeight) {
-        adjustedY = window.innerHeight - rect.height - 4;
-      }
-      setPos({ x: adjustedX, y: adjustedY });
-    }
-  }, [x, y]);
-
-  const menuItem = (
-    label: string,
-    onClick: () => void,
-    icon: React.ReactNode,
-    shortcut?: string,
-    disabled?: boolean,
-    highlight?: boolean
-  ) => (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-default ${
-        highlight
-          ? "bg-[hsl(var(--tab-active))] text-white hover:opacity-90"
-          : "hover:bg-muted"
-      }`}
-    >
-      <span className="w-4 flex items-center justify-center">{icon}</span>
-      <span className="flex-1 text-left">{label}</span>
-      {shortcut && (
-        <span className="text-[11px] text-muted-foreground ml-4">{shortcut}</span>
-      )}
-    </button>
-  );
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div
-        ref={menuRef}
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[220px]"
-        style={{
-          left: pos.x,
-          top: pos.y,
-          backgroundColor: 'hsl(var(--popover))',
-          color: 'hsl(var(--popover-foreground))',
-        }}
-      >
-        {hasSelection
-          ? menuItem(t("contextMenu.runSelected"), onRunSelected, <Play size={12} />, undefined, false, true)
-          : menuItem(t("contextMenu.run"), onRunAll, <Play size={12} />, `${modKey}Enter`, false, true)
-        }
-
-        <div className="border-t border-border my-1" />
-
-        {menuItem(t("contextMenu.cut"), onCut, <Scissors size={12} />, `${modKey}X`, !hasSelection)}
-        {menuItem(t("contextMenu.copy"), onCopy, <Copy size={12} />, `${modKey}C`, !hasSelection)}
-        {menuItem(t("contextMenu.paste"), onPaste, <ClipboardPaste size={12} />, `${modKey}V`)}
-
-        <div className="border-t border-border my-1" />
-
-        {menuItem(t("contextMenu.formatSql"), onFormat, <AlignLeft size={12} />)}
-
-        <div className="border-t border-border my-1" />
-
-        {menuItem(t("contextMenu.selectCurrentStatement"), onSelectCurrentStatement, <TextCursorInput size={12} />)}
-        {menuItem(t("contextMenu.selectAll"), onSelectAll, <MousePointerClick size={12} />, `${modKey}A`)}
-      </div>
-    </>
-  );
-}

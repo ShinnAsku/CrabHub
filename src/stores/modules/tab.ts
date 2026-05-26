@@ -8,6 +8,7 @@ interface TabState {
   queryResults: Record<string, QueryResult>;
   tabCounter: number;
   isExecuting: Record<string, boolean>;
+  rehydrated: boolean;
 
   // Actions
   addTab: (tab: Omit<Tab, "id">) => string;
@@ -41,6 +42,7 @@ export const useTabStore = create<TabState>()(
       queryResults: {},
       tabCounter: 0,
       isExecuting: {},
+      rehydrated: false,
 
       addTab: (tab) => {
         tabCounter++;
@@ -109,6 +111,7 @@ export const useTabStore = create<TabState>()(
           // dropped them so they'd come back undefined).
           state.queryResults = {};
           state.isExecuting = {};
+          state.rehydrated = true;
         }
       },
     }

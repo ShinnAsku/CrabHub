@@ -1,50 +1,20 @@
 import { useState, useCallback, useEffect, useRef, memo } from "react";
-import {
-  Table,
-  Eye,
-  Database,
-  Folder,
-  Search,
-  RefreshCw,
-  Plus,
-  Edit,
-  Trash2,
-  FileText,
-  X,
-  List,
-  Grid3X3,
-  Code2,
-  Key,
-  Wrench,
-  Eraser,
-  Save,
-  Download,
-  Upload,
-  Loader2,
-  Check,
-  Copy,
-  ChevronRight,
-} from "lucide-react";
 import { useUIStore, useTabStore } from "@/stores/app-store";
-import type { SchemaNode, Connection, ColumnInfo, TableInfo, TableRow, QueryResult } from "@/types";
+import type { SchemaNode, Connection, ColumnInfo, TableInfo, QueryResult, TableTab } from "@/types";
 import { t } from "@/lib/i18n";
 import { getTableData, exportTableSql, getColumns, getTables, executeSql, insertTableRow, updateTableRows, deleteTableRows, getTableRowCount } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereConditions, generateCopyTableName, buildDuplicateTableSQL } from "@/lib/export";
 import EditorPanel from "./EditorPanel";
-import PaginationBar from "./PaginationBar";
+import MainPanelTabBar from "./main-panel/MainPanelTabBar";
+import ObjectListView from "./main-panel/ObjectListView";
+import TableDataView from "./main-panel/TableDataView";
+import TableContextMenu from "./main-panel/TableContextMenu";
+import WelcomeScreen from "./WelcomeScreen";
+import { log } from "@/lib/log";
 
 interface CrabHubMainPanelProps {
   activeConnection: Connection | null;
   selectedSchemaName?: string;
-}
-
-interface OpenTab {
-  id: string;
-  type: "table";
-  tableId: string;
-  tableName: string;
-  schemaName?: string;
-  connectionId: string;
 }
 
 function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedSchemaName }: CrabHubMainPanelProps) {
@@ -57,20 +27,17 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
     selectedContext,
   } = useUIStore();
 
-  const globalTabs = useTabStore((s) => s.tabs);
-  const globalActiveTabId = useTabStore((s) => s.activeTabId);
-  const setGlobalActiveTab = useTabStore((s) => s.setActiveTab);
-  const closeGlobalTab = useTabStore((s) => s.closeTab);
-  const addGlobalTab = useTabStore((s) => s.addTab);
-  
+  const tabs = useTabStore((s) => s.tabs);
+  const activeTabId = useTabStore((s) => s.activeTabId);
+  const rehydrated = useTabStore((s) => s.rehydrated);
+  const setActiveTab = useTabStore((s) => s.setActiveTab);
+  const closeTab = useTabStore((s) => s.closeTab);
+  const addTab = useTabStore((s) => s.addTab);
+
   const currentSchemaName = propsSelectedSchemaName ?? selectedSchemaName;
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [loading, setLoading] = useState(false);
-  const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
-  // activeView: "objects" | local table tab id | "query:<globalTabId>"
-  const [activeView, setActiveView] = useState<string>("objects");
   const [error, setError] = useState<string | null>(null);
   
   // Table data cache
@@ -108,10 +75,16 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
   const hasPendingChanges = editedRows.size > 0 || newRows.length > 0;
 
-  // Find active table tab (if any) - defined early so callbacks can use it
-  const activeTableTab = (activeView !== "objects" && !activeView.startsWith("query:"))
-    ? openTabs.find((t) => t.id === activeView)
-    : null;
+  // Find active tab from store
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
+  const activeTableTab = (activeTab?.type === 'table' && activeTab.tableId) ? activeTab as TableTab : null;
+
+  // When no connection is active, clear persisted tabs and reset to objects view
+  useEffect(() => {
+    if (rehydrated && !activeConnection && tabs.length > 0) {
+      useTabStore.setState({ tabs: [], activeTabId: null, queryResults: {}, isExecuting: {} });
+    }
+  }, [rehydrated, activeConnection, tabs.length]);
 
   // Load tables when activeConnection changes
   useEffect(() => {
@@ -121,11 +94,11 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
       return;
     }
     const connId = activeConnection.id;
-    console.log('[CrabHubMainPanel] Loading tables for connection:', connId);
+    log.debug('[CrabHubMainPanel] Loading tables for connection:', connId);
     getTables(connId).then((result) => {
       const metaMap: Record<string, TableInfo> = {};
       const tableNodes: SchemaNode[] = result
-        .filter((t) => !currentSchemaName || !t.schema || t.schema === currentSchemaName)
+        .filter((t) => currentSchemaName && (!t.schema || t.schema === currentSchemaName))
         .map((t) => {
           const nodeId = `${connId}-${t.schema || 'default'}-table-${t.name}`;
           metaMap[nodeId] = t;
@@ -138,7 +111,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
         });
       setLoadedTables(tableNodes);
       setTableMetadataMap(metaMap);
-      console.log('[CrabHubMainPanel] Loaded', tableNodes.length, 'tables with metadata');
+      log.debug('[CrabHubMainPanel] Loaded', tableNodes.length, 'tables with metadata');
     }).catch((err) => {
       console.error('[CrabHubMainPanel] Failed to load tables:', err);
       setLoadedTables([]);
@@ -151,7 +124,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.tabId) {
-        setActiveView(`query:${detail.tabId}`);
+        setActiveTab(detail.tabId);
       }
     };
     window.addEventListener('openQueryTab', handler);
@@ -198,7 +171,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
     const pgState = paginationState[table.id];
     const effectivePage = page ?? pgState?.currentPage ?? 1;
     const effectivePageSize = pageSizeOverride ?? pgState?.pageSize ?? 1000;
-    console.log('[CrabHubMainPanel] loadTableData:', table.name, 'schema:', resolvedSchema, 'page:', effectivePage, 'pageSize:', effectivePageSize);
+    log.debug('[CrabHubMainPanel] loadTableData:', table.name, 'schema:', resolvedSchema, 'page:', effectivePage, 'pageSize:', effectivePageSize);
 
     setLoading(true);
     try {
@@ -543,32 +516,30 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   const handleOpenTableTab = useCallback((table: SchemaNode, connectionId?: string) => {
     const connId = connectionId || selectedContext?.connectionId || activeConnection?.id;
     if (!connId) return;
-    
+
     const resolvedSchema = table.schemaName || selectedContext?.schemaName || currentSchemaName || "public";
-    const existingTab = openTabs.find((t) => t.tableId === table.id);
+    const existingTab = tabs.find((t) => t.type === 'table' && t.tableId === table.id);
 
     if (existingTab) {
-      setActiveView(existingTab.id);
+      setActiveTab(existingTab.id);
     } else {
-      const newTab: OpenTab = {
-        id: `table-tab-${Date.now()}`,
+      addTab({
+        title: table.name,
         type: "table",
         tableId: table.id,
         tableName: table.name,
         schemaName: resolvedSchema,
         connectionId: connId,
-      };
-      setOpenTabs((prev) => [...prev, newTab]);
-      setActiveView(newTab.id);
+      });
       // Initialize pagination state for new tab
       setPaginationState(prev => ({
         ...prev,
         [table.id]: prev[table.id] || { currentPage: 1, pageSize: 1000 }
       }));
     }
-    
+
     loadTableData(table, resolvedSchema, connId);
-  }, [openTabs, loadTableData, selectedContext, currentSchemaName, activeConnection]);
+  }, [tabs, loadTableData, selectedContext, currentSchemaName, activeConnection, addTab, setActiveTab]);
 
   // Select a table (triggered by single-click) — load columns + DDL preview
   const handleTableSelect = useCallback(async (table: SchemaNode) => {
@@ -587,36 +558,21 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
     
     setColumnsLoading(true);
     setDdlLoading(true);
-    try {
-      const [columns, ddl] = await Promise.all([
-        getColumns(connId, table.name, resolvedSchema),
-        exportTableSql(connId, table.name, resolvedSchema).catch(() => "-- DDL not available"),
-      ]);
-      setSelectedColumns(columns);
-      setPreviewDDL(ddl);
-    } catch (err) {
-      console.error("Failed to load columns/DDL:", err);
-    } finally {
-      setColumnsLoading(false);
-      setDdlLoading(false);
-    }
+    // Fetch columns and DDL in parallel — columns show immediately, DDL fills in when ready
+    getColumns(connId, table.name, resolvedSchema)
+      .then((columns) => { setSelectedColumns(columns); })
+      .catch((err) => { console.error("Failed to load columns:", err); })
+      .finally(() => { setColumnsLoading(false); });
+    exportTableSql(connId, table.name, resolvedSchema)
+      .then((ddl) => { setPreviewDDL(ddl); })
+      .catch(() => { setPreviewDDL("-- DDL not available"); })
+      .finally(() => { setDdlLoading(false); });
   }, [activeConnection, selectedContext, currentSchemaName]);
 
   const handleCloseTab = useCallback((tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setOpenTabs((prev) => {
-      const newTabs = prev.filter((t) => t.id !== tabId);
-      if (activeView === tabId) {
-        if (newTabs.length > 0) {
-          const lastTab = newTabs[newTabs.length - 1];
-          setActiveView(lastTab ? lastTab.id : "objects");
-        } else {
-          setActiveView("objects");
-        }
-      }
-      return newTabs;
-    });
-  }, [activeView]);
+    closeTab(tabId);
+  }, [closeTab]);
 
   // Track previous selectedTable to avoid circular triggers
   const prevSelectedTableRef = useRef<string | null>(null);
@@ -625,9 +581,9 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   useEffect(() => {
     if (selectedTable && (activeConnection || selectedContext?.connectionId)) {
       const tableKey = `${selectedTable.schema}.${selectedTable.name}`;
-      if (prevSelectedTableRef.current !== tableKey) {
+      if (prevSelectedTableRef.current !== tableKey || !tabs.find(t => t.type === 'table' && t.tableId === (selectedTableId || `table-${selectedTable.name}`))) {
         prevSelectedTableRef.current = tableKey;
-        console.log('[CrabHubMainPanel] selectedTable changed:', tableKey);
+        log.debug('[CrabHubMainPanel] selectedTable changed:', tableKey);
         const tableNode: SchemaNode = {
           id: selectedTableId || `table-${selectedTable.name}`,
           name: selectedTable.name,
@@ -642,7 +598,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   // When clicking a folder or schema node in sidebar, switch to objects view
   useEffect(() => {
     if (selectedContext?.type === "folder" || selectedContext?.type === "schema") {
-      setActiveView("objects");
+      setActiveTab(null);
     }
   }, [selectedContext]);  // When selectedContext changes from sidebar single-click, load columns + DDL
   const prevContextRef = useRef<string | null>(null);
@@ -675,31 +631,18 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
   // When switching tabs, restore data from cache
   useEffect(() => {
-    if (activeView !== "objects" && !activeView.startsWith("query:")) {
-      const tab = openTabs.find(t => t.id === activeView);
-      if (tab) {
-        const cached = tableDataCache[tab.tableId];
-        if (cached) {
-          useUIStore.getState().setSelectedTableData(cached.data);
-          useUIStore.getState().setSelectedTableDDL(cached.ddl);
-        }
+    if (activeTabId && activeTab?.type === 'table' && activeTab.tableId) {
+      const cached = tableDataCache[activeTab.tableId];
+      if (cached) {
+        useUIStore.getState().setSelectedTableData(cached.data);
+        useUIStore.getState().setSelectedTableDDL(cached.ddl);
       }
     }
-  }, [activeView, openTabs, tableDataCache]);
-
-  // Sync global activeTabId when switching to a query tab
-  useEffect(() => {
-    if (activeView.startsWith("query:")) {
-      const globalId = activeView.replace("query:", "");
-      if (globalActiveTabId !== globalId) {
-        setGlobalActiveTab(globalId);
-      }
-    }
-  }, [activeView, globalActiveTabId, setGlobalActiveTab]);
+  }, [activeTabId, tableDataCache]);
 
   useEffect(() => {
     if (currentSchemaName && activeConnection) {
-      console.log('[CrabHubMainPanel] Schema changed:', currentSchemaName);
+      log.debug('[CrabHubMainPanel] Schema changed:', currentSchemaName);
     }
   }, [currentSchemaName, activeConnection]);
 
@@ -720,16 +663,16 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
       };
       loadTableData(tableNode, activeTableTab.schemaName, activeTableTab.connectionId);
     }
-  }, [activeView, activeTableTab?.tableId]);
+  }, [activeTabId, activeTableTab?.tableId]);
 
   // Determine which DDL to show
   const displayDDL = previewDDL || selectedTableDDL || "";
 
-  // Whether we're showing the objects view
-  const showObjectsView = activeView === "objects";
+  // Whether we're showing the objects view (requires schema selection)
+  const showObjectsView = !!currentSchemaName && activeTabId === null;
 
-  // Whether we're showing a query editor
-  const showQueryView = activeView.startsWith("query:");
+  // Whether we're showing a query editor (non-table tab active AND have a connection)
+  const showQueryView = !!activeConnection && activeTabId !== null && activeTab?.type !== 'table';
 
   // Right-click context menu handlers for table rows
   const handleTableContextMenu = useCallback((e: React.MouseEvent, table: SchemaNode) => {
@@ -740,23 +683,15 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
   const handleDesignTable = useCallback((table: SchemaNode) => {
     if (!activeConnection) return;
-    const connId = activeConnection.id;
-    const addTab = useTabStore.getState().addTab;
     addTab({
       title: `${t('sidebar.designTable')} - ${table.name}`,
       type: 'designer',
       content: '',
-      connectionId: connId,
+      connectionId: activeConnection.id,
       tableName: table.name,
       schemaName: table.schemaName || currentSchemaName,
     });
-    setTimeout(() => {
-      const newActiveId = useTabStore.getState().activeTabId;
-      if (newActiveId) {
-        window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
-      }
-    }, 0);
-  }, [activeConnection, currentSchemaName]);
+  }, [activeConnection, currentSchemaName, addTab]);
 
   const handleDeleteTableAction = useCallback(async (table: SchemaNode) => {
     if (!activeConnection) return;
@@ -865,866 +800,126 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
   // Handle adding a new query tab
   const handleAddQueryTab = useCallback(() => {
-    const queryCount = globalTabs.filter((tab) => tab.type === "query").length + 1;
-    addGlobalTab({
+    const queryCount = tabs.filter((tab) => tab.type === "query").length + 1;
+    addTab({
       title: `${t('tab.newQuery')} ${queryCount}`,
       type: "query",
       content: "",
     });
-    // addGlobalTab sets the new tab as active, read it from store
-    setTimeout(() => {
-      const newActiveId = useTabStore.getState().activeTabId;
-      if (newActiveId) {
-        setActiveView(`query:${newActiveId}`);
-      }
-    }, 0);
-  }, [globalTabs, addGlobalTab]);
+  }, [tabs, addTab]);
 
-  // Handle closing a query tab
-  const handleCloseQueryTab = useCallback((tabId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    closeGlobalTab(tabId);
-    if (activeView === `query:${tabId}`) {
-      const remainingQueryTabs = globalTabs.filter(qt => qt.id !== tabId);
-      const lastQueryTab = remainingQueryTabs[remainingQueryTabs.length - 1];
-      const lastOpenTab = openTabs[openTabs.length - 1];
-      if (lastQueryTab) {
-        setActiveView(`query:${lastQueryTab.id}`);
-      } else if (lastOpenTab) {
-        setActiveView(lastOpenTab.id);
-      } else {
-        setActiveView("objects");
-      }
-    }
-  }, [activeView, globalTabs, openTabs, closeGlobalTab]);
+  // ---- Toolbar action wrappers (extracted from inline JSX) ----
+  const handleEditSelectedTable = useCallback(() => {
+    if (!selectedTableId) return;
+    const table = loadedTables.find((t) => t.id === selectedTableId);
+    if (table) handleDesignTable(table);
+  }, [selectedTableId, loadedTables, handleDesignTable]);
+
+  const handleDeleteSelectedTable = useCallback(() => {
+    if (!selectedTableId) return;
+    const table = loadedTables.find((t) => t.id === selectedTableId);
+    if (table) handleDeleteTableAction(table);
+  }, [selectedTableId, loadedTables, handleDeleteTableAction]);
+
+  const handleCreateNewTable = useCallback(() => {
+    if (!activeConnection) return;
+    addTab({
+      title: t('designer.createTable'),
+      type: 'designer',
+      content: '',
+      connectionId: activeConnection.id,
+      schemaName: currentSchemaName,
+    });
+  }, [activeConnection, addTab, currentSchemaName]);
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Unified Tab Bar: 对象 + table tabs + query tabs + add button */}
-      <div className="flex items-center border-b border-border px-1 bg-muted/30 min-h-[30px] overflow-x-auto">
-        {/* 对象 tab */}
-        <button
-          onClick={() => setActiveView("objects")}
-          className={`flex items-center gap-1 px-2 py-1 text-xs border-t-2 transition-colors shrink-0 ${
-            showObjectsView
-              ? "border-[hsl(var(--tab-active))] bg-background text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          <Database size={14} />
-          <span>对象</span>
-        </button>
+      <MainPanelTabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSetActiveTab={setActiveTab}
+        onCloseTab={handleCloseTab}
+        onAddQueryTab={handleAddQueryTab}
+      />
 
-        {/* Table tabs */}
-        {openTabs.map((tab) => (
-          <div
-            key={tab.id}
-            onClick={() => setActiveView(tab.id)}
-            className={`group flex items-center gap-1 px-3 py-1 text-xs border-t-2 cursor-pointer transition-colors shrink-0 ${
-              activeView === tab.id
-                ? "border-[hsl(var(--tab-active))] bg-background text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <Table size={14} />
-            <span>
-              {tab.schemaName ? `${tab.schemaName}.` : ""}
-              {tab.tableName}
-            </span>
-            <button
-              onClick={(e) => handleCloseTab(tab.id, e)}
-              className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted/50"
-            >
-              <X size={10} />
-            </button>
-          </div>
-        ))}
-
-        {/* Divider between table tabs and query tabs */}
-        {(openTabs.length > 0 && globalTabs.length > 0) && (
-          <div className="w-px h-4 bg-border mx-1 shrink-0" />
-        )}
-
-        {/* Query tabs from global store */}
-        {globalTabs.map((tab) => (
-          <div
-            key={tab.id}
-            onClick={() => setActiveView(`query:${tab.id}`)}
-            className={`group flex items-center gap-1 px-3 py-1 text-xs border-t-2 cursor-pointer transition-colors shrink-0 ${
-              activeView === `query:${tab.id}`
-                ? "border-[hsl(var(--tab-active))] bg-background text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <Code2 size={14} />
-            <span className="truncate max-w-[120px]">{tab.title}</span>
-            <button
-              onClick={(e) => handleCloseQueryTab(tab.id, e)}
-              className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted/50"
-            >
-              <X size={10} />
-            </button>
-          </div>
-        ))}
-
-        <div className="flex-1" />
-
-        {/* Add query tab button */}
-        <button
-          onClick={handleAddQueryTab}
-          className="flex items-center justify-center w-7 h-7 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 rounded"
-          title={t('tab.newQuery')}
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-
-      {/* Content area */}
       {showQueryView ? (
-        /* Query Editor - full area */
         <div className="flex-1 overflow-hidden">
           <EditorPanel />
         </div>
       ) : (
-        /* Navicat mode: two panels (Main Content | DDL) */
         <div className="flex-1 overflow-hidden flex flex-col">
-              {showObjectsView ? (
-                /* Objects View */
-                <div className="h-full flex flex-col">
-
-                  {/* Toolbar: tabs + actions + search in one row */}
-                  <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
-                    {/* Inline query tabs (same as TabBar but compact) */}
-                    {globalTabs.map((tab) => (
-                      <div key={tab.id}
-                        className={`flex items-center gap-1 px-2 h-6 rounded text-xs whitespace-nowrap shrink-0 cursor-pointer border border-border transition-colors ${
-                          globalActiveTabId === tab.id
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
-                        onClick={() => { setGlobalActiveTab(tab.id); setActiveView(`query:${tab.id}`); }}>
-                        <span className="truncate max-w-[80px]">{tab.title}</span>
-                        <button onClick={(e) => { e.stopPropagation(); closeGlobalTab(tab.id); }}
-                          className="p-0.5 rounded hover:bg-white/20 transition-colors">
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ))}
-                    {globalTabs.length > 0 && <div className="w-px h-4 bg-border mx-1" />}
-                    <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Create New Schema">
-                      <Folder size={14} />
-                    </button>
-                    <button
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-                      title={t('designer.editTable')}
-                      disabled={!selectedTableId}
-                      onClick={() => {
-                        if (!selectedTableId) return;
-                        const table = loadedTables.find(t => t.id === selectedTableId);
-                        if (table) handleDesignTable(table);
-                      }}
-                    >
-                      <Edit size={14} />
-                    </button>
-                    <button
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                      title={t('designer.createTable')}
-                      onClick={() => {
-                        if (!activeConnection) return;
-                        addGlobalTab({
-                          title: t('designer.createTable'),
-                          type: 'designer',
-                          content: '',
-                          connectionId: activeConnection.id,
-                          schemaName: currentSchemaName,
-                        });
-                        setTimeout(() => {
-                          const newActiveId = useTabStore.getState().activeTabId;
-                          if (newActiveId) {
-                            window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
-                          }
-                        }, 0);
-                      }}
-                    >
-                      <Plus size={14} />
-                    </button>
-                    <button
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-                      title={t('sidebar.deleteTable')}
-                      disabled={!selectedTableId}
-                      onClick={() => {
-                        if (!selectedTableId) return;
-                        const table = loadedTables.find(t => t.id === selectedTableId);
-                        if (table) handleDeleteTableAction(table);
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                    <div className="w-1/2" />
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        onClick={() => setViewMode("list")}
-                        className={`p-1 rounded ${viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                        title="List View"
-                      >
-                        <List size={14} />
-                      </button>
-                      <button
-                        onClick={() => setViewMode("grid")}
-                        className={`p-1 rounded ${viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                        title="Grid View"
-                      >
-                        <Grid3X3 size={14} />
-                      </button>
-                    </div>
-                    <div className="w-1/2" />
-                    <div className="flex-1 relative max-w-[150px]">
-                      <Search size={12} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        type="text"
-                        placeholder={t('common.search')}
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-6 pr-2 py-0.5 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Table List */}
-                  <div className="flex-1 min-h-0 overflow-y-auto">
-                    {viewMode === "list" ? (
-                      <table className="w-full text-xs border-collapse border" style={{ tableLayout: 'fixed' }}>
-                        <colgroup>
-                          {activeConnection?.type === 'mysql' ? (
-                            <>
-                              <col style={{ width: '22%' }} />
-                              <col style={{ width: '8%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '14%' }} />
-                              <col style={{ width: '14%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '10%' }} />
-                            </>
-                          ) : (
-                            <>
-                              <col style={{ width: '22%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '10%' }} />
-                            </>
-                          )}
-                        </colgroup>
-                        <thead className="sticky top-0" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
-                          {activeConnection?.type === 'mysql' ? (
-                            <tr>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t('common.name')}</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">行</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">数据长度</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">引擎</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">创建日期</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">修改日期</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">排序规则</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">注释</th>
-                            </tr>
-                          ) : (
-                            <tr>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t('common.name')}</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">OID</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">所有者</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">ACL</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">表类型</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">分区属于</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">行</th>
-                              <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">主键</th>
-                            </tr>
-                          )}
-                        </thead>
-                        <tbody>
-                          {tables.map((table) => {
-                            const meta = tableMetadataMap[table.id];
-                            if (activeConnection?.type === 'mysql') {
-                              const formatDataLength = (bytes: number | null | undefined) => {
-                                if (bytes == null) return "—";
-                                if (bytes < 1024) return `${bytes} B`;
-                                if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-                                return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-                              };
-                              return (
-                                <tr
-                                  key={table.id}
-                                  onClick={() => handleTableSelect(table)}
-                                  onDoubleClick={() => handleOpenTableTab(table)}
-                                  onContextMenu={(e) => handleTableContextMenu(e, table)}
-                                  className={`cursor-pointer hover:bg-muted/50 ${
-                                    selectedTableId === table.id ? "bg-[hsl(var(--tab-active))]/10" : ""
-                                  }`}
-                                >
-                                  <td className="px-2 py-1 truncate border">
-                                    <span className="inline-flex items-center gap-1">
-                                      {table.type === "view" ? <Eye size={12} className="shrink-0" /> : <Table size={12} className="shrink-0" />}
-                                      <span className="truncate">{table.name}</span>
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.rowCount != null ? meta.rowCount : "—"}</td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{formatDataLength(meta?.dataLength)}</td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.engine ?? "—"}</td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.createTime ?? "—"}</td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.updateTime ?? "—"}</td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.collation ?? "—"}</td>
-                                  <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.description || "—"}</td>
-                                </tr>
-                              );
-                            }
-                            const tableTypeLabel = meta?.tableType === "VIEW" ? "视图"
-                              : meta?.tableType === "MATERIALIZED VIEW" ? "物化视图"
-                              : meta?.tableType === "PARTITIONED TABLE" ? "分区表"
-                              : meta?.tableType === "FOREIGN TABLE" ? "外部表"
-                              : "常规";
-                            return (
-                            <tr
-                              key={table.id}
-                              onClick={() => handleTableSelect(table)}
-                              onDoubleClick={() => handleOpenTableTab(table)}
-                              onContextMenu={(e) => handleTableContextMenu(e, table)}
-                              className={`cursor-pointer hover:bg-muted/50 ${
-                                selectedTableId === table.id ? "bg-[hsl(var(--tab-active))]/10" : ""
-                              }`}
-                            >
-                              <td className="px-2 py-1 truncate border">
-                                <span className="inline-flex items-center gap-1">
-                                  {table.type === "view" ? <Eye size={12} className="shrink-0" /> : <Table size={12} className="shrink-0" />}
-                                  <span className="truncate">{table.name}</span>
-                                </span>
-                              </td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.oid ?? "—"}</td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.owner ?? "—"}</td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.acl ?? "—"}</td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{tableTypeLabel}</td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.partitionOf ?? "—"}</td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.rowCount != null ? meta.rowCount : "—"}</td>
-                              <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.primaryKey ?? "—"}</td>
-                            </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="grid grid-cols-4 gap-2 p-2">
-                        {tables.map((table) => (
-                          <div
-                            key={table.id}
-                            onClick={() => handleTableSelect(table)}
-                            onDoubleClick={() => handleOpenTableTab(table)}
-                            onContextMenu={(e) => handleTableContextMenu(e, table)}
-                            className={`flex flex-col items-center p-2 rounded cursor-pointer hover:bg-muted/50 ${
-                              selectedTableId === table.id ? "bg-[hsl(var(--tab-active))]/10" : ""
-                            }`}
-                          >
-                            {table.type === "view" ? <Eye size={24} className="mb-1" /> : <Table size={24} className="mb-1" />}
-                            <span className="text-xs text-center truncate w-full">{table.name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Columns Section */}
-                  <div className="border-t border-border flex flex-col" style={{ height: "200px" }}>
-                    <div className="flex items-center justify-between px-2 py-1 border-b border-border bg-muted/20">
-                      <span className="text-xs font-medium text-foreground">
-                        列 {previewTableName && <span className="text-muted-foreground">- {previewTableName}</span>}
-                      </span>
-                    </div>
-                    <div className="flex-1 overflow-auto">
-                      {columnsLoading ? (
-                        <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                          <div className="w-4 h-4 border-2 border-muted-foreground border-t-[hsl(var(--tab-active))] rounded-full animate-spin"></div>
-                        </div>
-                      ) : selectedColumns && selectedColumns.length > 0 ? (
-                        <table className="w-full text-xs border-collapse border">
-                          <thead className="sticky top-0" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
-                            <tr>
-                              <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">名称</th>
-                              <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">类型</th>
-                              <th className="text-center px-1 py-0.5 font-medium text-white border border-white/30">PK</th>
-                              <th className="text-center px-1 py-0.5 font-medium text-white border border-white/30">NN</th>
-                              <th className="text-left px-2 py-0.5 font-medium text-white border border-white/30">默认值</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedColumns.map((col, idx) => (
-                              <tr key={idx} className="hover:bg-muted/30">
-                                <td className="px-2 py-0.5 border flex items-center gap-1">
-                                  {col.primaryKey && <Key size={10} className="text-amber-500 shrink-0" />}
-                                  <span className="truncate">{col.name}</span>
-                                </td>
-                                <td className="px-2 py-0.5 text-muted-foreground border">{col.type}</td>
-                                <td className="text-center px-1 py-0.5 border">
-                                  {col.primaryKey && <span className="text-amber-500 text-[11px] font-bold">PK</span>}
-                                </td>
-                                <td className="text-center px-1 py-0.5 border">
-                                  {col.notNull && <span className="text-blue-500 text-[11px] font-bold">NN</span>}
-                                </td>
-                                <td className="px-2 py-0.5 text-muted-foreground truncate max-w-[80px] border">
-                                  {col.defaultValue != null ? String(col.defaultValue) : ""}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                          {t('layout.clickSchema')}
-                        </div>
-                      )}
-
-                      {/* DDL Preview */}
-                      {displayDDL && (
-                        <div className="border-t border-border mt-2">
-                          <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-                            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('navicat.ddl')}</span>
-                          </div>
-                          <pre className="text-xs font-mono whitespace-pre-wrap text-blue-500 p-3 max-h-[200px] overflow-auto">
-                            {displayDDL}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : activeTableTab ? (
-                /* Table Data View */
-                <div className="h-full flex flex-col">
-                  {/* Data Toolbar */}
-                  <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
-                    {/* Add Row */}
-                    <button
-                      className="p-1 rounded hover:bg-muted text-success"
-                      title={t('data.addRow')}
-                      onClick={handleAddRow}
-                      disabled={!selectedTableData}
-                    >
-                      <Plus size={14} />
-                    </button>
-                    {/* Save */}
-                    <button
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-                      title={t('data.saveChanges')}
-                      onClick={handleSave}
-                      disabled={!hasPendingChanges || isSaving}
-                    >
-                      {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                    </button>
-                    {/* Cancel */}
-                    <button
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-                      title={t('data.cancelChanges')}
-                      onClick={handleCancelChanges}
-                      disabled={!hasPendingChanges}
-                    >
-                      <X size={14} />
-                    </button>
-                    {/* Delete */}
-                    <button
-                      className="p-1 rounded hover:bg-muted text-destructive disabled:opacity-30"
-                      title={t('data.deleteSelected')}
-                      onClick={handleDeleteRows}
-                      disabled={selectedRowIndices.size === 0 || isSaving}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-
-                    <div className="w-px h-4 bg-border mx-1" />
-
-                    {/* Import */}
-                    <div className="relative">
-                      <button
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                        title={t('data.importData')}
-                        onClick={() => { setShowImportMenu(!showImportMenu); setShowExportMenu(false); }}
-                      >
-                        <Download size={14} />
-                      </button>
-                      {showImportMenu && (
-                        <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px]">
-                          <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => handleImport('csv')}>{t('data.importCsv')}</button>
-                          <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => handleImport('json')}>{t('data.importJson')}</button>
-                          <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => handleImport('sql')}>{t('data.importSql')}</button>
-                        </div>
-                      )}
-                    </div>
-                    {/* Export */}
-                    <div className="relative">
-                      <button
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-                        title={t('data.exportData')}
-                        onClick={() => { setShowExportMenu(!showExportMenu); setShowImportMenu(false); }}
-                        disabled={!selectedTableData || selectedTableData.rows.length === 0}
-                      >
-                        <Upload size={14} />
-                      </button>
-                      {showExportMenu && (
-                        <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px]">
-                          <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => handleExport('csv')}>{t('data.exportCsv')}</button>
-                          <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => handleExport('json')}>{t('data.exportJson')}</button>
-                          <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => handleExport('sql')}>{t('data.exportSql')}</button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="w-px h-4 bg-border mx-1" />
-
-                    {/* Refresh */}
-                    <button
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                      title="Refresh"
-                      onClick={refreshCurrentTable}
-                    >
-                      <RefreshCw size={14} />
-                    </button>
-
-                    <div className="flex-1" />
-
-                    {/* Messages */}
-                    {dataMessage && (
-                      <span className={`text-xs flex items-center gap-1 ${dataMessage.type === 'error' ? 'text-destructive' : 'text-success'}`}>
-                        {dataMessage.type === 'error' ? <X size={10} /> : <Check size={10} />}
-                        {dataMessage.text}
-                      </span>
-                    )}
-                    {hasPendingChanges && (
-                      <span className="text-xs text-warning ml-2">
-                        {editedRows.size > 0 && `${editedRows.size} modified`}
-                        {editedRows.size > 0 && newRows.length > 0 && ', '}
-                        {newRows.length > 0 && `${newRows.length} new`}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Data Grid */}
-                  <div className="flex-1 overflow-auto" onClick={() => { setShowImportMenu(false); setShowExportMenu(false); }}>
-                    {loading ? (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                        <div className="flex flex-col items-center">
-                          <div className="w-8 h-8 border-4 border-muted-foreground border-t-[hsl(var(--tab-active))] rounded-full animate-spin mb-2"></div>
-                          <span>{t('common.loading')}</span>
-                        </div>
-                      </div>
-                    ) : error ? (
-                      <div className="flex items-center justify-center h-full text-destructive text-sm p-4">
-                        <div className="flex flex-col items-center">
-                          <span className="mb-2">Error:</span>
-                          <span>{error}</span>
-                        </div>
-                      </div>
-                    ) : selectedTableData ? (
-                      <table className="w-full text-xs border-collapse border">
-                        <thead className="sticky top-0 z-10" style={{ backgroundColor: 'hsl(var(--tab-active))' }}>
-                          <tr>
-                            {/* Select All checkbox */}
-                            <th className="px-1 py-1 text-center border border-white/30 w-[30px]">
-                              <input
-                                type="checkbox"
-                                className="w-3 h-3 accent-white"
-                                checked={selectedRowIndices.size > 0 && selectedRowIndices.size === selectedTableData.rows.length + newRows.length}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    const all = new Set<number>();
-                                    for (let i = 0; i < selectedTableData.rows.length + newRows.length; i++) all.add(i);
-                                    setSelectedRowIndices(all);
-                                  } else {
-                                    setSelectedRowIndices(new Set());
-                                  }
-                                }}
-                              />
-                            </th>
-                            {selectedTableData.columns.map((col: ColumnInfo, idx: number) => (
-                              <th key={idx} className="text-left px-2 py-1 font-medium text-white border border-white/30 whitespace-nowrap">
-                                {col.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {/* Existing rows */}
-                          {selectedTableData.rows.map((row: TableRow, rowIdx: number) => {
-                            const isSelected = selectedRowIndices.has(rowIdx);
-                            const rowEdits = editedRows.get(rowIdx);
-                            return (
-                              <tr
-                                key={`row-${rowIdx}`}
-                                className={`transition-colors ${isSelected ? 'bg-blue-500/10' : 'hover:bg-muted/30 even:bg-muted/20'}`}
-                              >
-                                <td className="px-1 py-0.5 text-center border">
-                                  <input
-                                    type="checkbox"
-                                    className="w-3 h-3 accent-[hsl(var(--tab-active))]"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      setSelectedRowIndices(prev => {
-                                        const next = new Set(prev);
-                                        if (e.target.checked) next.add(rowIdx); else next.delete(rowIdx);
-                                        return next;
-                                      });
-                                    }}
-                                  />
-                                </td>
-                                {selectedTableData.columns.map((col: ColumnInfo, colIdx: number) => {
-                                  const isEditing = editingCell?.rowIdx === rowIdx && editingCell?.colName === col.name;
-                                  const isModified = rowEdits && col.name in rowEdits;
-                                  let value = rowEdits?.[col.name] ?? row[col.name];
-                                  if (value === undefined) {
-                                    const key = Object.keys(row).find((k) => k.toLowerCase() === col.name.toLowerCase());
-                                    if (key) value = rowEdits?.[col.name] ?? row[key];
-                                  }
-
-                                  if (isEditing) {
-                                    return (
-                                      <td key={colIdx} className="px-0 py-0 border">
-                                        <input
-                                          type="text"
-                                          autoFocus
-                                          defaultValue={value === null || value === undefined ? "" : String(value)}
-                                          className="w-full px-2 py-0.5 text-xs bg-background outline-none border-2 border-[hsl(var(--tab-active))]"
-                                          onBlur={(e) => {
-                                            const newVal = e.target.value;
-                                            const origVal = row[col.name];
-                                            const normalizedNew = newVal === "" ? null : newVal;
-                                            const normalizedOrig = origVal === undefined ? null : origVal;
-                                            if (String(normalizedNew ?? "") !== String(normalizedOrig ?? "")) {
-                                              setEditedRows(prev => {
-                                                const next = new Map(prev);
-                                                const existing = next.get(rowIdx) || {};
-                                                next.set(rowIdx, { ...existing, [col.name]: normalizedNew });
-                                                return next;
-                                              });
-                                            } else {
-                                              // Reverted to original — remove from edits
-                                              setEditedRows(prev => {
-                                                const next = new Map(prev);
-                                                const existing = { ...(next.get(rowIdx) || {}) };
-                                                delete existing[col.name];
-                                                if (Object.keys(existing).length === 0) next.delete(rowIdx);
-                                                else next.set(rowIdx, existing);
-                                                return next;
-                                              });
-                                            }
-                                            setEditingCell(null);
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                            if (e.key === 'Escape') { setEditingCell(null); }
-                                          }}
-                                        />
-                                      </td>
-                                    );
-                                  }
-
-                                  return (
-                                    <td
-                                      key={colIdx}
-                                      className={`px-2 py-0.5 border cursor-text whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis ${isModified ? 'bg-yellow-500/10' : ''}`}
-                                      onDoubleClick={() => setEditingCell({ rowIdx, colName: col.name })}
-                                    >
-                                      {formatValue(value)}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                          {/* New rows */}
-                          {newRows.map((row, nIdx) => {
-                            const globalIdx = selectedTableData.rows.length + nIdx;
-                            const isSelected = selectedRowIndices.has(globalIdx);
-                            return (
-                              <tr
-                                key={`new-${nIdx}`}
-                                className={`transition-colors ${isSelected ? 'bg-blue-500/10' : 'bg-green-500/5 hover:bg-green-500/10'}`}
-                                style={{ borderLeft: '3px solid hsl(var(--tab-active))' }}
-                              >
-                                <td className="px-1 py-0.5 text-center border">
-                                  <input
-                                    type="checkbox"
-                                    className="w-3 h-3 accent-[hsl(var(--tab-active))]"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      setSelectedRowIndices(prev => {
-                                        const next = new Set(prev);
-                                        if (e.target.checked) next.add(globalIdx); else next.delete(globalIdx);
-                                        return next;
-                                      });
-                                    }}
-                                  />
-                                </td>
-                                {selectedTableData.columns.map((col: ColumnInfo, colIdx: number) => {
-                                  const isEditing = editingCell?.rowIdx === globalIdx && editingCell?.colName === col.name;
-                                  const value = row[col.name];
-
-                                  if (isEditing) {
-                                    return (
-                                      <td key={colIdx} className="px-0 py-0 border">
-                                        <input
-                                          type="text"
-                                          autoFocus
-                                          defaultValue={value === null || value === undefined ? "" : String(value)}
-                                          className="w-full px-2 py-0.5 text-xs bg-background outline-none border-2 border-[hsl(var(--tab-active))]"
-                                          onBlur={(e) => {
-                                            const newVal = e.target.value === "" ? null : e.target.value;
-                                            setNewRows(prev => prev.map((r, i) => i === nIdx ? { ...r, [col.name]: newVal } : r));
-                                            setEditingCell(null);
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                            if (e.key === 'Escape') setEditingCell(null);
-                                          }}
-                                        />
-                                      </td>
-                                    );
-                                  }
-
-                                  return (
-                                    <td
-                                      key={colIdx}
-                                      className="px-2 py-0.5 border cursor-text whitespace-nowrap text-muted-foreground italic"
-                                      onClick={() => setEditingCell({ rowIdx: globalIdx, colName: col.name })}
-                                    >
-                                      {value === null || value === undefined ? 'NULL' : String(value)}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                        选择一个表查看数据
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Pagination Bar */}
-                  {selectedTableData && activeTableTab && (
-                    <PaginationBar
-                      currentPage={paginationState[activeTableTab.tableId]?.currentPage || 1}
-                      totalPages={Math.max(1, Math.ceil((totalRowCountCache[activeTableTab.tableId] ?? 0) / (paginationState[activeTableTab.tableId]?.pageSize || 1000)))}
-                      pageSize={paginationState[activeTableTab.tableId]?.pageSize || 1000}
-                      totalRows={totalRowCountCache[activeTableTab.tableId] ?? null}
-                      onPageChange={handlePageChange}
-                      onPageSizeChange={handlePageSizeChange}
-                      loading={loading}
-                    />
-                  )}
-                </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                  {currentSchemaName
-                    ? `选择 ${currentSchemaName} 中的一个表`
-                    : "点击左侧的 schema 或表"}
-                </div>
-              )}
+          {showObjectsView ? (
+            <ObjectListView
+              activeConnection={activeConnection}
+              currentSchemaName={currentSchemaName}
+              tables={tables}
+              loadedTables={loadedTables}
+              tableMetadataMap={tableMetadataMap}
+              selectedTableId={selectedTableId}
+              selectedColumns={selectedColumns}
+              columnsLoading={columnsLoading}
+              previewTableName={previewTableName}
+              displayDDL={displayDDL}
+              searchTerm={searchTerm}
+              onSetSearchTerm={setSearchTerm}
+              onCreateTable={handleCreateNewTable}
+              onEditTable={handleEditSelectedTable}
+              onDeleteSelectedTable={handleDeleteSelectedTable}
+              onTableSelect={handleTableSelect}
+              onOpenTableTab={(tbl) => handleOpenTableTab(tbl)}
+              onTableContextMenu={handleTableContextMenu}
+            />
+          ) : activeTableTab ? (
+            <TableDataView
+              activeTableTab={activeTableTab}
+              selectedTableData={selectedTableData}
+              loading={loading}
+              error={error}
+              editingCell={editingCell}
+              editedRows={editedRows}
+              newRows={newRows}
+              selectedRowIndices={selectedRowIndices}
+              isSaving={isSaving}
+              hasPendingChanges={hasPendingChanges}
+              dataMessage={dataMessage}
+              showImportMenu={showImportMenu}
+              showExportMenu={showExportMenu}
+              paginationState={paginationState}
+              totalRowCountCache={totalRowCountCache}
+              setEditingCell={setEditingCell}
+              setEditedRows={setEditedRows}
+              setNewRows={setNewRows}
+              setSelectedRowIndices={setSelectedRowIndices}
+              setShowImportMenu={setShowImportMenu}
+              setShowExportMenu={setShowExportMenu}
+              formatValue={formatValue}
+              onAddRow={handleAddRow}
+              onSave={handleSave}
+              onCancelChanges={handleCancelChanges}
+              onDeleteRows={handleDeleteRows}
+              onImport={handleImport}
+              onExport={handleExport}
+              onRefresh={refreshCurrentTable}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          ) : (
+            <WelcomeScreen />
+          )}
         </div>
       )}
 
-      {/* Table Context Menu */}
       {tableContextMenu && (
-        <>
-          <div className="fixed inset-0 z-50" onClick={() => setTableContextMenu(null)} />
-          <div
-            className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[180px]"
-            style={{ left: tableContextMenu.x, top: tableContextMenu.y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
-          >
-            <button
-              onClick={() => { handleOpenTableTab(tableContextMenu.table); setTableContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-            >
-              <Table size={12} />
-              <span>{t('sidebar.openTable')}</span>
-            </button>
-            {tableContextMenu.table.type === 'table' && (
-              <button
-                onClick={() => { handleDesignTable(tableContextMenu.table); setTableContextMenu(null); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-              >
-                <Wrench size={12} />
-                <span>{t('sidebar.designTable')}</span>
-              </button>
-            )}
-            {tableContextMenu.table.type === 'table' && (
-              <>
-                <div className="border-t border-border my-1" />
-                <button
-                  onClick={() => { navigator.clipboard.writeText(tableContextMenu.table.name); setTableContextMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-                >
-                  <FileText size={12} />
-                  <span>复制名称</span>
-                </button>
-              </>
-            )}
-            {tableContextMenu.table.type === 'table' && (
-              <>
-                <div className="border-t border-border my-1" />
-                {/* Duplicate Table - Navicat-style hover submenu */}
-                <div className="relative group/dup">
-                  <div className="w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted transition-colors cursor-default">
-                    <span className="flex items-center gap-2">
-                      <Copy size={12} />
-                      {t('sidebar.duplicateTable')}
-                    </span>
-                    <ChevronRight size={12} className="text-muted-foreground" />
-                  </div>
-                  {/* Submenu */}
-                  <div className="absolute left-full top-0 ml-0 hidden group-hover/dup:block z-[60]">
-                    <div
-                      className="border border-border rounded-md shadow-lg py-1 min-w-[150px]"
-                      style={{ backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
-                    >
-                      <button
-                        onClick={() => { handleDuplicateTable(tableContextMenu.table, true); setTableContextMenu(null); }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-                      >
-                        <span>{t('sidebar.structureAndData')}</span>
-                      </button>
-                      <button
-                        onClick={() => { handleDuplicateTable(tableContextMenu.table, false); setTableContextMenu(null); }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-                      >
-                        <span>{t('sidebar.structureOnly')}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-            {tableContextMenu.table.type === 'table' && (
-              <>
-                <div className="border-t border-border my-1" />
-                <button
-                  onClick={() => { handleTruncateTableAction(tableContextMenu.table); setTableContextMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-warning"
-                >
-                  <Eraser size={12} />
-                  <span>{t('sidebar.truncateTable')}</span>
-                </button>
-                <button
-                  onClick={() => { handleDeleteTableAction(tableContextMenu.table); setTableContextMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
-                >
-                  <Trash2 size={12} />
-                  <span>{t('sidebar.deleteTable')}</span>
-                </button>
-              </>
-            )}
-          </div>
-        </>
+        <TableContextMenu
+          menu={tableContextMenu}
+          onClose={() => setTableContextMenu(null)}
+          onOpenTable={(tbl) => handleOpenTableTab(tbl)}
+          onDesignTable={handleDesignTable}
+          onCopyName={(tbl) => { navigator.clipboard.writeText(tbl.name); }}
+          onDuplicateTable={handleDuplicateTable}
+          onTruncate={handleTruncateTableAction}
+          onDeleteTable={handleDeleteTableAction}
+        />
       )}
     </div>
   );

@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Scaffold: items reserved for upcoming features
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

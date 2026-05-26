@@ -164,8 +164,56 @@ async fn smoke_mysql_select_one() {
 }
 
 // ---------------------------------------------------------------------------
-// ClickHouse — opt-in via CRABHUB_SMOKE_CH_URL
+// GaussDB — opt-in via CRABHUB_SMOKE_GAUSS_URL
 // ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "requires CRABHUB_SMOKE_GAUSS_URL=host:port:user:pass:db"]
+async fn smoke_gauss_select_one() {
+    let url = std::env::var("CRABHUB_SMOKE_GAUSS_URL").expect("CRABHUB_SMOKE_GAUSS_URL not set");
+    let parts: Vec<&str> = url.split(':').collect();
+    assert_eq!(parts.len(), 5, "expected host:port:user:pass:db");
+
+    let mut cfg = base_config(DatabaseType::GaussDB);
+    cfg.host = Some(parts[0].into());
+    cfg.port = Some(parts[1].parse().expect("port"));
+    cfg.username = Some(parts[2].into());
+    cfg.password = Some(parts[3].into());
+    cfg.database = Some(parts[4].into());
+
+    let conn = super::gauss_rs::GaussAsyncConnection::new(&cfg)
+        .await
+        .expect("gaussdb connect");
+    let r = conn.query_sql("SELECT 1 AS one").await.expect("gaussdb query");
+    assert_eq!(r.row_count, 1);
+    assert_eq!(r.columns[0].name, "one");
+}
+
+// ---------------------------------------------------------------------------
+// SQLServer — opt-in via CRABHUB_SMOKE_MSSQL_URL
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "requires CRABHUB_SMOKE_MSSQL_URL=host:port:user:pass:db"]
+async fn smoke_mssql_select_one() {
+    let url = std::env::var("CRABHUB_SMOKE_MSSQL_URL").expect("CRABHUB_SMOKE_MSSQL_URL not set");
+    let parts: Vec<&str> = url.split(':').collect();
+    assert_eq!(parts.len(), 5, "expected host:port:user:pass:db");
+
+    let mut cfg = base_config(DatabaseType::SQLServer);
+    cfg.host = Some(parts[0].into());
+    cfg.port = Some(parts[1].parse().expect("port"));
+    cfg.username = Some(parts[2].into());
+    cfg.password = Some(parts[3].into());
+    cfg.database = Some(parts[4].into());
+
+    let conn = super::sqlserver::SqlServerConnection::new(&cfg)
+        .await
+        .expect("sqlserver connect");
+    let r = conn.query_sql("SELECT 1 AS one").await.expect("sqlserver query");
+    assert_eq!(r.row_count, 1);
+    assert_eq!(r.columns[0].name, "one");
+}
 
 #[tokio::test]
 #[ignore = "requires CRABHUB_SMOKE_CH_URL=http://host:8123"]

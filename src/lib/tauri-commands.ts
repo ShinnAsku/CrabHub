@@ -61,7 +61,7 @@ function sanitizePoolOptions(
 export async function connectDatabase(config: ConnectionConfig): Promise<ConnectResult> {
   // Get password from secure storage if not provided
   let password = config.password;
-  if (!password && config.id) {
+  if (password == null && config.id) {
     const storedPassword = await getPassword(config.id);
     if (storedPassword) {
       password = storedPassword;

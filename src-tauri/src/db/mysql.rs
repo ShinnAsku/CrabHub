@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use futures::StreamExt;
 use rust_decimal::Decimal;
 use sqlx::{Column, Row, TypeInfo};
 use std::time::{Duration, Instant};
@@ -846,7 +845,7 @@ impl DatabaseConnection for MySqlConnection {
         } else {
             String::new()
         };
-        let offset = (page - 1) * page_size;
+        let offset = (page.saturating_sub(1)) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
             full_table, order_clause, page_size, offset
@@ -930,7 +929,7 @@ fn build_columns_from_mysql_row(row: &sqlx::mysql::MySqlRow) -> Vec<ColumnInfo> 
     for col in columns {
         result.push(ColumnInfo {
             name: col.name().to_string(),
-            data_type: format!("{:?}", col.type_info()),
+            data_type: col.type_info().name().to_string(),
             nullable: true,
             is_primary_key: false,
             default_value: None,

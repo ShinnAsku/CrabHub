@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Connection } from '@/types';
 import { isMockMode, mockInvoke } from "@/lib/tauri-commands-mock";
+import { log } from "@/lib/log";
 
 // Check if we're running in Tauri environment
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -42,10 +43,10 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   connCounter: 0,
 
   loadConnections: async () => {
-    console.log("[ConnectionStore] loadConnections: 开始从 SQLite 加载连接列表...");
+    log.debug("[ConnectionStore] loadConnections: 开始从 SQLite 加载连接列表...");
     try {
       const stored = await safeInvoke<any[]>("get_connections");
-      console.log("[ConnectionStore] loadConnections: 从后端获取到原始数据:", JSON.stringify(stored, null, 2));
+      log.debug("[ConnectionStore] loadConnections: 从后端获取到原始数据:", JSON.stringify(stored, null, 2));
       const connections: Connection[] = stored.map((c: any) => ({
         ...c,
         type: c.db_type,
@@ -54,9 +55,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         lastConnected: c.last_connected_at ? new Date(c.last_connected_at) : undefined,
       }));
       connCounter = connections.length;
-      console.log(`[ConnectionStore] loadConnections: 成功加载 ${connections.length} 个连接`);
+      log.debug(`[ConnectionStore] loadConnections: 成功加载 ${connections.length} 个连接`);
       connections.forEach((c, i) => {
-        console.log(`  [${i}] id=${c.id}, name=${c.name}, type=${c.type}, host=${c.host}:${c.port}`);
+        log.debug(`  [${i}] id=${c.id}, name=${c.name}, type=${c.type}, host=${c.host}:${c.port}`);
       });
       set({ connections, connCounter });
     } catch (e) {
@@ -67,7 +68,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   addConnection: async (conn) => {
     const id = conn.id || `conn-${++connCounter}`;
-    console.log(`[ConnectionStore] addConnection: 新建连接 id=${id}, name=${conn.name}, type=${conn.type}, host=${conn.host}:${conn.port}`);
+    log.debug(`[ConnectionStore] addConnection: 新建连接 id=${id}, name=${conn.name}, type=${conn.type}, host=${conn.host}:${conn.port}`);
     const newConn: Connection = {
       ...conn,
       id,
@@ -93,9 +94,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           auto_reconnect: newConn.autoReconnect,
         },
       };
-      console.log("[ConnectionStore] addConnection: 发送到后端的数据:", JSON.stringify(payload, null, 2));
+      log.debug("[ConnectionStore] addConnection: 发送到后端的数据:", JSON.stringify(payload, null, 2));
       await safeInvoke("add_connection", payload);
-      console.log("[ConnectionStore] addConnection: 成功保存到 SQLite");
+      log.debug("[ConnectionStore] addConnection: 成功保存到 SQLite");
     } catch (e) {
       console.error("[ConnectionStore] addConnection: 保存到 SQLite 失败:", e);
     }
@@ -104,13 +105,13 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       connections: [...state.connections, newConn],
       connCounter,
     }));
-    console.log(`[ConnectionStore] addConnection: 本地状态已更新, 当前连接数: ${get().connections.length}`);
+    log.debug(`[ConnectionStore] addConnection: 本地状态已更新, 当前连接数: ${get().connections.length}`);
   },
 
   setConnections: (connections) => set({ connections }),
 
   updateConnection: async (id, updates) => {
-    console.log(`[ConnectionStore] updateConnection: id=${id}, updates=`, JSON.stringify(updates));
+    log.debug(`[ConnectionStore] updateConnection: id=${id}, updates=`, JSON.stringify(updates));
     const { connections } = get();
     const conn = connections.find((c) => c.id === id);
     if (!conn) {
@@ -136,9 +137,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           auto_reconnect: updated.autoReconnect,
         },
       };
-      console.log("[ConnectionStore] updateConnection: 发送到后端:", JSON.stringify(payload, null, 2));
+      log.debug("[ConnectionStore] updateConnection: 发送到后端:", JSON.stringify(payload, null, 2));
       await safeInvoke("update_connection", payload);
-      console.log("[ConnectionStore] updateConnection: 成功更新到 SQLite");
+      log.debug("[ConnectionStore] updateConnection: 成功更新到 SQLite");
     } catch (e) {
       console.error("[ConnectionStore] updateConnection: 更新 SQLite 失败:", e);
     }
@@ -148,14 +149,14 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         c.id === id ? { ...c, ...updates } : c
       ),
     }));
-    console.log("[ConnectionStore] updateConnection: 本地状态已更新");
+    log.debug("[ConnectionStore] updateConnection: 本地状态已更新");
   },
 
   removeConnection: async (id) => {
-    console.log(`[ConnectionStore] removeConnection: 删除连接 id=${id}`);
+    log.debug(`[ConnectionStore] removeConnection: 删除连接 id=${id}`);
     try {
       await safeInvoke("delete_connection", { id });
-      console.log("[ConnectionStore] removeConnection: 成功从 SQLite 删除");
+      log.debug("[ConnectionStore] removeConnection: 成功从 SQLite 删除");
     } catch (e) {
       console.error("[ConnectionStore] removeConnection: 从 SQLite 删除失败:", e);
     }
@@ -164,16 +165,16 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       connections: state.connections.filter((c) => c.id !== id),
       activeConnectionId: state.activeConnectionId === id ? null : state.activeConnectionId,
     }));
-    console.log(`[ConnectionStore] removeConnection: 本地状态已更新, 剩余连接数: ${get().connections.length}`);
+    log.debug(`[ConnectionStore] removeConnection: 本地状态已更新, 剩余连接数: ${get().connections.length}`);
   },
 
   setActiveConnection: (id) => {
-    console.log(`[ConnectionStore] setActiveConnection: ${id}`);
+    log.debug(`[ConnectionStore] setActiveConnection: ${id}`);
     set({ activeConnectionId: id });
   },
 
   setTransactionActive: (connectionId, active) => {
-    console.log(`[ConnectionStore] setTransactionActive: connectionId=${connectionId}, active=${active}`);
+    log.debug(`[ConnectionStore] setTransactionActive: connectionId=${connectionId}, active=${active}`);
     set((state) => ({
       transactionActive: { ...state.transactionActive, [connectionId]: active },
     }));

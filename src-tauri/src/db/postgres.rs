@@ -3,7 +3,7 @@ use sqlx::Row;
 use std::time::{Duration, Instant};
 
 use super::pg_utils;
-use super::trait_def::{json_value_to_sql, DatabaseConnection};
+use super::trait_def::{escape_sql_string, json_value_to_sql, DatabaseConnection};
 use super::types::{
     ColumnInfo, ConnectionConfig, DatabaseType, DbError, ExecuteResult, QueryResult, TableInfo,
 };
@@ -14,7 +14,6 @@ use super::types::{
 
 pub struct PostgresConnection {
     pool: sqlx::PgPool,
-    #[allow(dead_code)]
     db_type_label: DatabaseType,
 }
 
@@ -370,7 +369,7 @@ impl DatabaseConnection for PostgresConnection {
 
     async fn get_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
         let schema_filter = match schema {
-            Some(s) => format!("AND table_schema = '{}'", s.replace('\'', "''")),
+            Some(s) => format!("AND table_schema = '{}'", escape_sql_string(s)),
             None => String::new(),
         };
         let sql = format!(
@@ -432,8 +431,8 @@ impl DatabaseConnection for PostgresConnection {
                 WHERE t.relname = '{}' AND n.nspname = '{}' \
                 GROUP BY i.relname, ix.indisunique, ix.indisprimary\
             ) sub ORDER BY index_name",
-            table.replace('\'', "''"),
-            schema_name.replace('\'', "''")
+            escape_sql_string(table),
+            escape_sql_string(schema_name)
         );
         let rows = self.query_sql(&sql).await?;
         Ok(rows
@@ -464,8 +463,8 @@ impl DatabaseConnection for PostgresConnection {
                 ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = '{}' AND tc.table_schema = '{}'
             "#,
-            table.replace('\'', "''"),
-            schema_name.replace('\'', "''")
+            escape_sql_string(table),
+            escape_sql_string(schema_name)
         );
         let rows = self.query_sql(&sql).await?;
         Ok(rows
@@ -509,7 +508,7 @@ impl DatabaseConnection for PostgresConnection {
         } else {
             String::new()
         };
-        let offset = (page - 1) * page_size;
+        let offset = (page.saturating_sub(1)) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
             full_table_ref, order_clause, page_size, offset

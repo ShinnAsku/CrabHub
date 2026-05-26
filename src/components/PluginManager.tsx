@@ -135,7 +135,7 @@ const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const filtered = useMemo(() => {
     let list = registryPlugins;
-    if (activeFilter === "all") list = list.filter(p => !p.installed_version && !isInstalled(p.id));
+    if (activeFilter === "all") { /* no filter — show all plugins */ }
     else if (activeFilter === "installed") list = list.filter(p => !!p.installed_version || isInstalled(p.id));
     else if (activeFilter === "updates") list = list.filter(p => p.update_available);
     if (searchQuery.trim()) {
@@ -169,7 +169,7 @@ const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="flex flex-col h-full bg-background">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3"><Plug size={20} className="text-blue-400" /><h2 className="text-lg font-semibold">{t('plugin.title')}</h2></div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Close"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Close"><X size={16} /></button>
         </div>
         <div className="flex-1 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
       </div>
@@ -191,7 +191,7 @@ const PluginManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <button onClick={load} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:text-foreground hover:border-accent transition-colors">
             <RefreshCw size={13} />{t('common.refresh')}
           </button>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Close">
+          <button aria-label="Close" onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Close">
             <X size={16} />
           </button>
         </div>

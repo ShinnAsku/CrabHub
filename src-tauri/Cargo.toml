@@ -25,7 +25,9 @@ serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2", features = [] }
-tokio-util = { version = "0.7", features = ["rt"] }
+tokio-util = { version = "0.7", features = ["rt", "compat"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono"] }
+ssh2 = "0.9"
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -40,7 +42,8 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 async-trait = "0.1"
 tokio-gaussdb = { git = "https://github.com/ShinnAsku/gaussdb-rs.git", rev = "1600f90b" }
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls-native-roots", "stream"] }
+sqlformat = "0.3"
 dirs = "5.0.1"
 futures = "0.3"
 futures-util = "0.3"

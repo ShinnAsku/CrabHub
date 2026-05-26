@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 export function isMockMode(): boolean {
   return import.meta.env.VITE_MOCK_MODE === 'true'
 }
@@ -82,27 +83,42 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     connect_to_database: async () => true,
     disconnect_database: async () => {},
     execute_query: async () => ({ columns: [], rows: [], rowCount: 0, duration: 0 }),
+    execute_query_paged: async () => ({ columns: [], rows: [], rowCount: 0, duration: 0, hasMore: false }),
+    execute_batch: async () => [{ columns: [], rows: [], rowCount: 0, duration: 0 }],
+    execute_sql: async () => ({ rowsAffected: 0 }),
     get_tables: async () => [],
+    get_columns: async () => [],
+    get_views: async () => [],
+    get_databases: async () => ['mockdb'],
     get_schemas: async () => ['public'],
-    test_connection_cmd: async () => ({ success: true }),
+    get_indexes: async () => [],
+    get_foreign_keys: async () => [],
+    get_table_row_count: async () => 0,
     get_table_data: async () => ({ columns: [], rows: [], rowCount: 0, duration: 0 }),
+    update_table_rows: async () => ({ rowsAffected: 0 }),
+    insert_table_row: async () => ({ rowsAffected: 1 }),
+    delete_table_rows: async () => ({ rowsAffected: 0 }),
+    export_table_sql: async () => '-- mock DDL',
+    cancel_query: async () => true,
+    get_driver_capabilities: async () => ({ supportsSchemas: true, supportsViews: true }),
+    test_connection_cmd: async () => ({ success: true }),
     // Plugin commands
     list_plugins: async () => mockInstalledPlugins,
     fetch_plugin_registry: async () => mockRegistryPlugins,
     install_plugin: async (args: any) => {
-      console.log('Installing plugin:', args.plugin_id, 'version:', args.version)
+      log.debug('Installing plugin:', args.plugin_id, 'version:', args.version)
       return Promise.resolve()
     },
     remove_plugin: async (args: any) => {
-      console.log('Removing plugin:', args.plugin_id)
+      log.debug('Removing plugin:', args.plugin_id)
       return Promise.resolve()
     },
     enable_plugin: async (args: any) => {
-      console.log('Enabling plugin:', args.plugin_id)
+      log.debug('Enabling plugin:', args.plugin_id)
       return Promise.resolve()
     },
     disable_plugin: async (args: any) => {
-      console.log('Disabling plugin:', args.plugin_id)
+      log.debug('Disabling plugin:', args.plugin_id)
       return Promise.resolve()
     },
     reload_plugins: async () => mockInstalledPlugins,

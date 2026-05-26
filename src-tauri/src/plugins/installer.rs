@@ -133,7 +133,8 @@ impl PluginInstaller {
         }
         fs::create_dir_all(&plugin_dir).map_err(|e| e.to_string())?;
 
-        for i in 0..archive.len() {
+        let entry_count = archive.len();
+        for i in 0..entry_count {
             let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
 
             // Security: validate archive entry path to prevent Zip Slip / path traversal.
@@ -165,6 +166,10 @@ impl PluginInstaller {
             }
         }
 
+        log::info!(
+            "Plugin '{}' v{} installed successfully ({} files extracted to {})",
+            plugin_id, version, entry_count, plugin_dir.display()
+        );
         Ok(())
     }
 

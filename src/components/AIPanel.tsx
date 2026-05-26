@@ -731,8 +731,7 @@ function AIPanel() {
           >
             {minimized ? <Square size={10} /> : <Minus size={12} />}
           </button>
-          <button
-            onClick={toggleAIPanel}
+          <button aria-label={t('common.close')} onClick={toggleAIPanel}
             className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             title={t('common.close')}
           >

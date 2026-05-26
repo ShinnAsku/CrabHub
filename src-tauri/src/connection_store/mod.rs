@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Scaffold: items reserved for upcoming features
+
 mod commands;
 mod encryption;
 mod models;
@@ -7,7 +9,7 @@ pub use models::Connection;
 
 use crate::db::types::DatabaseType;
 use encryption::{decrypt, encrypt, init_master_key};
-use models::{ConnectionGroup, ConnectionGroupMapping, Metadata};
+use models::ConnectionGroup;
 use chrono::Utc;
 use rusqlite::{params, OptionalExtension, Connection as SqliteConnection};
 use std::sync::{Arc, Mutex};
@@ -197,6 +199,44 @@ impl ConnectionStore {
         Ok(())
     }
 
+    /// Map a rusqlite Row to a Connection, decrypting passwords in-place.
+    fn row_to_connection(row: &rusqlite::Row) -> rusqlite::Result<Connection> {
+        let mut conn = Connection {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
+                .unwrap_or(DatabaseType::PostgreSQL),
+            host: row.get(3)?, port: row.get(4)?,
+            username: row.get(5)?,
+            password_encrypted: row.get(6)?,
+            database: row.get(7)?,
+            enable_ssl: row.get::<_, i32>(8)? == 1,
+            ssl_ca_cert: row.get(9)?,
+            ssl_client_cert: row.get(10)?,
+            ssl_client_key: row.get(11)?,
+            ssh_tunnel_enabled: row.get::<_, i32>(12)? == 1,
+            ssh_host: row.get(13)?, ssh_port: row.get(14)?,
+            ssh_username: row.get(15)?,
+            ssh_password_encrypted: row.get(16)?,
+            ssh_private_key: row.get(17)?,
+            keepalive_interval: row.get(18)?,
+            auto_reconnect: row.get::<_, i32>(19)? == 1,
+            color_label: row.get(20)?, tags: row.get(21)?,
+            created_at: row.get(22)?, updated_at: row.get(23)?,
+            last_connected_at: row.get(24)?,
+            connection_count: row.get(25)?,
+        };
+        // Decrypt password in-place for transport
+        if let Some(enc) = &conn.password_encrypted {
+            if let Ok(pwd) = decrypt(enc) { conn.password_encrypted = Some(pwd); }
+            else { log::warn!("[ConnectionStore] decrypt failed for conn '{}'", conn.id); }
+        }
+        if let Some(enc) = &conn.ssh_password_encrypted {
+            if let Ok(pwd) = decrypt(enc) { conn.ssh_password_encrypted = Some(pwd); }
+        }
+        Ok(conn)
+    }
+
     /// Get all connections
     pub fn get_all_connections(&self) -> Result<Vec<Connection>, String> {
         log::debug!("[ConnectionStore::get_all]");
@@ -209,55 +249,7 @@ impl ConnectionStore {
             .map_err(|e: rusqlite::Error| e.to_string())?;
 
         let connections = stmt
-            .query_map([], |row: &rusqlite::Row| {
-                let mut conn = Connection {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(DatabaseType::PostgreSQL),
-                    host: row.get(3)?,
-                    port: row.get(4)?,
-                    username: row.get(5)?,
-                    password_encrypted: row.get(6)?,
-                    database: row.get(7)?,
-                    enable_ssl: row.get::<_, i32>(8)? == 1,
-                    ssl_ca_cert: row.get(9)?,
-                    ssl_client_cert: row.get(10)?,
-                    ssl_client_key: row.get(11)?,
-                    ssh_tunnel_enabled: row.get::<_, i32>(12)? == 1,
-                    ssh_host: row.get(13)?,
-                    ssh_port: row.get(14)?,
-                    ssh_username: row.get(15)?,
-                    ssh_password_encrypted: row.get(16)?,
-                    ssh_private_key: row.get(17)?,
-                    keepalive_interval: row.get(18)?,
-                    auto_reconnect: row.get::<_, i32>(19)? == 1,
-                    color_label: row.get(20)?,
-                    tags: row.get(21)?,
-                    created_at: row.get(22)?,
-                    updated_at: row.get(23)?,
-                    last_connected_at: row.get(24)?,
-                    connection_count: row.get(25)?,
-                };
-
-                // Decrypt password
-                if let Some(encrypted_pwd) = &conn.password_encrypted {
-                    if let Ok(pwd) = decrypt(encrypted_pwd) {
-                        // Store decrypted password temporarily for backend use
-                        // Note: In production, you might want a different approach
-                        conn.password_encrypted = Some(pwd);
-                    }
-                }
-
-                // Decrypt SSH password
-                if let Some(encrypted_ssh_pwd) = &conn.ssh_password_encrypted {
-                    if let Ok(pwd) = decrypt(encrypted_ssh_pwd) {
-                        conn.ssh_password_encrypted = Some(pwd);
-                    }
-                }
-
-                Ok(conn)
-            })
+            .query_map([], |row: &rusqlite::Row| Self::row_to_connection(row))
             .map_err(|e| e.to_string())?;
 
         let mut result = Vec::new();
@@ -279,53 +271,7 @@ impl ConnectionStore {
             .map_err(|e| e.to_string())?;
 
         let conn = stmt
-            .query_row(params![id], |row| {
-                let mut conn = Connection {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(DatabaseType::PostgreSQL),
-                    host: row.get(3)?,
-                    port: row.get(4)?,
-                    username: row.get(5)?,
-                    password_encrypted: row.get(6)?,
-                    database: row.get(7)?,
-                    enable_ssl: row.get::<_, i32>(8)? == 1,
-                    ssl_ca_cert: row.get(9)?,
-                    ssl_client_cert: row.get(10)?,
-                    ssl_client_key: row.get(11)?,
-                    ssh_tunnel_enabled: row.get::<_, i32>(12)? == 1,
-                    ssh_host: row.get(13)?,
-                    ssh_port: row.get(14)?,
-                    ssh_username: row.get(15)?,
-                    ssh_password_encrypted: row.get(16)?,
-                    ssh_private_key: row.get(17)?,
-                    keepalive_interval: row.get(18)?,
-                    auto_reconnect: row.get::<_, i32>(19)? == 1,
-                    color_label: row.get(20)?,
-                    tags: row.get(21)?,
-                    created_at: row.get(22)?,
-                    updated_at: row.get(23)?,
-                    last_connected_at: row.get(24)?,
-                    connection_count: row.get(25)?,
-                };
-
-                // Decrypt password
-                if let Some(encrypted_pwd) = &conn.password_encrypted {
-                    if let Ok(pwd) = decrypt(encrypted_pwd) {
-                        conn.password_encrypted = Some(pwd);
-                    }
-                }
-
-                // Decrypt SSH password
-                if let Some(encrypted_ssh_pwd) = &conn.ssh_password_encrypted {
-                    if let Ok(pwd) = decrypt(encrypted_ssh_pwd) {
-                        conn.ssh_password_encrypted = Some(pwd);
-                    }
-                }
-
-                Ok(conn)
-            })
+            .query_row(params![id], |row| Self::row_to_connection(row))
             .optional()
             .map_err(|e| e.to_string())?;
 
@@ -515,51 +461,7 @@ impl ConnectionStore {
             .map_err(|e: rusqlite::Error| e.to_string())?;
 
         let connections = stmt
-            .query_map(params![group_id], |row: &rusqlite::Row| {
-                let mut conn = Connection {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    db_type: DatabaseType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(DatabaseType::PostgreSQL),
-                    host: row.get(3)?,
-                    port: row.get(4)?,
-                    username: row.get(5)?,
-                    password_encrypted: row.get(6)?,
-                    database: row.get(7)?,
-                    enable_ssl: row.get::<_, i32>(8)? == 1,
-                    ssl_ca_cert: row.get(9)?,
-                    ssl_client_cert: row.get(10)?,
-                    ssl_client_key: row.get(11)?,
-                    ssh_tunnel_enabled: row.get::<_, i32>(12)? == 1,
-                    ssh_host: row.get(13)?,
-                    ssh_port: row.get(14)?,
-                    ssh_username: row.get(15)?,
-                    ssh_password_encrypted: row.get(16)?,
-                    ssh_private_key: row.get(17)?,
-                    keepalive_interval: row.get(18)?,
-                    auto_reconnect: row.get::<_, i32>(19)? == 1,
-                    color_label: row.get(20)?,
-                    tags: row.get(21)?,
-                    created_at: row.get(22)?,
-                    updated_at: row.get(23)?,
-                    last_connected_at: row.get(24)?,
-                    connection_count: row.get(25)?,
-                };
-
-                if let Some(encrypted_pwd) = &conn.password_encrypted {
-                    if let Ok(pwd) = decrypt(encrypted_pwd) {
-                        conn.password_encrypted = Some(pwd);
-                    }
-                }
-
-                if let Some(encrypted_ssh_pwd) = &conn.ssh_password_encrypted {
-                    if let Ok(pwd) = decrypt(encrypted_ssh_pwd) {
-                        conn.ssh_password_encrypted = Some(pwd);
-                    }
-                }
-
-                Ok(conn)
-            })
+            .query_map(params![group_id], |row: &rusqlite::Row| Self::row_to_connection(row))
             .map_err(|e| e.to_string())?;
 
         let mut result = Vec::new();

@@ -8,6 +8,8 @@ pub mod mysql;
 pub mod sqlite;
 pub mod gauss_rs;
 pub mod clickhouse;
+pub mod sqlserver;
+pub mod odbc_bridge;
 pub mod manager;
 pub mod commands;
 pub mod pg_compatible;

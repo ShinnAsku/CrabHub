@@ -23,8 +23,8 @@ pub struct PluginInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginRelease {
     pub version: String,
-    #[serde(alias = "min_tabularis_version")]
-    pub min_crabhub_version: String,
+    #[serde(alias = "min_tabularis_version", default)]
+    pub min_crabhub_version: Option<String>,
     pub assets: HashMap<String, String>,
     /// Optional per-platform SHA-256 checksums (hex) of the downloaded zip.
     /// Keys match `assets` (e.g. "linux-x64", "universal"). When present, the
@@ -225,7 +225,7 @@ impl PluginRegistry {
 
             let releases_with_status = plugin.releases.iter().map(|release| PluginReleaseWithStatus {
                 version: release.version.clone(),
-                min_crabhub_version: release.min_crabhub_version.clone(),
+                min_crabhub_version: release.min_crabhub_version.clone().unwrap_or_default(),
                 platform_supported: true,
             }).collect();
 

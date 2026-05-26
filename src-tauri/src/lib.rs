@@ -107,6 +107,7 @@ pub async fn run() {
             ai::commands::format_sql,
             ai::commands::get_agent_tools,
             ai::commands::check_sql_safety,
+            ai::commands::agent_chat,
             ai::commands::set_ai_api_key,
             ai::commands::get_ai_api_key,
             ai::commands::delete_ai_api_key,
@@ -177,6 +178,13 @@ pub async fn run() {
             match get_tabularis_plugins_dir() {
                 Ok(plugins_dir) => {
                     let plugin_manager = Arc::new(plugins::manager::PluginManager::new(plugins_dir));
+                    // Load installed plugins on startup (in background)
+                    let pm_clone = plugin_manager.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = pm_clone.load_plugins().await {
+                            log::warn!("Failed to load plugins on startup: {}", e);
+                        }
+                    });
                     manager.set_plugin_manager(plugin_manager.clone());
                     app.manage(plugin_manager);
                 }

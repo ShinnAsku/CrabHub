@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Scaffold: items reserved for upcoming features
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -173,81 +175,39 @@ impl Default for DriverCapabilities {
 
 impl DatabaseType {
     pub fn capabilities(&self) -> DriverCapabilities {
+        /// Build PG-compatible capabilities with double-quote identifiers
+        fn pg_caps(partitions: bool, port: u16) -> DriverCapabilities {
+            DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: partitions, supports_cancel: true,
+                identifier_quote: "\"".to_string(), default_port: port,
+            }
+        }
+        /// Build MySQL-compatible capabilities with backtick identifiers
+        fn mysql_caps(partitions: bool, port: u16) -> DriverCapabilities {
+            DriverCapabilities {
+                supports_schemas: false, supports_manage_tables: true,
+                supports_views: true, supports_procedures: true,
+                supports_triggers: true, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: true,
+                supports_partitions: partitions, supports_cancel: true,
+                identifier_quote: "`".to_string(), default_port: port,
+            }
+        }
+
         match self {
-            // PG-compatible group
-            DatabaseType::PostgreSQL => DriverCapabilities {
-                supports_schemas: true, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: true, supports_cancel: true,
-                identifier_quote: "\"".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::GaussDB => DriverCapabilities {
-                supports_schemas: true, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: true, supports_cancel: true,
-                identifier_quote: "\"".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::Kingbase => DriverCapabilities {
-                supports_schemas: true, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: true, supports_cancel: true,
-                identifier_quote: "\"".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::Vastbase => DriverCapabilities {
-                supports_schemas: true, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: true, supports_cancel: true,
-                identifier_quote: "\"".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::YashanDB => DriverCapabilities {
-                supports_schemas: true, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: false, supports_cancel: true,
-                identifier_quote: "\"".to_string(), default_port: self.default_port(),
-            },
-            // MySQL-compatible group
-            DatabaseType::MySQL => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: false, supports_cancel: true,
-                identifier_quote: "`".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::OceanBase => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: false, supports_cancel: true,
-                identifier_quote: "`".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::TiDB => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: true, supports_cancel: true,
-                identifier_quote: "`".to_string(), default_port: self.default_port(),
-            },
-            DatabaseType::TDSQL => DriverCapabilities {
-                supports_schemas: false, supports_manage_tables: true,
-                supports_views: true, supports_procedures: true,
-                supports_triggers: true, is_file_based: false,
-                supports_indexes: true, supports_foreign_keys: true,
-                supports_partitions: false, supports_cancel: true,
-                identifier_quote: "`".to_string(), default_port: self.default_port(),
-            },
+            DatabaseType::PostgreSQL     => pg_caps(true,  self.default_port()),
+            DatabaseType::GaussDB        => pg_caps(true,  self.default_port()),
+            DatabaseType::Kingbase       => pg_caps(true,  self.default_port()),
+            DatabaseType::Vastbase       => pg_caps(true,  self.default_port()),
+            DatabaseType::YashanDB       => pg_caps(false, self.default_port()),
+            DatabaseType::MySQL          => mysql_caps(false, self.default_port()),
+            DatabaseType::OceanBase      => mysql_caps(false, self.default_port()),
+            DatabaseType::TiDB           => mysql_caps(true,  self.default_port()),
+            DatabaseType::TDSQL          => mysql_caps(false, self.default_port()),
             // File-based
             DatabaseType::SQLite => DriverCapabilities {
                 supports_schemas: false, supports_manage_tables: true,

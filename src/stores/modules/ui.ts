@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { setLanguage as setI18nLanguage, initLanguage as initI18nLanguage, type Language } from "@/lib/i18n";
 import type { SchemaNode, QueryResult, TableInfo, SelectedContext } from '@/types';
+import { log } from "@/lib/log";
 
 // Load theme from localStorage
 function loadTheme(): "light" | "dark" {
@@ -127,7 +128,7 @@ export const useUIStore = create<UIState>((set) => ({
       schemaData: { ...state.schemaData, [connectionId]: data },
     })),
   setSelectedContext: (ctx) => {
-    console.log("[UIStore] setSelectedContext:", JSON.stringify(ctx));
+    log.debug("[UIStore] setSelectedContext:", JSON.stringify(ctx));
     set({ selectedContext: ctx });
   },
   updateSchemaChildren: (connectionId, parentNodeId, children) =>
@@ -143,7 +144,7 @@ export const useUIStore = create<UIState>((set) => ({
           }
           return node;
         });
-      console.log(`[UIStore] updateSchemaChildren: connectionId=${connectionId}, parentNodeId=${parentNodeId}, children=${children.length}`);
+      log.debug(`[UIStore] updateSchemaChildren: connectionId=${connectionId}, parentNodeId=${parentNodeId}, children=${children.length}`);
       return { schemaData: { ...state.schemaData, [connectionId]: updateNode(existingData) } };
     }),
 }));

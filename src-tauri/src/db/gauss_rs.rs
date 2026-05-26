@@ -67,23 +67,18 @@ impl GaussAsyncConnection {
 #[async_trait]
 impl DatabaseConnection for GaussAsyncConnection {
     async fn query_sql(&self, sql: &str) -> Result<QueryResult, DbError> {
-        log::info!("[gauss_rs] query_sql: {}", &sql[..std::cmp::min(sql.len(), 200)]);
+        let start = std::time::Instant::now();
+        log::debug!("[gauss_rs] query_sql: {}", &sql[..std::cmp::min(sql.len(), 200)]);
         let messages = self.client.simple_query(sql).await.map_err(|e| DbError::QueryError(e.to_string()))?;
-        log::info!("[gauss_rs] query_sql: got {} messages", messages.len());
-        for (i, msg) in messages.iter().enumerate() {
-            match msg {
-                tokio_gaussdb::SimpleQueryMessage::Row(_) => log::info!("[gauss_rs]   msg[{}]: Row", i),
-                tokio_gaussdb::SimpleQueryMessage::CommandComplete(n) => log::info!("[gauss_rs]   msg[{}]: CommandComplete({})", i, n),
-                tokio_gaussdb::SimpleQueryMessage::RowDescription(cols) => log::info!("[gauss_rs]   msg[{}]: RowDescription({} cols)", i, cols.len()),
-                _ => log::info!("[gauss_rs]   msg[{}]: other", i),
-            }
-        }
-        simple_query_to_result(messages)
+        let elapsed = start.elapsed().as_millis() as u64;
+        log::debug!("[gauss_rs] query_sql: got {} messages in {}ms", messages.len(), elapsed);
+        simple_query_to_result(messages, elapsed)
     }
 
     async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError> {
+        let start = std::time::Instant::now();
         let affected = self.client.execute(sql, &[]).await.map_err(|e| DbError::QueryError(e.to_string()))?;
-        Ok(ExecuteResult { rows_affected: affected, execution_time_ms: 0 })
+        Ok(ExecuteResult { rows_affected: affected, execution_time_ms: start.elapsed().as_millis() as u64 })
     }
 
     fn db_type(&self) -> DatabaseType { DatabaseType::GaussDB }
@@ -105,14 +100,37 @@ impl DatabaseConnection for GaussAsyncConnection {
 
     async fn get_columns(&self, table: &str, schema: Option<&str>) -> Result<Vec<ColumnInfo>, DbError> {
         let s = schema.unwrap_or("public");
-        let s_escaped = s.replace('\'', "''");
-        let t_escaped = table.replace('\'', "''");
-        self.query_sql(&format!("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='{}' AND table_name='{}' ORDER BY ordinal_position", s_escaped, t_escaped)).await.map(|r| {
+        let s_escaped = crate::db::trait_def::escape_sql_string(s);
+        let t_escaped = crate::db::trait_def::escape_sql_string(table);
+
+        // Fetch primary key columns first
+        let pk_sql = format!(
+            "SELECT kcu.column_name FROM information_schema.table_constraints tc \
+             JOIN information_schema.key_column_usage kcu \
+             ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema \
+             WHERE tc.constraint_type = 'PRIMARY KEY' \
+             AND tc.table_schema = '{}' AND tc.table_name = '{}'",
+            s_escaped, t_escaped
+        );
+        let pk_columns: std::collections::HashSet<String> = self.query_sql(&pk_sql).await
+            .map(|r| r.rows.iter()
+                .filter_map(|row| row.get("column_name").and_then(|v| v.as_str().map(String::from)))
+                .collect())
+            .unwrap_or_default();
+
+        self.query_sql(&format!(
+            "SELECT column_name, data_type, is_nullable, column_default \
+             FROM information_schema.columns \
+             WHERE table_schema='{}' AND table_name='{}' \
+             ORDER BY ordinal_position",
+            s_escaped, t_escaped
+        )).await.map(|r| {
             r.rows.iter().map(|row| ColumnInfo {
                 name: row.get("column_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
                 data_type: row.get("data_type").and_then(|v| v.as_str().map(String::from)).unwrap_or("text".into()),
                 nullable: row.get("is_nullable").and_then(|v| v.as_str()).unwrap_or("YES") == "YES",
-                is_primary_key: false,
+                is_primary_key: row.get("column_name").and_then(|v| v.as_str())
+                    .map(|name| pk_columns.contains(name)).unwrap_or(false),
                 default_value: row.get("column_default").and_then(|v| v.as_str().map(String::from)),
                 comment: None, character_maximum_length: None, numeric_precision: None, numeric_scale: None,
             }).collect()
@@ -130,7 +148,7 @@ impl DatabaseConnection for GaussAsyncConnection {
     }
 
     async fn get_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
-        let f = schema.map(|s| format!("AND table_schema='{}'", s.replace('\'', "''"))).unwrap_or_default();
+        let f = schema.map(|s| format!("AND table_schema='{}'", crate::db::trait_def::escape_sql_string(s))).unwrap_or_default();
         self.query_sql(&format!("SELECT table_schema, table_name FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog','information_schema') {} ORDER BY table_schema, table_name", f)).await.map(|r| {
             r.rows.iter().map(|row| TableInfo {
                 name: row.get("table_name").and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
@@ -145,8 +163,8 @@ impl DatabaseConnection for GaussAsyncConnection {
 
     async fn get_indexes(&self, table: &str, schema: Option<&str>) -> Result<Vec<JsonValue>, DbError> {
         let s = schema.unwrap_or("public");
-        let s_escaped = s.replace('\'', "''");
-        let t_escaped = table.replace('\'', "''");
+        let s_escaped = crate::db::trait_def::escape_sql_string(s);
+        let t_escaped = crate::db::trait_def::escape_sql_string(table);
         self.query_sql(&format!("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='{}' AND tablename='{}'", s_escaped, t_escaped)).await.map(|r| {
             r.rows.iter().map(|row| serde_json::json!({"index_name": row.get("indexname"), "index_def": row.get("indexdef")})).collect()
         })
@@ -154,8 +172,8 @@ impl DatabaseConnection for GaussAsyncConnection {
 
     async fn get_foreign_keys(&self, table: &str, schema: Option<&str>) -> Result<Vec<JsonValue>, DbError> {
         let s = schema.unwrap_or("public");
-        let s_escaped = s.replace('\'', "''");
-        let t_escaped = table.replace('\'', "''");
+        let s_escaped = crate::db::trait_def::escape_sql_string(s);
+        let t_escaped = crate::db::trait_def::escape_sql_string(table);
         self.query_sql(&format!("SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS ft_schema, ccu.table_name AS ft_table, ccu.column_name AS ft_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='{}' AND tc.table_name='{}'", s_escaped, t_escaped)).await.map(|r| {
             r.rows.iter().map(|row| serde_json::json!({"constraint_name": row.get("constraint_name"), "column_name": row.get("column_name"), "foreign_schema": row.get("ft_schema"), "foreign_table": row.get("ft_table"), "foreign_column": row.get("ft_column")})).collect()
         })
@@ -163,17 +181,21 @@ impl DatabaseConnection for GaussAsyncConnection {
 
     async fn get_table_row_count(&self, table: &str, schema: Option<&str>) -> Result<u64, DbError> {
         let s = schema.unwrap_or("public");
-        self.query_sql(&format!("SELECT COUNT(*) as cnt FROM \"{}\".\"{}\"", s, table)).await.map(|r| {
+        let s_safe = s.replace('"', "\"\"");
+        let t_safe = table.replace('"', "\"\"");
+        self.query_sql(&format!("SELECT COUNT(*) as cnt FROM \"{}\".\"{}\"", s_safe, t_safe)).await.map(|r| {
             r.rows.first().and_then(|row| row.get("cnt").and_then(|v| v.as_u64())).unwrap_or(0)
         })
     }
 
     async fn get_table_data(&self, table: &str, schema: Option<&str>, page: u32, page_size: u32, order_by: Option<&str>) -> Result<QueryResult, DbError> {
         let s = schema.unwrap_or("public");
+        let s_safe = s.replace('"', "\"\"");
+        let t_safe = table.replace('"', "\"\"");
         let offset = (page.saturating_sub(1) as u64) * (page_size as u64);
         let order = order_by.unwrap_or("1");
         crate::db::trait_def::sanitize_order_by(order)?;
-        self.query_sql(&format!("SELECT * FROM \"{}\".\"{}\" ORDER BY {} LIMIT {} OFFSET {}", s, table, order, page_size, offset)).await
+        self.query_sql(&format!("SELECT * FROM \"{}\".\"{}\" ORDER BY {} LIMIT {} OFFSET {}", s_safe, t_safe, order, page_size, offset)).await
     }
 
     async fn update_table_rows(&self, table: &str, schema: Option<&str>, updates: &[(String, JsonValue)], where_conditions: &[crate::db::types::WhereCondition]) -> Result<ExecuteResult, DbError> {
@@ -210,7 +232,40 @@ impl DatabaseConnection for GaussAsyncConnection {
         Ok((r, has_more))
     }
 
-    async fn export_table_sql(&self, _table: &str, _schema: Option<&str>) -> Result<String, DbError> { Ok(String::new()) }
+    async fn export_table_sql(&self, table: &str, schema: Option<&str>) -> Result<String, DbError> {
+        let s = schema.unwrap_or("public");
+        let s_escaped = crate::db::trait_def::escape_sql_string(s);
+        let t_escaped = crate::db::trait_def::escape_sql_string(table);
+        let sql = format!(
+            "SELECT column_name, data_type, is_nullable, column_default \
+             FROM information_schema.columns \
+             WHERE table_schema='{}' AND table_name='{}' \
+             ORDER BY ordinal_position",
+            s_escaped, t_escaped
+        );
+        let result = self.query_sql(&sql).await?;
+        if result.rows.is_empty() {
+            return Err(DbError::NotFound(format!("Table {}.{} not found", s, table)));
+        }
+        let col_defs: Vec<String> = result.rows.iter().map(|row| {
+            let name = row.get("column_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let data_type = row.get("data_type").and_then(|v| v.as_str()).unwrap_or("text");
+            let nullable = row.get("is_nullable").and_then(|v| v.as_str()).unwrap_or("YES") == "YES";
+            let default = row.get("column_default").and_then(|v| v.as_str());
+            let null_str = if nullable { "" } else { " NOT NULL" };
+            let default_str = default.map(|d| format!(" DEFAULT {}", d)).unwrap_or_default();
+            format!("    \"{}\" {}{}{}", name, data_type, null_str, default_str)
+        }).collect();
+        let full_table = if s == "public" {
+            format!("\"{}\"", table)
+        } else {
+            format!("\"{}\".\"{}\"", s, table)
+        };
+        Ok(format!(
+            "-- Table: {}\nCREATE TABLE IF NOT EXISTS {} (\n{}\n);\n",
+            full_table, full_table, col_defs.join(",\n")
+        ))
+    }
 }
 
 /// Convert tokio-gaussdb simple_query results to CrabHub QueryResult.
@@ -219,7 +274,7 @@ impl DatabaseConnection for GaussAsyncConnection {
 /// when present -- it carries the canonical column names from the server. We
 /// fall back to inferring columns from the first `Row` only when no description
 /// was sent (older GaussDB releases may omit it for trivial result sets).
-fn simple_query_to_result(messages: Vec<SimpleQueryMessage>) -> Result<QueryResult, DbError> {
+fn simple_query_to_result(messages: Vec<SimpleQueryMessage>, elapsed_ms: u64) -> Result<QueryResult, DbError> {
     let mut columns: Vec<ColumnInfo> = Vec::new();
     let mut rows: Vec<serde_json::Map<String, JsonValue>> = Vec::new();
 
@@ -253,7 +308,16 @@ fn simple_query_to_result(messages: Vec<SimpleQueryMessage>) -> Result<QueryResu
                 let mut map = serde_json::Map::new();
                 for (i, col) in row.columns().iter().enumerate() {
                     let val: JsonValue = match row.try_get::<usize>(i) {
-                        Ok(Some(s)) => JsonValue::String(s.to_string()),
+                        Ok(Some(s)) => {
+                            // Try numeric parse for COUNT/aggregate results
+                            if let Ok(n) = s.parse::<i64>() {
+                                JsonValue::Number(serde_json::Number::from(n))
+                            } else if let Ok(f) = s.parse::<f64>() {
+                                serde_json::Number::from_f64(f).map(JsonValue::Number).unwrap_or(JsonValue::String(s.to_string()))
+                            } else {
+                                JsonValue::String(s.to_string())
+                            }
+                        }
                         _ => JsonValue::Null,
                     };
                     map.insert(col.name().to_string(), val);
@@ -265,15 +329,13 @@ fn simple_query_to_result(messages: Vec<SimpleQueryMessage>) -> Result<QueryResu
         }
     }
 
-    Ok(QueryResult { columns, rows: rows.clone(), row_count: rows.len() as u64, execution_time_ms: 0 })
+    let row_count = rows.len() as u64;
+    Ok(QueryResult { columns, rows, row_count, execution_time_ms: elapsed_ms })
 }
 
 fn to_sql(val: &JsonValue) -> String {
     match val {
-        JsonValue::Null => "NULL".into(),
         JsonValue::Bool(b) => if *b { "TRUE".into() } else { "FALSE".into() },
-        JsonValue::Number(n) => n.to_string(),
-        JsonValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        _ => format!("'{}'", val.to_string().replace('\'', "''")),
+        other => crate::db::trait_def::json_value_to_sql(other),
     }
 }

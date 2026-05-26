@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use futures::StreamExt;
 use sqlx::{Column, Row, TypeInfo};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -497,7 +496,7 @@ impl DatabaseConnection for SQLiteConnection {
         } else {
             String::new()
         };
-        let offset = (page - 1) * page_size;
+        let offset = (page.saturating_sub(1)) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
             sqlite_quote_table(table),

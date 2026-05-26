@@ -1,4 +1,3 @@
-import React from "react";
 import { Save, PlayCircle, X } from "lucide-react";
 import { t } from "@/lib/i18n";
 
@@ -9,43 +8,39 @@ interface NotebookToolbarProps {
   onClose: () => void;
 }
 
-const NotebookToolbar: React.FC<NotebookToolbarProps> = ({ 
-  onSave, 
-  onRunAll, 
-  isRunningAll, 
-  onClose 
+const NotebookToolbar: React.FC<NotebookToolbarProps> = ({
+  onSave, onRunAll, isRunningAll, onClose
 }) => {
   return (
-    <div className="flex items-center justify-between bg-muted px-4 py-2 border-b border-border">
-      <div className="flex items-center space-x-2">
-        <button
-          onClick={onClose}
-          className="p-2 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+    <div className="flex items-center justify-between bg-muted/30 px-2 py-0.5 border-b border-border min-h-[30px] shrink-0">
+      <div className="flex items-center gap-1">
+        <button aria-label={t('notebook.close')} onClick={onClose}
+          className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           title={t('notebook.close')}
         >
-          <X className="w-4 h-4" />
+          <X size={14} />
         </button>
-        <h1 className="text-lg font-medium text-foreground">{t('notebook.title')}</h1>
+        <span className="text-xs font-medium text-foreground">{t('notebook.title')}</span>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center gap-1">
         <button
           onClick={onRunAll}
-          className="flex items-center space-x-2 bg-primary hover:opacity-90 text-primary-foreground px-4 py-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={isRunningAll}
+          className="flex items-center gap-1 bg-[hsl(var(--tab-active))] hover:opacity-90 text-white px-2 py-0.5 rounded text-xs transition-colors disabled:opacity-50"
         >
           {isRunningAll ? (
-            <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
           ) : (
-            <PlayCircle className="w-4 h-4" />
+            <PlayCircle size={14} />
           )}
           <span>{t('notebook.runAll')}</span>
         </button>
         <button
           onClick={onSave}
-          className="flex items-center space-x-2 bg-card hover:bg-accent text-foreground px-4 py-2 rounded-md border border-border transition-colors"
+          className="flex items-center gap-1 hover:bg-muted text-muted-foreground hover:text-foreground px-2 py-0.5 rounded text-xs border border-border transition-colors"
         >
-          <Save className="w-4 h-4" />
+          <Save size={14} />
           <span>{t('notebook.save')}</span>
         </button>
       </div>

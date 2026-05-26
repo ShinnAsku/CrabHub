@@ -20,6 +20,7 @@ import ImportExportDialog from "./ImportExportDialog";
 import PluginManager from "./PluginManager";
 import UpdateManager from "./UpdateManager";
 import MessageDialog, { showMessage } from "./MessageDialog";
+import { log } from "@/lib/log";
 
 function MainLayout() {
   // Responsive scaling via root font-size (affects all rem-based Tailwind units)
@@ -53,6 +54,7 @@ function MainLayout() {
     closeTab,
     activeTabId,
     tabs,
+    rehydrated,
   } = useTabStore();
 
   const {
@@ -104,29 +106,19 @@ function MainLayout() {
     }, 0);
   }, [addTab]);
 
-  const handleOpenQueryAnalyzer = useCallback(() => {
-    addTab({
-      title: t('layout.queryAnalyzer'),
-      titleKey: 'layout.queryAnalyzer',
-      type: "analyzer",
-      content: "",
-      connectionId: activeConnectionId || undefined,
-
-    });
-    setTimeout(() => {
-      const newActiveId = useTabStore.getState().activeTabId;
-      if (newActiveId) {
-        window.dispatchEvent(new CustomEvent('openQueryTab', { detail: { tabId: newActiveId } }));
-      }
-    }, 0);
-  }, [activeConnectionId, addTab]);
-
   // Auto-switch to navicat when no tabs remain
   useEffect(() => {
     if (tabs.length === 0 && viewModeType === "query") {
       setViewModeType("navicat");
     }
   }, [tabs.length, viewModeType, setViewModeType]);
+
+  // Clear persisted tabs on startup when no connection exists
+  useEffect(() => {
+    if (rehydrated && !activeConnectionId && tabs.length > 0) {
+      useTabStore.setState({ tabs: [], activeTabId: null, queryResults: {}, isExecuting: {} });
+    }
+  }, [rehydrated, activeConnectionId, tabs.length]);
 
   // Clear test connection data on startup
   useEffect(() => {
@@ -142,7 +134,7 @@ function MainLayout() {
           return !name.includes('test') && !host.includes('test') && !name.includes('示例') && !host.includes('示例');
         });
         if (filtered.length !== parsed.length) {
-          console.log(`Cleared ${parsed.length - filtered.length} test connections`);
+          log.debug(`Cleared ${parsed.length - filtered.length} test connections`);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
           // Force reload connections in store
           useConnectionStore.getState().setConnections(filtered);
@@ -308,7 +300,6 @@ function MainLayout() {
           onOpenSnippetPanel={toggleSnippetPanel}
           onOpenSchemaDiff={() => setSchemaDiffOpen(true)}
           onOpenERDiagram={handleOpenERDiagram}
-          onOpenQueryAnalyzer={handleOpenQueryAnalyzer}
           onOpenDataMigration={() => setDataMigrationOpen(true)}
           onOpenImport={() => setImportExportMode("import")}
           onOpenExport={() => setImportExportMode("export")}
@@ -329,11 +320,8 @@ function MainLayout() {
         <Panel>
           <ErrorBoundary>
           {(() => {
-            const activeTab = tabs.find(t => t.id === activeTabId);
-            const isEditorTab = activeTab && ['query', 'notebook', 'query-builder', 'analyzer'].includes(activeTab.type);
-            // Query tabs always show EditorPanel
-            if (isEditorTab) return <EditorPanel />;
-            // In navicat mode, show DB browser
+            // In navicat mode, show CrabHubMainPanel (which owns the tab bars and
+            // decides internally between ObjectListView / TableDataView / EditorPanel).
             if (viewModeType === "navicat") {
               return activeConnection
                 ? <CrabHubMainPanel activeConnection={activeConnection} selectedSchemaName={selectedSchemaName} />

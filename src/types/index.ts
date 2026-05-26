@@ -153,6 +153,7 @@ export interface Tab {
   connectionId?: string;
   databaseName?: string;
   tableName?: string;
+  tableId?: string;
   schemaName?: string;
   queryResult?: QueryResult;
   isExecuting?: boolean;
@@ -162,6 +163,9 @@ export interface Tab {
   cells?: any[];
   activeCellId?: string;
 }
+
+/** A Tab narrowed to table type — tableId/tableName/schemaName/connectionId are guaranteed present. */
+export type TableTab = Tab & { type: "table"; tableId: string; tableName: string; schemaName: string; connectionId: string };
 
 export interface QueryHistoryEntry {
   id: string;

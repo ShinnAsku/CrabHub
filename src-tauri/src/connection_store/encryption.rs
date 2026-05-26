@@ -1,5 +1,7 @@
+#![allow(dead_code)] // Scaffold: items reserved for upcoming features
+
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
 use pbkdf2::pbkdf2_hmac;

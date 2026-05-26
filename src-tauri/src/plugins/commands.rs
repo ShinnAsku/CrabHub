@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use serde::Serialize;
 
@@ -47,7 +46,7 @@ pub async fn fetch_plugin_registry(
 
 #[tauri::command]
 pub async fn install_plugin(
-    app: AppHandle,
+    _app: AppHandle,
     plugin_manager: State<'_, Arc<PluginManager>>,
     plugin_id: String,
     version: String,

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <!-- CrabHub Logo -->
-  <circle cx="256" cy="256" r="240" fill="white" />
+  <circle cx="256" cy="256" r="240" fill="none" />
   <g transform="translate(48,48) scale(13)">
     <ellipse cx="13" cy="16" rx="8" ry="6" fill="#EF4444" stroke="#DC2626" stroke-width="0.8" />
     <circle cx="10" cy="13" r="1.8" fill="white" />

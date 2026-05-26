@@ -103,12 +103,15 @@ pub fn json_value_to_sql(val: &serde_json::Value) -> String {
     }
 }
 
-/// Escape a SQL identifier (table name, column name, schema name) for safe interpolation.
-/// Uses double-quote escaping for PostgreSQL/GaussDB/SQLite and backtick for MySQL/ClickHouse.
+/// Escape a SQL identifier for safe interpolation.
+/// Uses bracket for SQLServer, backtick for MySQL/ClickHouse, double-quote for others.
 pub fn escape_identifier(ident: &str, db_type: &crate::db::types::DatabaseType) -> String {
     match db_type {
         crate::db::types::DatabaseType::MySQL | crate::db::types::DatabaseType::ClickHouse => {
             format!("`{}`", ident.replace('`', "``"))
+        }
+        crate::db::types::DatabaseType::SQLServer => {
+            format!("[{}]", ident.replace(']', "]]"))
         }
         _ => {
             format!("\"{}\"", ident.replace('"', "\"\""))
@@ -116,77 +119,10 @@ pub fn escape_identifier(ident: &str, db_type: &crate::db::types::DatabaseType) 
     }
 }
 
-/// Validate and sanitize a WHERE clause used in row-level UPDATE/DELETE operations.
-///
-/// DEPRECATED: kept only for any legacy callers. New code MUST go through
-/// `build_where_sql` with structured `WhereCondition`s — the IPC boundary no
-/// longer accepts raw WHERE strings.
-#[allow(dead_code)]
-pub fn sanitize_where_clause(where_clause: &str) -> Result<&str, String> {
-    let trimmed = where_clause.trim();
-    if trimmed.is_empty() {
-        return Err("WHERE clause cannot be empty (would affect all rows)".to_string());
-    }
-    if trimmed.len() > 4096 {
-        return Err("WHERE clause is too long".to_string());
-    }
-
-    let upper = trimmed.to_uppercase();
-
-    // Block characters / sequences that have no business in a simple row-key WHERE.
-    // NOTE: parentheses are blocked to defeat subqueries and function calls.
-    let dangerous_chars = [';', '(', ')'];
-    for c in dangerous_chars {
-        if trimmed.contains(c) {
-            return Err(format!(
-                "Unsafe WHERE clause: contains '{}'. Only simple comparison expressions (col = value [AND ...]) are allowed.",
-                c
-            ));
-        }
-    }
-
-    // Keywords / tokens that indicate injection or complex queries.
-    // Surrounding spaces avoid false positives inside identifiers/values (e.g. `ORDER`).
-    let dangerous_tokens: &[&str] = &[
-        " OR ", " UNION ", " SELECT ", " INSERT ", " UPDATE ", " DELETE ",
-        " DROP ", " TRUNCATE ", " ALTER ", " CREATE ", " EXEC ", " EXECUTE ",
-        " GRANT ", " REVOKE ", " SHUTDOWN ", " INTO ", " CASE ", " WHEN ",
-        " SLEEP", " PG_SLEEP", " BENCHMARK", " LOAD_FILE", " XP_", " CHAR ",
-        " CONCAT ", " WAITFOR ",
-    ];
-    // Pad with spaces so the first/last token also matches.
-    let padded = format!(" {} ", upper);
-    for token in dangerous_tokens {
-        if padded.contains(token) {
-            return Err(format!(
-                "Unsafe WHERE clause: contains '{}'. Only simple comparison expressions are allowed.",
-                token.trim()
-            ));
-        }
-    }
-
-    // Comment markers anywhere in the string.
-    for marker in ["--", "/*", "*/", "#"] {
-        if trimmed.contains(marker) {
-            return Err(format!(
-                "Unsafe WHERE clause: contains comment marker '{}'.",
-                marker
-            ));
-        }
-    }
-
-    // Hex literals like 0x41 are commonly used to bypass keyword filters.
-    if upper.contains(" 0X") || upper.starts_with("0X") {
-        return Err("Unsafe WHERE clause: hex literals are not allowed.".to_string());
-    }
-
-    // Quote balance check (single quotes; doubled '' for SQL-escape are OK).
-    let stripped = trimmed.replace("''", "");
-    if stripped.matches('\'').count() % 2 != 0 {
-        return Err("Unsafe WHERE clause: unbalanced single quote.".to_string());
-    }
-
-    Ok(where_clause)
+/// Escape a string value for safe interpolation into a single-quoted SQL literal.
+/// Doubles embedded single quotes (SQL standard escaping).
+pub fn escape_sql_string(val: &str) -> String {
+    val.replace('\'', "''")
 }
 
 /// Build a safe `WHERE` SQL fragment from structured conditions.
@@ -271,65 +207,10 @@ pub fn sanitize_order_by(order_by: &str) -> Result<&str, DbError> {
 }
 
 #[cfg(test)]
-mod sanitize_tests {
-    use super::{build_where_sql, sanitize_where_clause};
+mod where_tests {
+    use super::build_where_sql;
     use crate::db::types::WhereCondition;
     use serde_json::json;
-
-    #[test]
-    fn accepts_simple_eq() {
-        assert!(sanitize_where_clause("id = 1").is_ok());
-        assert!(sanitize_where_clause("\"id\" = 1 AND \"name\" = 'bob'").is_ok());
-        assert!(sanitize_where_clause("name = 'O''Brien'").is_ok());
-    }
-
-    #[test]
-    fn rejects_empty() {
-        assert!(sanitize_where_clause("").is_err());
-        assert!(sanitize_where_clause("   ").is_err());
-    }
-
-    #[test]
-    fn rejects_or_injection() {
-        assert!(sanitize_where_clause("id = 1 OR '1'='1'").is_err());
-        assert!(sanitize_where_clause("id = 1 or 1=1").is_err());
-    }
-
-    #[test]
-    fn rejects_subquery() {
-        assert!(sanitize_where_clause("id IN (SELECT password FROM users)").is_err());
-        assert!(sanitize_where_clause("id = (SELECT 1)").is_err());
-    }
-
-    #[test]
-    fn rejects_stacked_statements() {
-        assert!(sanitize_where_clause("id = 1; DROP TABLE users").is_err());
-    }
-
-    #[test]
-    fn rejects_comments() {
-        assert!(sanitize_where_clause("id = 1 -- comment").is_err());
-        assert!(sanitize_where_clause("id = 1 /* x */").is_err());
-        assert!(sanitize_where_clause("id = 1 # mysql comment").is_err());
-    }
-
-    #[test]
-    fn rejects_unbalanced_quote() {
-        assert!(sanitize_where_clause("name = 'bob").is_err());
-    }
-
-    #[test]
-    fn rejects_hex_literal_bypass() {
-        assert!(sanitize_where_clause("name = 0x41424344").is_err());
-    }
-
-    #[test]
-    fn rejects_dangerous_functions() {
-        assert!(sanitize_where_clause("id = SLEEP 5").is_err());
-        assert!(sanitize_where_clause("id = BENCHMARK 1000000").is_err());
-    }
-
-    // --- build_where_sql (the new structured API) ---
 
     fn dq(s: &str) -> String {
         format!("\"{}\"", s.replace('"', "\"\""))

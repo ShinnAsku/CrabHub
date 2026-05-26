@@ -298,16 +298,16 @@ const NotebookView: React.FC<NotebookViewProps> = ({ connectionId, onClose }) =>
           />
         )}
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-2">
           {runSummary && (
-            <RunAllSummary 
-              summary={runSummary} 
-              onClose={() => setRunSummary(null)} 
+            <RunAllSummary
+              summary={runSummary}
+              onClose={() => setRunSummary(null)}
             />
           )}
 
           {cells.map((cell, index) => (
-            <div key={cell.id} className="mb-6">
+            <div key={cell.id} className="mb-2">
               {cell.type === "sql" ? (
                 <SqlCell
                   cell={cell}

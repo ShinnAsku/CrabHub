@@ -3,6 +3,7 @@ import { Database, X, Check, Loader2 } from "lucide-react";
 import type { Connection } from "@/types";
 import { executeQuery, executeSql } from "@/lib/tauri-commands";
 import { t } from "@/lib/i18n";
+import { log } from "@/lib/log";
 
 interface CreateDatabaseDialogProps {
   isOpen: boolean;
@@ -268,7 +269,7 @@ function CreateDatabaseDialog({
         engine: engine || undefined,
       });
 
-      console.log("[CreateDatabaseDialog] Executing SQL:", sql);
+      log.debug("[CreateDatabaseDialog] Executing SQL:", sql);
       await executeSql(connectionId, sql);
 
       onSuccess(connectionId);

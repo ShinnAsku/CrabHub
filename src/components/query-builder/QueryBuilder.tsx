@@ -1,11 +1,13 @@
-import React, { useState, useCallback } from "react";
-import { Play, X, Table, Filter } from "lucide-react";
+import React, { useState, useCallback, useEffect } from "react";
+import { Play, X, Table, Filter, Loader2 } from "lucide-react";
 import { t } from "@/lib/i18n";
 import TableSelector from "./TableSelector";
 import ColumnSelector from "./ColumnSelector";
 import FilterBuilder from "./FilterBuilder";
 import JoinBuilder from "./JoinBuilder";
 import QueryPreview from "./QueryPreview";
+import { log } from "@/lib/log";
+import { getTables, getColumns } from "@/lib/tauri-commands";
 
 interface Table {
   name: string;
@@ -38,29 +40,37 @@ interface QueryBuilderProps {
 }
 
 const QueryBuilder: React.FC<QueryBuilderProps> = ({
+  connectionId,
   onClose,
   onQueryGenerated
 }) => {
-  const [tables] = useState<Table[]>([
-    {
-      name: "users",
-      columns: [
-        { name: "id", type: "int" },
-        { name: "name", type: "varchar" },
-        { name: "email", type: "varchar" },
-        { name: "created_at", type: "timestamp" }
-      ]
-    },
-    {
-      name: "orders",
-      columns: [
-        { name: "id", type: "int" },
-        { name: "user_id", type: "int" },
-        { name: "total", type: "decimal" },
-        { name: "created_at", type: "timestamp" }
-      ]
-    }
-  ]);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load real tables and columns from the database
+  useEffect(() => {
+    if (!connectionId) return;
+    setLoading(true);
+    getTables(connectionId)
+      .then(async (tableList) => {
+        const result: Table[] = [];
+        for (const t of tableList.slice(0, 50)) { // limit to 50 tables
+          try {
+            const cols = await getColumns(connectionId, t.name, t.schema || undefined);
+            result.push({ name: t.name, columns: cols.map((c: any) => ({ name: c.name, type: c.type || c.dataType || 'text' })) });
+          } catch { result.push({ name: t.name, columns: [] }); }
+        }
+        setTables(result);
+        if (result.length > 0) {
+          const first = result[0]!;
+          setSelectedTables([first.name]);
+          setSelectedColumns(first.columns.slice(0, 5).map((c: Column) => `${first.name}.${c.name}`));
+        }
+      })
+      .catch((e) => { log.error('QueryBuilder', 'Failed to load tables', e); setError(String(e)); })
+      .finally(() => setLoading(false));
+  }, [connectionId]);
   
   const [selectedTables, setSelectedTables] = useState<string[]>(["users"]);
   const [selectedColumns, setSelectedColumns] = useState<string[]>(["users.id", "users.name", "users.email"]);
@@ -152,7 +162,7 @@ const QueryBuilder: React.FC<QueryBuilderProps> = ({
 
     if (filters.length > 0) {
       sql += " WHERE ";
-      sql += filters.map(filter => `${filter.column} ${filter.operator} '${filter.value}'`).join(" AND ");
+      sql += filters.map(filter => `${filter.column} ${filter.operator} '${filter.value.replace(/'/g, "''")}'`).join(" AND ");
     }
 
     if (groupBy.length > 0) {
@@ -180,8 +190,7 @@ const QueryBuilder: React.FC<QueryBuilderProps> = ({
       {/* Toolbar */}
       <div className="flex items-center justify-between bg-muted px-4 py-2 border-b border-border">
         <div className="flex items-center space-x-2">
-          <button
-            onClick={onClose}
+          <button aria-label={t('builder.close')} onClick={onClose}
             className="p-2 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
             title={t('builder.close')}
           >
@@ -203,6 +212,20 @@ const QueryBuilder: React.FC<QueryBuilderProps> = ({
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" /> {t('common.loading')}
+          </div>
+        ) : error ? (
+          <div className="flex-1 flex items-center justify-center text-red-500 text-sm px-8 text-center">
+            {error}
+          </div>
+        ) : tables.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+            {t('sidebar.noTables')}
+          </div>
+        ) : (
+        <>
         {/* Left Panel */}
         <div className="w-80 border-r border-border bg-muted overflow-y-auto">
           <div className="p-4">
@@ -242,9 +265,11 @@ const QueryBuilder: React.FC<QueryBuilderProps> = ({
         <div className="flex-1 overflow-y-auto p-4">
           <QueryPreview 
             sql={generateSQL()}
-            onSqlChange={(sql) => console.log("SQL changed:", sql)}
+            onSqlChange={(sql) => log.debug("SQL changed:", sql)}
           />
         </div>
+        </>
+        )}
       </div>
     </div>
   );

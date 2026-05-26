@@ -54,17 +54,17 @@ const MarkdownCell: React.FC<MarkdownCellProps> = ({
           .split('\n')
           .map((line, index) => {
             if (line.startsWith('# ')) {
-              return <h1 key={index} className="text-2xl font-bold mb-4">{line.substring(2)}</h1>;
+              return <h1 key={index} className="text-sm font-bold mb-1">{line.substring(2)}</h1>;
             } else if (line.startsWith('## ')) {
-              return <h2 key={index} className="text-xl font-bold mb-3">{line.substring(3)}</h2>;
+              return <h2 key={index} className="text-xs font-bold mb-1">{line.substring(3)}</h2>;
             } else if (line.startsWith('### ')) {
-              return <h3 key={index} className="text-lg font-bold mb-2">{line.substring(4)}</h3>;
+              return <h3 key={index} className="text-xs font-semibold mb-1">{line.substring(4)}</h3>;
             } else if (line.startsWith('- ')) {
-              return <li key={index} className="mb-1">{line.substring(2)}</li>;
+              return <li key={index} className="text-xs mb-0.5">{line.substring(2)}</li>;
             } else if (line === '') {
               return <br key={index} />;
             } else {
-              return <p key={index} className="mb-2">{line}</p>;
+              return <p key={index} className="text-xs mb-1">{line}</p>;
             }
           })}
       </div>
@@ -72,81 +72,76 @@ const MarkdownCell: React.FC<MarkdownCellProps> = ({
   };
 
   return (
-    <div className={`border rounded-lg overflow-hidden ${isActive ? "border-primary" : "border-border"} ${isExpanded ? "" : "h-12"}`}>
+    <div className={`border rounded overflow-hidden ${isActive ? "border-[hsl(var(--tab-active))]" : "border-border"} ${isExpanded ? "" : "h-8"}`}>
       {/* Cell Header */}
-      <div className="flex items-center justify-between bg-muted px-4 py-2">
-        <div className="flex items-center space-x-2">
-          <FileText className="w-4 h-4 text-success" />
+      <div className="flex items-center justify-between bg-muted/30 px-2 py-0.5">
+        <div className="flex items-center gap-1">
+          <FileText size={14} className="text-green-500 shrink-0" />
           {isEditingName ? (
             <form onSubmit={handleNameSubmit} className="flex items-center">
               <input
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="bg-background text-foreground px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-ring border border-border"
+                className="bg-background text-foreground px-1.5 py-0.5 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))] border border-border w-40"
                 autoFocus
                 onBlur={handleNameSubmit}
               />
             </form>
           ) : (
-            <span 
-              className="text-sm font-medium cursor-pointer hover:text-primary"
+            <span
+              className="text-xs font-medium cursor-pointer hover:text-[hsl(var(--tab-active))] truncate max-w-[200px]"
               onClick={() => setIsEditingName(true)}
             >
               {cell.name}
             </span>
           )}
         </div>
-        
-        <div className="flex items-center space-x-1">
+
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
-            title={isExpanded ? t('common.close') : t('common.expand')}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title={isExpanded ? t('common.collapse') : t('common.expand')}
           >
-            {isExpanded ? <Settings className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
+            <Settings size={12} />
           </button>
-          <button
-            onClick={onAddSqlAfter}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.addSqlCell')} onClick={onAddSqlAfter}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.addSqlCell')}
           >
-            <Code className="w-4 h-4" />
+            <Code size={12} />
           </button>
-          <button
-            onClick={onAddMarkdownAfter}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.addMarkdownCell')} onClick={onAddMarkdownAfter}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.addMarkdownCell')}
           >
-            <Plus className="w-4 h-4" />
+            <Plus size={12} />
           </button>
-          <button
-            onClick={onMoveUp}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.moveUp')} onClick={onMoveUp}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.moveUp')}
           >
-            <ArrowUp className="w-4 h-4" />
+            <ArrowUp size={12} />
           </button>
-          <button
-            onClick={onMoveDown}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          <button aria-label={t('notebook.moveDown')} onClick={onMoveDown}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t('notebook.moveDown')}
           >
-            <ArrowDown className="w-4 h-4" />
+            <ArrowDown size={12} />
           </button>
-          <button
-            onClick={onDelete}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+          <button aria-label={t('notebook.deleteCell')} onClick={onDelete}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
             title={t('notebook.deleteCell')}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 size={12} />
           </button>
         </div>
       </div>
 
       {/* Cell Content */}
       {isExpanded && (
-        <div className="p-4">
+        <div className="p-2">
           {isEditing ? (
             <textarea
               value={cell.content}

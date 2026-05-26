@@ -17,10 +17,6 @@ import {
   Settings,
   Zap,
   Calendar,
-  RefreshCw,
-  Wrench,
-  Eraser,
-  Copy,
   Database,
 } from "lucide-react";
 import { useConnectionStore, useUIStore, useTabStore } from "@/stores/app-store";
@@ -37,25 +33,12 @@ import QueryHistory from "./QueryHistory";
 import CreateDatabaseDialog from "./CreateDatabaseDialog";
 import DatabaseIcon from "./DatabaseIcon";
 import { generateCopyTableName, buildDuplicateTableSQL } from "@/lib/export";
+import { log } from "@/lib/log";
+import type { SidebarView, TreeNode, TreeNodeType } from "./sidebar/types";
+import { ContextMenu, TreeNodeContextMenu } from "./sidebar/ContextMenus";
 
 interface SidebarProps {
   openConnectionDialog: (editConnection?: Connection) => void;
-}
-
-type SidebarView = "connections" | "history";
-
-// Node types for database tree
-type TreeNodeType = 'connection' | 'database' | 'schema' | 'tables' | 'views' | 'functions' | 'procedures' | 'events' | 'triggers' | 'table' | 'view' | 'function' | 'procedure' | 'event' | 'trigger';
-
-interface TreeNode {
-  id: string;
-  type: TreeNodeType;
-  name: string;
-  connectionId?: string;
-  databaseName?: string;
-  schemaName?: string;
-  children?: TreeNode[];
-  loaded?: boolean;
 }
 
 function Sidebar({ openConnectionDialog }: SidebarProps) {
@@ -88,7 +71,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   }, [activeConnectionId, connections]);
 
   const loadSchemaData = async (connectionId: string) => {
-    console.log('[Sidebar] Loading schema data for connection:', connectionId);
+    log.debug('[Sidebar] Loading schema data for connection:', connectionId);
     try {
       const conn = connections.find(c => c.id === connectionId);
       if (!conn) return;
@@ -107,7 +90,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
       } else {
         // Always load databases first (DBeaver-style)
         const dbNames = await getDatabases(connectionId);
-        console.log('[Sidebar] Loaded databases:', dbNames);
+        log.debug('[Sidebar] Loaded databases:', dbNames);
         nodes = dbNames.map((name) => ({
           id: `${connectionId}-db-${name}`,
           name,
@@ -118,7 +101,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
       }
 
       setSchemaData(connectionId, nodes as any);
-      console.log('[Sidebar] Data loaded:', nodes.length, 'nodes');
+      log.debug('[Sidebar] Data loaded:', nodes.length, 'nodes');
     } catch (error) {
       console.error('[Sidebar] Failed to load schema data:', error);
     }
@@ -128,7 +111,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   const handleTreeNodeContextMenu = (e: React.MouseEvent, node: TreeNode) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('[Sidebar] Right-click on tree node:', node.name, 'Type:', node.type);
+    log.debug('[Sidebar] Right-click on tree node:', node.name, 'Type:', node.type);
     setTreeNodeContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -138,26 +121,26 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
 
   // Handle refresh tree node - will be implemented in DatabaseTree
   const handleRefreshNode = async (node: TreeNode) => {
-    console.log('[Sidebar] Refreshing node:', node.name);
+    log.debug('[Sidebar] Refreshing node:', node.name);
     // This will be called from DatabaseTree with the actual implementation
   };
 
   // Handle copy name
   const handleCopyName = (name: string) => {
     navigator.clipboard.writeText(name);
-    console.log('[Sidebar] Copied to clipboard:', name);
+    log.debug('[Sidebar] Copied to clipboard:', name);
   };
 
   // Handle create database from context menu
   const handleCreateDatabase = (connectionId: string) => {
-    console.log('[Sidebar] Opening create database dialog for:', connectionId);
+    log.debug('[Sidebar] Opening create database dialog for:', connectionId);
     setCreateDbConnectionId(connectionId);
     setCreateDbDialogOpen(true);
   };
 
   // Handle database created successfully
   const handleDatabaseCreated = async (connectionId: string) => {
-    console.log('[Sidebar] Database created, refreshing for:', connectionId);
+    log.debug('[Sidebar] Database created, refreshing for:', connectionId);
     // Clear cached tree data for this connection
     const newTreeData = { ...treeData };
     Object.keys(newTreeData).forEach((key) => {
@@ -172,7 +155,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
 
   // Handle new query from context menu
   const handleNewQuery = (node: TreeNode) => {
-    console.log('[Sidebar] New query for node:', node.name, 'connectionId:', node.connectionId);
+    log.debug('[Sidebar] New query for node:', node.name, 'connectionId:', node.connectionId);
     const connId = node.connectionId;
     if (!connId) return;
     // Set active connection
@@ -508,7 +491,7 @@ function ConnectionList({
 
   // Load schema data helper (lazy loading - only schema names)
   const loadSchemaData = async (connectionId: string) => {
-    console.log('[ConnectionList] Loading schema data for connection:', connectionId);
+    log.debug('[ConnectionList] Loading schema data for connection:', connectionId);
     try {
       const conn = connections.find(c => c.id === connectionId);
       if (!conn) return;
@@ -527,7 +510,7 @@ function ConnectionList({
       } else {
         // Always load databases first (DBeaver-style)
         const dbNames = await getDatabases(connectionId);
-        console.log('[ConnectionList] Loaded databases:', dbNames);
+        log.debug('[ConnectionList] Loaded databases:', dbNames);
         nodes = dbNames.map((name) => ({
           id: `${connectionId}-db-${name}`,
           name,
@@ -538,7 +521,7 @@ function ConnectionList({
       }
 
       setSchemaData(connectionId, nodes);
-      console.log('[ConnectionList] Schema data loaded:', nodes.length, 'databases');
+      log.debug('[ConnectionList] Schema data loaded:', nodes.length, 'databases');
     } catch (error) {
       console.error('[ConnectionList] Failed to load schema data:', error);
     }
@@ -551,14 +534,14 @@ function ConnectionList({
   // Helper: connect, expand, load schemas. Has re-entrance guard.
   const connectAndExpand = async (connection: Connection) => {
     if (connectingIds.has(connection.id)) {
-      console.log('[Sidebar] connectAndExpand: already connecting, skip', connection.name);
+      log.debug('[Sidebar] connectAndExpand: already connecting, skip', connection.name);
       return;
     }
-    console.log('[Sidebar] connectAndExpand:', connection.name);
+    log.debug('[Sidebar] connectAndExpand:', connection.name);
     setConnectingIds(prev => new Set(prev).add(connection.id));
     try {
       await connectDatabase(connection);
-      console.log('[Sidebar] ✓ Connected:', connection.name);
+      log.debug('[Sidebar] ✓ Connected:', connection.name);
       useConnectionStore.getState().updateConnection(connection.id, { connected: true, lastConnected: new Date() });
       setExpandedConnections(prev => {
         const next = new Set(prev);
@@ -568,7 +551,7 @@ function ConnectionList({
       await loadSchemaData(connection.id);
     } catch (error: any) {
       console.error('[Sidebar] ✗ Failed to connect:', connection.name, error);
-      alert(`连接失败: ${error?.message || error}`);
+      alert(t('sidebar.connectFailed', { error: error?.message || String(error) }));
     } finally {
       setConnectingIds(prev => {
         const next = new Set(prev);
@@ -664,7 +647,7 @@ function ConnectionList({
     e.preventDefault();
     e.stopPropagation();
     const connection = connections.find(c => c.id === connectionId);
-    console.log(`[Sidebar] handleContextMenu: 右键菜单打开 -> ${connection?.name || connectionId}, 位置=(${e.clientX}, ${e.clientY})`);
+    log.debug(`[Sidebar] handleContextMenu: 右键菜单打开 -> ${connection?.name || connectionId}, 位置=(${e.clientX}, ${e.clientY})`);
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -704,7 +687,7 @@ function ConnectionList({
             {connectingIds.has(connection.id) && (
               <div className="pl-8 py-2 text-xs text-muted-foreground italic flex items-center gap-1">
                 <Loader2 size={12} className="animate-spin" />
-                正在连接...
+                {t('sidebar.connecting')}
               </div>
             )}
             
@@ -727,7 +710,7 @@ function ConnectionList({
             
             {isExpanded && !connection.connected && (
               <div className="pl-8 py-2 text-xs text-muted-foreground italic">
-                请先连接数据库
+                {t('sidebar.needConnection')}
               </div>
             )}
           </div>
@@ -804,7 +787,7 @@ function DatabaseTree({
   const handleToggleNode = async (node: TreeNode, e: React.MouseEvent) => {
     e.stopPropagation();
     const nodeId = node.id;
-    console.log('[DatabaseTree] Node clicked:', node.name, 'Type:', node.type, 'Expanded:', expandedNodes.has(nodeId));
+    log.debug('[DatabaseTree] Node clicked:', node.name, 'Type:', node.type, 'Expanded:', expandedNodes.has(nodeId));
     
     // Set selectedContext based on node type
     if (node.type === 'schema') {
@@ -815,7 +798,7 @@ function DatabaseTree({
         connectionId,
         schemaName: node.name,
       });
-      console.log('[DatabaseTree] Selected schema:', node.name);
+      log.debug('[DatabaseTree] Selected schema:', node.name);
     } else if (node.type === 'database') {
       // For MySQL, database node click sets schema context (MySQL schema == database)
       useConnectionStore.getState().setActiveConnection(connectionId);
@@ -825,7 +808,7 @@ function DatabaseTree({
         connectionId,
         schemaName: node.name,
       });
-      console.log('[DatabaseTree] Selected database (as schema):', node.name);
+      log.debug('[DatabaseTree] Selected database (as schema):', node.name);
     } else if (['tables', 'views', 'functions', 'procedures', 'events', 'triggers'].includes(node.type)) {
       useConnectionStore.getState().setActiveConnection(connectionId);
       useUIStore.getState().setSelectedContext({
@@ -834,7 +817,7 @@ function DatabaseTree({
         schemaName: node.schemaName || undefined,
         folderType: node.type,
       });
-      console.log('[DatabaseTree] Selected folder:', node.type, 'in schema:', node.schemaName);
+      log.debug('[DatabaseTree] Selected folder:', node.type, 'in schema:', node.schemaName);
     }
     
     const newExpanded = new Set(expandedNodes);
@@ -842,15 +825,15 @@ function DatabaseTree({
     if (newExpanded.has(nodeId)) {
       newExpanded.delete(nodeId);
       setExpandedNodes(newExpanded);
-      console.log('[DatabaseTree] Collapsed node:', node.name);
+      log.debug('[DatabaseTree] Collapsed node:', node.name);
     } else {
       newExpanded.add(nodeId);
       setExpandedNodes(newExpanded);
-      console.log('[DatabaseTree] Expanded node:', node.name);
+      log.debug('[DatabaseTree] Expanded node:', node.name);
       
       // Load children if not loaded - support all folder types + database (for MySQL)
       if (!node.loaded && ['database', 'schema', 'tables', 'views', 'functions', 'procedures', 'events', 'triggers'].includes(node.type)) {
-        console.log('[DatabaseTree] Loading children for node:', node.name);
+        log.debug('[DatabaseTree] Loading children for node:', node.name);
         await loadDatabaseChildren(node);
       }
     }
@@ -858,7 +841,7 @@ function DatabaseTree({
 
   // Handle table single-click - only highlight and set context (no tab opening)
   const handleTableClick = (table: TreeNode) => {
-    console.log('[DatabaseTree] Table single-clicked:', table.name);
+    log.debug('[DatabaseTree] Table single-clicked:', table.name);
     useUIStore.getState().setViewModeType("navicat");
     useConnectionStore.getState().setActiveConnection(connectionId);
     if (table.schemaName) {
@@ -875,7 +858,7 @@ function DatabaseTree({
 
   // Handle table double-click - open table data tab in right panel
   const handleTableDoubleClick = (table: TreeNode) => {
-    console.log('[DatabaseTree] Table double-clicked:', table.name);
+    log.debug('[DatabaseTree] Table double-clicked:', table.name);
     useUIStore.getState().setViewModeType("navicat");
     useConnectionStore.getState().setActiveConnection(connectionId);
     if (table.schemaName) {
@@ -918,7 +901,7 @@ function DatabaseTree({
 
   // Handle click on view/function/procedure/trigger leaf nodes - open source in query tab
   const handleObjectClick = async (node: TreeNode) => {
-    console.log('[DatabaseTree] Object clicked:', node.name, 'Type:', node.type);
+    log.debug('[DatabaseTree] Object clicked:', node.name, 'Type:', node.type);
     useConnectionStore.getState().setActiveConnection(connectionId);
 
     const { executeQuery } = await import("@/lib/tauri-commands");
@@ -1024,11 +1007,11 @@ function DatabaseTree({
 
         if (needsSchemas) {
           // PostgreSQL/GaussDB/MSSQL: load schemas via sub-connection
-          console.log('[DatabaseTree] Loading schemas for database:', node.name);
+          log.debug('[DatabaseTree] Loading schemas for database:', node.name);
           try {
             const { getSchemasForDatabase } = await import("@/lib/tauri-commands");
             const schemaNames = await getSchemasForDatabase(connectionId, node.name);
-            console.log('[DatabaseTree] Loaded', schemaNames.length, 'schemas for database', node.name);
+            log.debug('[DatabaseTree] Loaded', schemaNames.length, 'schemas for database', node.name);
             children = schemaNames.map((name) => ({
               id: `${node.id}-schema-${name}`,
               type: 'schema' as TreeNodeType,
@@ -1044,7 +1027,7 @@ function DatabaseTree({
           }
         } else {
           // MySQL/ClickHouse/SQLite: database IS schema - category folders directly
-          console.log('[DatabaseTree] Creating category folders for database:', node.name);
+          log.debug('[DatabaseTree] Creating category folders for database:', node.name);
           const cats = getSupportedCategories(connection.type);
           children = cats.map(cat => ({
             id: `${node.id}-${cat}`,
@@ -1056,11 +1039,11 @@ function DatabaseTree({
             children: [],
             loaded: false,
           }));
-          console.log('[DatabaseTree] Created', children.length, 'category folders');
+          log.debug('[DatabaseTree] Created', children.length, 'category folders');
         }
       } else if (node.type === 'schema') {
         // Schema 节点下创建分类文件夹：表、视图、函数、存储过程、触发器
-        console.log('[DatabaseTree] Creating category folders for schema:', node.name);
+        log.debug('[DatabaseTree] Creating category folders for schema:', node.name);
         children = supportedCategories.map(cat => ({
           id: `${node.id}-${cat}`,
           type: cat,
@@ -1071,15 +1054,15 @@ function DatabaseTree({
           children: [],
           loaded: false,
         }));
-        console.log('[DatabaseTree] Created', children.length, 'category folders');
+        log.debug('[DatabaseTree] Created', children.length, 'category folders');
       } else if (node.type === 'tables') {
         // 表文件夹 - 加载实际的表列表（按 schema 过滤）
-        console.log('[DatabaseTree] Loading tables for schema:', node.schemaName);
+        log.debug('[DatabaseTree] Loading tables for schema:', node.schemaName);
         const tables = await getTables(connectionId);
         const filtered = node.schemaName
           ? tables.filter((table: any) => !table.schema || table.schema === node.schemaName)
           : tables;
-        console.log('[DatabaseTree] Loaded', filtered.length, 'tables (total:', tables.length, ')');
+        log.debug('[DatabaseTree] Loaded', filtered.length, 'tables (total:', tables.length, ')');
         children = filtered.map((table: any) => ({
           id: `${connectionId}-${node.schemaName || 'default'}-table-${table.name}`,
           type: 'table',
@@ -1089,10 +1072,10 @@ function DatabaseTree({
         }));
       } else if (node.type === 'views') {
         // 视图文件夹 - 加载实际的视图列表
-        console.log('[DatabaseTree] Loading views for schema:', node.schemaName);
+        log.debug('[DatabaseTree] Loading views for schema:', node.schemaName);
         try {
           const views = await getViews(connectionId, node.schemaName || undefined);
-          console.log('[DatabaseTree] Loaded', views.length, 'views');
+          log.debug('[DatabaseTree] Loaded', views.length, 'views');
           children = views.map((view: any) => ({
             id: `${connectionId}-${node.schemaName || 'default'}-view-${view.name}`,
             type: 'view',
@@ -1106,7 +1089,7 @@ function DatabaseTree({
         }
       } else if (node.type === 'functions') {
         // 函数文件夹 - 使用 SQL 查询系统表获取函数列表
-        console.log('[DatabaseTree] Loading functions for schema:', node.schemaName);
+        log.debug('[DatabaseTree] Loading functions for schema:', node.schemaName);
         try {
           const { executeQuery } = await import("@/lib/tauri-commands");
           const schema = node.schemaName || 'public';
@@ -1149,7 +1132,7 @@ function DatabaseTree({
         }
       } else if (node.type === 'procedures') {
         // 存储过程文件夹 - 使用 SQL 查询系统表获取存储过程列表
-        console.log('[DatabaseTree] Loading procedures for schema:', node.schemaName);
+        log.debug('[DatabaseTree] Loading procedures for schema:', node.schemaName);
         try {
           const { executeQuery } = await import("@/lib/tauri-commands");
           const schema = node.schemaName || 'public';
@@ -1194,7 +1177,7 @@ function DatabaseTree({
         }
       } else if (node.type === 'events') {
         // 事件文件夹 - MySQL 特有
-        console.log('[DatabaseTree] Loading events for schema:', node.schemaName);
+        log.debug('[DatabaseTree] Loading events for schema:', node.schemaName);
         try {
           const { executeQuery } = await import("@/lib/tauri-commands");
           let sql = '';
@@ -1218,7 +1201,7 @@ function DatabaseTree({
         }
       } else if (node.type === 'triggers') {
         // 触发器文件夹 - 使用 SQL 查询系统表获取触发器列表
-        console.log('[DatabaseTree] Loading triggers for schema:', node.schemaName);
+        log.debug('[DatabaseTree] Loading triggers for schema:', node.schemaName);
         try {
           const { executeQuery } = await import("@/lib/tauri-commands");
           let sql = '';
@@ -1253,7 +1236,7 @@ function DatabaseTree({
       const newTreeData = { ...treeData };
       newTreeData[node.id] = children;
       setTreeData(newTreeData);
-      console.log('[DatabaseTree] ✓ Successfully loaded children for node:', node.name);
+      log.debug('[DatabaseTree] ✓ Successfully loaded children for node:', node.name);
     } catch (error) {
       console.error('[DatabaseTree] ✗ Failed to load children:', error);
     } finally {
@@ -1484,7 +1467,7 @@ function ConnectionItem({
 
   const handleConnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log('[ConnectionItem] Connect/Disconnect button clicked for:', connection.name, 'Current status:', connection.connected ? 'connected' : 'disconnected');
+    log.debug('[ConnectionItem] Connect/Disconnect button clicked for:', connection.name, 'Current status:', connection.connected ? 'connected' : 'disconnected');
     if (connection.connected) {
       // Update frontend immediately — don't wait for backend disconnect
       useConnectionStore.getState().updateConnection(connection.id, { connected: false });
@@ -1494,11 +1477,11 @@ function ConnectionItem({
         console.error('[ConnectionItem] Failed to disconnect from backend:', error);
       });
     } else {
-      console.log('[ConnectionItem] Connecting...');
+      log.debug('[ConnectionItem] Connecting...');
       setIsConnecting(true);
       try {
         await connectDatabase(connection);
-        console.log('[ConnectionItem] ✓ Successfully connected');
+        log.debug('[ConnectionItem] ✓ Successfully connected');
         useConnectionStore.getState().updateConnection(connection.id, { connected: true, lastConnected: new Date() });
       } catch (error: any) {
         console.error('[ConnectionItem] ✗ Failed to connect:', error);
@@ -1511,18 +1494,18 @@ function ConnectionItem({
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log('[ConnectionItem] Edit button clicked for:', connection.name);
+    log.debug('[ConnectionItem] Edit button clicked for:', connection.name);
     openConnectionDialog(connection);
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log('[ConnectionItem] Delete button clicked for:', connection.name);
-    if (confirm(`确定要删除连接 "${connection.name}" 吗？`)) {
-      console.log('[ConnectionItem] Confirmed deletion of:', connection.name);
+    log.debug('[ConnectionItem] Delete button clicked for:', connection.name);
+    if (confirm(t('sidebar.confirmDeleteConnection', { name: connection.name }))) {
+      log.debug('[ConnectionItem] Confirmed deletion of:', connection.name);
       removeConnection(connection.id);
     } else {
-      console.log('[ConnectionItem] Cancelled deletion of:', connection.name);
+      log.debug('[ConnectionItem] Cancelled deletion of:', connection.name);
     }
   };
 
@@ -1543,8 +1526,7 @@ function ConnectionItem({
           <Loader2 size={12} className="animate-spin" />
         </span>
       ) : connection.connected ? (
-        <button
-          onClick={onToggleExpand}
+        <button aria-label={isExpanded ? "折叠" : "展开"} onClick={onToggleExpand}
           className="p-0.5 hover:bg-muted rounded transition-colors"
           title={isExpanded ? "折叠" : "展开"}
         >
@@ -1570,48 +1552,42 @@ function ConnectionItem({
           <Loader2 size={12} className="animate-spin text-muted-foreground" />
         ) : connection.connected ? (
           <>
-            <button
-              onClick={handleConnect}
+            <button aria-label={t("sidebar.disconnect")} onClick={handleConnect}
               className="p-0.5 hover:bg-muted rounded transition-colors"
-              title="断开连接"
+              title={t("sidebar.disconnect")}
             >
               <Unplug size={12} className="text-success" />
             </button>
-            <button
-              onClick={handleEdit}
+            <button aria-label={t("sidebar.editConnection")} onClick={handleEdit}
               className="p-0.5 hover:bg-muted rounded transition-colors"
-              title="编辑"
+              title={t("sidebar.editConnection")}
             >
               <Edit size={12} />
             </button>
-            <button
-              onClick={handleDelete}
+            <button aria-label={t("sidebar.deleteConnection")} onClick={handleDelete}
               className="p-0.5 hover:bg-muted rounded transition-colors"
-              title="删除"
+              title={t("sidebar.deleteConnection")}
             >
               <Trash2 size={12} className="text-destructive" />
             </button>
           </>
         ) : (
           <>
-            <button
-              onClick={handleConnect}
+            <button aria-label="连接" onClick={handleConnect}
               className="p-0.5 hover:bg-muted rounded transition-colors"
               title="连接"
             >
               <Plug size={12} className="text-muted-foreground" />
             </button>
-            <button
-              onClick={handleEdit}
+            <button aria-label={t("sidebar.editConnection")} onClick={handleEdit}
               className="p-0.5 hover:bg-muted rounded transition-colors"
-              title="编辑"
+              title={t("sidebar.editConnection")}
             >
               <Edit size={12} />
             </button>
-            <button
-              onClick={handleDelete}
+            <button aria-label={t("sidebar.deleteConnection")} onClick={handleDelete}
               className="p-0.5 hover:bg-muted rounded transition-colors"
-              title="删除"
+              title={t("sidebar.deleteConnection")}
             >
               <Trash2 size={12} className="text-destructive" />
             </button>
@@ -1628,363 +1604,18 @@ function EmptyConnectionList({ openConnectionDialog }: { openConnectionDialog: (
   return (
     <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-xs px-4 text-center">
       <Database size={32} className="mb-3 opacity-30" />
-      <p className="text-sm font-medium mb-2">暂无连接</p>
+      <p className="text-sm font-medium mb-2">{t('sidebar.noConnections')}</p>
       <p className="text-[11px] text-muted-foreground/60 mb-3">
-        点击下方按钮创建新的数据库连接
+        {t('sidebar.noConnectionsHint')}
       </p>
       <button
         onClick={() => openConnectionDialog()}
         className="flex items-center gap-1.5 px-4 py-2 bg-[hsl(var(--tab-active))] text-white rounded text-xs hover:opacity-90 transition-opacity"
       >
         <Plus size={14} />
-        <span>新建连接</span>
+        <span>{t('sidebar.newConnection')}</span>
       </button>
     </div>
-  );
-}
-
-// ===== Context Menu =====
-
-interface ContextMenuProps {
-  x: number;
-  y: number;
-  connectionId: string;
-  onClose: () => void;
-  openConnectionDialog: (editConnection?: Connection) => void;
-  expandedConnections: Set<string>;
-  setExpandedConnections: React.Dispatch<React.SetStateAction<Set<string>>>;
-  onCreateDatabase: (connectionId: string) => void;
-}
-
-interface TreeNodeContextMenuProps {
-  x: number;
-  y: number;
-  node: TreeNode;
-  onClose: () => void;
-  onRefresh: (node: TreeNode) => Promise<void>;
-  onCopyName: (name: string) => void;
-  onNewQuery?: (node: TreeNode) => void;
-  onDesignTable?: (node: TreeNode) => void;
-  onOpenTable?: (node: TreeNode) => void;
-  onDuplicateTable?: (node: TreeNode, includeData: boolean) => void;
-  onDeleteTable?: (node: TreeNode) => void;
-  onTruncateTable?: (node: TreeNode) => void;
-}
-
-function ContextMenu({ x, y, connectionId, onClose, openConnectionDialog, expandedConnections, setExpandedConnections, onCreateDatabase }: ContextMenuProps) {
-  const { connections, removeConnection } = useConnectionStore();
-  const connection = connections.find((c) => c.id === connectionId);
-
-  if (!connection) {
-    console.warn('[ContextMenu] Connection not found:', connectionId);
-    return null;
-  }
-
-  console.log('[ContextMenu] Context menu opened for:', connection.name, 'Status:', connection.connected ? 'connected' : 'disconnected');
-
-  const handleConnect = async () => {
-    console.log('[ContextMenu] Connect/Disconnect clicked for:', connection.name, 'Current status:', connection.connected ? 'connected' : 'disconnected');
-    if (connection.connected) {
-      // Update frontend immediately — don't wait for backend disconnect
-      useConnectionStore.getState().updateConnection(connection.id, { connected: false });
-      const newExpanded = new Set(expandedConnections);
-      newExpanded.delete(connection.id);
-      setExpandedConnections(newExpanded);
-      onClose();
-      // Fire backend disconnect in background (non-blocking)
-      disconnectDatabase(connection.id).catch((error) => {
-        console.error('[ContextMenu] Failed to disconnect from backend:', error);
-      });
-    } else {
-      console.log('[ContextMenu] Connecting...');
-      try {
-        await connectDatabase(connection);
-        console.log('[ContextMenu] ✓ Successfully connected');
-        // Update connection status to true
-        useConnectionStore.getState().updateConnection(connection.id, { connected: true });
-        console.log('[ContextMenu] Updated connection status to connected');
-        // Auto-expand the connection after connecting
-        const newExpanded = new Set(expandedConnections);
-        newExpanded.add(connection.id);
-        setExpandedConnections(newExpanded);
-        console.log('[ContextMenu] Auto-expanded connection:', connection.name);
-      } catch (error) {
-        console.error('[ContextMenu] ✗ Failed to connect:', error);
-      }
-    }
-    onClose();
-  };
-
-  const handleEdit = () => {
-    console.log('[ContextMenu] Edit clicked for:', connection.name);
-    openConnectionDialog(connection);
-    onClose();
-  };
-
-  const handleDelete = () => {
-    console.log('[ContextMenu] Delete clicked for:', connection.name);
-    if (confirm(`确定要删除连接 "${connection.name}" 吗？`)) {
-      console.log('[ContextMenu] Confirmed deletion of:', connection.name);
-      removeConnection(connection.id);
-    } else {
-      console.log('[ContextMenu] Cancelled deletion of:', connection.name);
-    }
-    onClose();
-  };
-
-  const handleRefresh = async () => {
-    console.log('[ContextMenu] Refresh clicked for:', connection.name);
-    // Refresh schema data
-    onClose();
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
-        style={{ left: x, top: y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
-      >
-        <div className="px-3 py-1.5 text-xs font-medium border-b border-border mb-1">
-          {connection.name}
-        </div>
-        
-        {!connection.connected ? (
-          <button
-            onClick={handleConnect}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-          >
-            <Plug size={12} />
-            <span>连接</span>
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={handleConnect}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-            >
-              <Unplug size={12} />
-              <span>断开连接</span>
-            </button>
-            <button
-              onClick={handleRefresh}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-            >
-              <RefreshCw size={12} />
-              <span>刷新</span>
-            </button>
-            {connection.type !== 'sqlite' && (
-              <button
-                onClick={() => {
-                  onCreateDatabase(connectionId);
-                  onClose();
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-              >
-                <Database size={12} />
-                <span>{t('createDb.title')}</span>
-              </button>
-            )}
-          </>
-        )}
-
-        <button
-          onClick={handleEdit}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-        >
-          <Edit size={12} />
-          <span>编辑</span>
-        </button>
-
-        <div className="border-t border-border my-1" />
-
-        <button
-          onClick={handleDelete}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
-        >
-          <Trash2 size={12} />
-          <span>删除</span>
-        </button>
-      </div>
-    </>
-  );
-}
-
-// ===== Tree Node Context Menu =====
-
-function TreeNodeContextMenu({ x, y, node, onClose, onRefresh, onCopyName, onNewQuery, onDesignTable, onOpenTable, onDuplicateTable, onDeleteTable, onTruncateTable }: TreeNodeContextMenuProps) {
-  const handleNewQueryClick = () => {
-    onNewQuery?.(node);
-    onClose();
-  };
-
-  const handleRefreshClick = async () => {
-    await onRefresh(node);
-    onClose();
-  };
-
-  const handleCopyClick = () => {
-    onCopyName(node.name);
-    onClose();
-  };
-
-  const handleDesignClick = () => {
-    onDesignTable?.(node);
-    onClose();
-  };
-
-  const handleOpenTableClick = () => {
-    onOpenTable?.(node);
-    onClose();
-  };
-
-  const handleDuplicateStructureClick = () => {
-    onDuplicateTable?.(node, false);
-    onClose();
-  };
-
-  const handleDuplicateStructureAndDataClick = () => {
-    onDuplicateTable?.(node, true);
-    onClose();
-  };
-
-  const handleDeleteClick = () => {
-    onDeleteTable?.(node);
-    onClose();
-  };
-
-  const handleTruncateClick = () => {
-    onTruncateTable?.(node);
-    onClose();
-  };
-
-  const isTable = node.type === 'table';
-  const canRefresh = ['database', 'schema', 'tables', 'views', 'functions', 'procedures', 'events', 'triggers'].includes(node.type);
-  const canNewQuery = ['database', 'schema', 'table'].includes(node.type);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
-        style={{ left: x, top: y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
-      >
-        <div className="px-3 py-1.5 text-xs font-medium border-b border-border mb-1">
-          {node.name}
-        </div>
-
-        {isTable && onDesignTable && (
-          <button
-            onClick={handleDesignClick}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-          >
-            <Wrench size={12} />
-            <span>{t('sidebar.designTable')}</span>
-          </button>
-        )}
-
-        {isTable && onOpenTable && (
-          <button
-            onClick={handleOpenTableClick}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-          >
-            <TableIcon size={12} />
-            <span>{t('sidebar.openTable')}</span>
-          </button>
-        )}
-
-        {canNewQuery && onNewQuery && (
-          <button
-            onClick={handleNewQueryClick}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-          >
-            <FileText size={12} />
-            <span>{t('sidebar.newQuery')}</span>
-          </button>
-        )}
-
-        {isTable && <div className="border-t border-border my-1" />}
-
-        <button
-          onClick={handleCopyClick}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-        >
-          <FileText size={12} />
-          <span>复制名称</span>
-        </button>
-        
-        {canRefresh && (
-          <button
-            onClick={handleRefreshClick}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-          >
-            <RefreshCw size={12} />
-            <span>刷新</span>
-          </button>
-        )}
-
-        {isTable && onDuplicateTable && (
-          <>
-            <div className="border-t border-border my-1" />
-            {/* Duplicate Table - Navicat-style hover submenu */}
-            <div className="relative group/dup">
-              <div className="w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted transition-colors cursor-default">
-                <span className="flex items-center gap-2">
-                  <Copy size={12} />
-                  {t('sidebar.duplicateTable')}
-                </span>
-                <ChevronRight size={12} className="text-muted-foreground" />
-              </div>
-              {/* Submenu */}
-              <div className="absolute left-full top-0 ml-0 hidden group-hover/dup:block z-[60]">
-                <div
-                  className="border border-border rounded-md shadow-lg py-1 min-w-[150px]"
-                  style={{ backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
-                >
-                  <button
-                    onClick={handleDuplicateStructureAndDataClick}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-                  >
-                    <span>{t('sidebar.structureAndData')}</span>
-                  </button>
-                  <button
-                    onClick={handleDuplicateStructureClick}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
-                  >
-                    <span>{t('sidebar.structureOnly')}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {isTable && (
-          <>
-            <div className="border-t border-border my-1" />
-            <button
-              onClick={handleTruncateClick}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-warning"
-            >
-              <Eraser size={12} />
-              <span>{t('sidebar.truncateTable')}</span>
-            </button>
-            <button
-              onClick={handleDeleteClick}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
-            >
-              <Trash2 size={12} />
-              <span>{t('sidebar.deleteTable')}</span>
-            </button>
-          </>
-        )}
-
-        <div className="border-t border-border my-1" />
-        <div className="px-3 py-1.5 text-[11px] text-muted-foreground">
-          类型：{node.type}
-        </div>
-      </div>
-    </>
   );
 }
 

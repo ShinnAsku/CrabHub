@@ -14,9 +14,19 @@ function StatusBar() {
     postgresql: "PostgreSQL",
     mysql: "MySQL",
     sqlite: "SQLite",
-    mssql: "MSSQL",
+    mssql: "SQL Server",
     clickhouse: "ClickHouse",
     gaussdb: "GaussDB",
+    kingbase: "Kingbase",
+    vastbase: "Vastbase",
+    yashandb: "YashanDB",
+    oceanbase: "OceanBase",
+    tidb: "TiDB",
+    tdsql: "TDSQL",
+    oracle: "Oracle",
+    sqlserver: "SQL Server",
+    dameng: "DaMeng",
+    gbase: "GBase",
   };
 
   return (

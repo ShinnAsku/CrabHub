@@ -316,7 +316,7 @@ const VisualQueryBuilder: React.FC<QueryBuilderProps> = ({
 
     if (filters.length > 0) {
       sql += " WHERE ";
-      sql += filters.map((f) => `${f.column} ${f.operator} '${f.value}'`).join(" AND ");
+      sql += filters.map((f) => `${f.column} ${f.operator} '${f.value.replace(/'/g, "''")}'`).join(" AND ");
     }
 
     if (limit) {
@@ -347,8 +347,7 @@ const VisualQueryBuilder: React.FC<QueryBuilderProps> = ({
       {/* Toolbar */}
       <div className="flex items-center justify-between bg-muted px-4 py-2 border-b border-border">
         <div className="flex items-center space-x-2">
-          <button
-            onClick={onClose}
+          <button aria-label={t('builder.close')} onClick={onClose}
             className="p-2 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
             title={t('builder.close')}
           >

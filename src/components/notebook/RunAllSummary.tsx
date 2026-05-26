@@ -1,4 +1,3 @@
-import React from "react";
 import { CheckCircle, XCircle, X } from "lucide-react";
 
 interface RunSummary {
@@ -15,39 +14,38 @@ interface RunAllSummaryProps {
 
 const RunAllSummary: React.FC<RunAllSummaryProps> = ({ summary, onClose }) => {
   return (
-    <div className={`mb-6 p-4 rounded border ${summary.success ? "bg-success/20 border-success" : "bg-destructive/20 border-destructive"}`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center space-x-2">
+    <div className={`mb-2 p-2 rounded border text-xs ${
+      summary.success ? "bg-green-500/10 border-green-500/30" : "bg-destructive/10 border-destructive/30"
+    }`}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5">
           {summary.success ? (
-            <CheckCircle className="w-5 h-5 text-success" />
+            <CheckCircle size={14} className="text-green-500" />
           ) : (
-            <XCircle className="w-5 h-5 text-destructive" />
+            <XCircle size={14} className="text-destructive" />
           )}
-          <h3 className={`text-sm font-medium ${summary.success ? "text-success" : "text-destructive"}`}>
-            {summary.success ? "All cells executed successfully" : "Some cells failed to execute"}
-          </h3>
+          <span className={`font-medium ${summary.success ? "text-green-600" : "text-destructive"}`}>
+            {summary.success ? "All cells executed" : "Some cells failed"}
+          </span>
         </div>
         <button
           onClick={onClose}
-          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
+          className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
         >
-          <X className="w-4 h-4" />
+          <X size={12} />
         </button>
       </div>
-      <div className="text-sm text-foreground mb-2">
-        <span>Executed: {summary.executed} | Failed: {summary.failed}</span>
-      </div>
+      <span className="text-muted-foreground">
+        Executed: {summary.executed} | Failed: {summary.failed}
+      </span>
       {!summary.success && summary.errors.length > 0 && (
-        <div className="mt-2">
-          <h4 className="text-sm font-medium text-destructive mb-2">Errors:</h4>
-          <ul className="text-xs text-destructive space-y-1">
-            {summary.errors.map((error, index) => (
-              <li key={index} className="bg-destructive/20 p-2 rounded">
-                {error}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ul className="mt-1.5 space-y-0.5">
+          {summary.errors.map((error, index) => (
+            <li key={index} className="bg-destructive/10 p-1 rounded text-destructive">
+              {error}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

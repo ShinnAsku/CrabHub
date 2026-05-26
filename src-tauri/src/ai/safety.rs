@@ -29,6 +29,17 @@ impl SafetyGate {
     pub fn evaluate(&self, sql: &str) -> SafetyAction {
         let upper = sql.trim().to_uppercase();
 
+        // Reject multi-statement SQL from the agent (prevents bypass via
+        // "SELECT 1; DROP TABLE users;" where only the first statement is benign).
+        if sql.trim().contains(';') {
+            let without_last = sql.trim().trim_end_matches(';').trim();
+            if without_last.contains(';') {
+                return SafetyAction::Deny {
+                    reason: "Multi-statement SQL is not allowed through the agent".into(),
+                };
+            }
+        }
+
         // Block DROP without WHERE
         if (upper.contains("DROP TABLE")
             || upper.contains("DROP DATABASE")

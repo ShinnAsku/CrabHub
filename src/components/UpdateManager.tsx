@@ -51,8 +51,7 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onClose }) => {
       {/* Header */}
       <div className="flex items-center justify-between bg-muted px-4 py-2 border-b border-border">
         <div className="flex items-center gap-2">
-          <button
-            onClick={onClose}
+          <button aria-label={t('common.close')} onClick={onClose}
             className="p-2 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
             title={t('common.close')}
           >
@@ -61,8 +60,7 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onClose }) => {
           <h1 className="text-lg font-medium text-foreground">{t('update.title')}</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleCheckForUpdates}
+          <button aria-label="Check for updates" onClick={handleCheckForUpdates}
             className="p-2 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors"
             title="Check for updates"
             disabled={checking}

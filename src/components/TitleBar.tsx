@@ -38,13 +38,13 @@ export function TitleBar() {
         bg-background/80 backdrop-blur-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]
         select-none shrink-0"
     >
-      <div className="flex items-center gap-2 pl-[70px]">
-        <span className="text-xs font-medium text-muted-foreground">CrabHub</span>
+      <div className="flex items-center gap-2 pl-3">
+        <img src="/icon.png" alt="CrabHub" className="w-6 h-6" />
+        <span className="text-xs font-medium text-foreground">CrabHub</span>
       </div>
       <div className="flex items-center gap-0.5">
         {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
+        <button aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} onClick={toggleTheme}
           className="p-1.5 hover:bg-secondary rounded-md transition-colors"
           title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >

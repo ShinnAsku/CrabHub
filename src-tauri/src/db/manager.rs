@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -8,8 +7,10 @@ use super::clickhouse::ClickHouseConnection;
 use super::dialect::DialectConfig;
 use super::gauss_rs::GaussAsyncConnection;
 use super::mysql::MySqlConnection;
+use super::odbc_bridge::OdbcConnection;
 use super::pg_compatible::PgCompatibleConnection;
 use super::postgres::PostgresConnection;
+use super::sqlserver::SqlServerConnection;
 use super::sqlite::SQLiteConnection;
 use super::trait_def::DatabaseConnection;
 use super::sql_limiter;
@@ -30,16 +31,17 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 3;
 struct ConnectionEntry {
     connection: Box<dyn DatabaseConnection>,
     config: ConnectionConfig,
-    /// Updated by heartbeat AND by every user query, so heartbeat can skip busy conns
     last_heartbeat: std::sync::Mutex<Instant>,
     is_healthy: bool,
     reconnect_count: u32,
+    /// SSH tunnel (kept alive for the lifetime of the connection)
+    ssh_tunnel: Option<crate::ssh::tunnel::SshTunnel>,
 }
 
 /// Manages multiple database connections
 pub struct ConnectionManager {
     connections: RwLock<HashMap<String, ConnectionEntry>>,
-    plugin_manager: std::sync::Mutex<Option<Arc<PluginManager>>>,
+    plugin_manager: tokio::sync::Mutex<Option<Arc<PluginManager>>>,
     /// Per-connection cancel senders. Dropping the sender cancels the active query.
     cancel_tokens: RwLock<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
 }
@@ -49,7 +51,7 @@ impl ConnectionManager {
     pub fn new() -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
-            plugin_manager: std::sync::Mutex::new(None),
+            plugin_manager: tokio::sync::Mutex::new(None),
             cancel_tokens: RwLock::new(HashMap::new()),
         }
     }
@@ -71,11 +73,11 @@ impl ConnectionManager {
 
     /// Inject the plugin manager (called during app setup)
     pub fn set_plugin_manager(&self, pm: Arc<PluginManager>) {
-        *self.plugin_manager.lock().unwrap() = Some(pm);
+        *self.plugin_manager.try_lock().expect("plugin_manager lock uncontended during setup") = Some(pm);
     }
 
-    fn get_plugin_manager(&self) -> Option<Arc<PluginManager>> {
-        self.plugin_manager.lock().unwrap().clone()
+    async fn get_plugin_manager(&self) -> Option<Arc<PluginManager>> {
+        self.plugin_manager.lock().await.clone()
     }
 
     /// Background loop that checks connection health without running SQL queries.
@@ -159,11 +161,15 @@ impl ConnectionManager {
                 }
                 Err(DbError::ConnectionError("All GaussDB drivers failed".into()))
             }
-            // PG-compatible: use PostgresConnection as provisional driver
-            DatabaseType::Kingbase
-            | DatabaseType::Vastbase
-            | DatabaseType::YashanDB => {
-                Ok(Box::new(PostgresConnection::new(config).await?))
+            // PG-compatible: use dialect-specific PgCompatibleConnection
+            DatabaseType::Kingbase => {
+                Ok(Box::new(PgCompatibleConnection::new(config, DialectConfig::kingbase()).await?))
+            }
+            DatabaseType::Vastbase => {
+                Ok(Box::new(PgCompatibleConnection::new(config, DialectConfig::vastbase()).await?))
+            }
+            DatabaseType::YashanDB => {
+                Ok(Box::new(PgCompatibleConnection::new(config, DialectConfig::yashandb()).await?))
             }
             DatabaseType::MySQL => Ok(Box::new(MySqlConnection::new(config).await?)),
             // MySQL-compatible: use MySqlConnection as provisional driver
@@ -175,22 +181,51 @@ impl ConnectionManager {
                 Ok(Box::new(ClickHouseConnection::new(config).await?))
             }
             // ODBC bridge group: not yet implemented
+            DatabaseType::SQLServer => {
+                match SqlServerConnection::new(config).await {
+                    Ok(conn) => {
+                        log::info!("SQLServer connected via tiberius");
+                        return Ok(Box::new(conn));
+                    }
+                    Err(e) => log::warn!("tiberius failed: {}, driver not available", e),
+                }
+                Err(DbError::ConfigError(format!("SQLServer driver not available: ensure tiberius is configured")))
+            }
             DatabaseType::Oracle
-            | DatabaseType::SQLServer
             | DatabaseType::DaMeng
             | DatabaseType::GBase => {
-                Err(DbError::ConfigError(format!(
-                    "Driver for {:?} is not yet implemented",
-                    config.db_type
-                )))
+                Ok(Box::new(OdbcConnection::new(config, config.db_type.clone()).await?))
             }
         }
     }
 
     /// Connect to a database and store the connection
     pub async fn connect(&self, config: ConnectionConfig) -> Result<ConnectResult, DbError> {
-        let pm = self.get_plugin_manager();
-        let connection = Self::create_connection_async(&config, pm.as_deref()).await?;
+        let mut effective_config = config.clone();
+
+        // Set up SSH tunnel if configured
+        let ssh_tunnel = if let Some(ref ssh) = config.ssh_tunnel {
+            let target_host = config.host.as_deref().unwrap_or("localhost");
+            let target_port = config.port.unwrap_or(0);
+            let ssh_cfg = crate::ssh::tunnel::SshConfig {
+                host: ssh.host.clone(),
+                port: ssh.port,
+                username: ssh.username.clone(),
+                password: Some(ssh.password.clone()),
+                private_key: ssh.private_key.clone(),
+            };
+            log::info!("Setting up SSH tunnel to {}:{}", target_host, target_port);
+            let tunnel = crate::ssh::tunnel::SshTunnel::connect(&ssh_cfg, target_host, target_port).await?;
+            let local_port = tunnel.local_addr.port();
+            effective_config.host = Some("127.0.0.1".to_string());
+            effective_config.port = Some(local_port);
+            Some(tunnel)
+        } else {
+            None
+        };
+
+        let pm = self.get_plugin_manager().await;
+        let connection = Self::create_connection_async(&effective_config, pm.as_deref()).await?;
         let detected_type = connection.db_type();
 
         let connection_id = config.id.clone();
@@ -207,6 +242,7 @@ impl ConnectionManager {
             last_heartbeat: std::sync::Mutex::new(Instant::now()),
             is_healthy: true,
             reconnect_count: 0,
+            ssh_tunnel,
         };
 
         let mut connections = self.connections.write().await;
@@ -242,6 +278,9 @@ impl ConnectionManager {
 
         if let Some(entry) = connections.remove(id) {
             entry.connection.close().await;
+            if let Some(tunnel) = entry.ssh_tunnel {
+                tunnel.close().await;
+            }
             log::info!("Disconnected from database with id '{}'", id);
             Ok(())
         } else {
@@ -480,7 +519,7 @@ impl ConnectionManager {
         );
         tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
 
-        let pm = self.get_plugin_manager();
+        let pm = self.get_plugin_manager().await;
         match Self::create_connection_async(&config, pm.as_deref()).await {
             Ok(new_conn) => {
                 let mut connections = self.connections.write().await;
@@ -550,7 +589,7 @@ impl ConnectionManager {
 
     /// Test a connection without storing it
     pub async fn test_connection(&self, config: ConnectionConfig) -> Result<bool, DbError> {
-        let pm = self.get_plugin_manager();
+        let pm = self.get_plugin_manager().await;
         let connection = Self::create_connection_async(&config, pm.as_deref()).await?;
 
         match config.db_type {
@@ -636,7 +675,7 @@ impl ConnectionManager {
             cfg
         };
 
-        let pm = self.get_plugin_manager();
+        let pm = self.get_plugin_manager().await;
         let connection = Self::create_connection_async(&sub_config, pm.as_deref()).await?;
         let schemas = connection.get_schemas().await?;
 
@@ -646,6 +685,7 @@ impl ConnectionManager {
             last_heartbeat: std::sync::Mutex::new(Instant::now()),
             is_healthy: true,
             reconnect_count: 0,
+            ssh_tunnel: None,
         };
 
         self.connections.write().await.insert(sub_id.clone(), sub_entry);

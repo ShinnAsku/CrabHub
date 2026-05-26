@@ -101,6 +101,11 @@ impl ClickHouseConnection {
     fn ctx(&self) -> String {
         format!("ClickHouse[{}/{}]", self.url, self.database)
     }
+
+    /// Return the database name with single quotes escaped for safe SQL interpolation.
+    fn escaped_db(&self) -> String {
+        self.database.replace('\'', "''")
+    }
 }
 
 /// Build full table reference for ClickHouse
@@ -139,18 +144,13 @@ impl DatabaseConnection for ClickHouseConnection {
         }
 
         let body = resp.text().await.unwrap_or_default();
+        // ClickHouse HTTP response: "Ok.\nN rows in set. ..." or X-ClickHouse-Summary header
         let rows_affected = if body.contains("Ok.") {
-            if let Some(pos) = body.find("rows.") {
-                let prefix = &body[..pos];
-                let parts: Vec<&str> = prefix.split_whitespace().collect();
-                if let Some(last) = parts.last() {
-                    last.parse::<u64>().unwrap_or(0)
-                } else {
-                    0
-                }
-            } else {
-                0
-            }
+            body.lines()
+                .find(|l| l.contains("rows in set") || l.contains("row in set"))
+                .and_then(|line| line.split_whitespace().next())
+                .and_then(|n| n.parse::<u64>().ok())
+                .unwrap_or(0)
         } else {
             0
         };
@@ -261,9 +261,10 @@ impl DatabaseConnection for ClickHouseConnection {
     }
 
     async fn get_tables(&self) -> Result<Vec<TableInfo>, DbError> {
+        let db = self.database.replace('\'', "''");
         let sql = format!(
             "SELECT name, engine, total_rows, comment FROM system.tables WHERE database = '{}' ORDER BY name",
-            self.database
+            db
         );
 
         let result = self.query_sql(&sql).await?;
@@ -340,7 +341,7 @@ impl DatabaseConnection for ClickHouseConnection {
              FROM system.columns \
              WHERE database = '{}' AND table = '{}' \
              ORDER BY position",
-            self.database, table
+            self.escaped_db(), crate::db::trait_def::escape_sql_string(table)
         );
 
         let result = self.query_sql(&sql).await?;
@@ -417,7 +418,7 @@ impl DatabaseConnection for ClickHouseConnection {
              FROM system.columns \
              WHERE database = '{}' AND table = '{}' \
              ORDER BY position",
-            self.database, table
+            self.escaped_db(), crate::db::trait_def::escape_sql_string(table)
         );
 
         let result = self.query_sql(&sql).await?;
@@ -476,7 +477,7 @@ impl DatabaseConnection for ClickHouseConnection {
     async fn get_views(&self, _schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
         let sql = format!(
             "SELECT name, engine FROM system.tables WHERE database = '{}' AND engine LIKE '%View%' ORDER BY name",
-            self.database
+            self.escaped_db()
         );
         let rows = self.query_sql(&sql).await?;
         let views = rows
@@ -511,11 +512,19 @@ impl DatabaseConnection for ClickHouseConnection {
 
     async fn get_indexes(
         &self,
-        _table: &str,
+        table: &str,
         _schema: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, DbError> {
-        // ClickHouse doesn't have traditional indexes like B-tree
-        Ok(vec![])
+        let db = self.escaped_db();
+        let t = crate::db::trait_def::escape_sql_string(table);
+        let result = self.query_sql(&format!(
+            "SELECT name, type, expr, granularity FROM system.data_skipping_indices \
+             WHERE database = '{db}' AND table = '{t}'"
+        )).await?;
+        Ok(result.rows.into_iter().map(|r| serde_json::json!({
+            "index_name": r.get("name"), "index_type": r.get("type"),
+            "expression": r.get("expr"), "granularity": r.get("granularity"),
+        })).collect())
     }
 
     async fn get_foreign_keys(
@@ -561,7 +570,7 @@ impl DatabaseConnection for ClickHouseConnection {
         } else {
             String::new()
         };
-        let offset = (page - 1) * page_size;
+        let offset = (page.saturating_sub(1)) * page_size;
         let sql = format!(
             "SELECT * FROM {}{} LIMIT {} OFFSET {}",
             full_table, order_clause, page_size, offset
