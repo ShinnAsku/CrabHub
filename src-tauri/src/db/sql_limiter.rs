@@ -274,4 +274,68 @@ pub fn inject_limit_offset(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_limit_n() {
+        assert!(has_user_limit("SELECT * FROM users LIMIT 10"));
+    }
+
+    #[test]
+    fn detects_limit_with_offset() {
+        assert!(has_user_limit("SELECT * FROM users LIMIT 10 OFFSET 20"));
+    }
+
+    #[test]
+    fn detects_fetch_first_n_rows() {
+        assert!(has_user_limit("SELECT * FROM users FETCH FIRST 10 ROWS ONLY"));
+    }
+
+    #[test]
+    fn detects_top_n() {
+        assert!(has_user_limit("SELECT TOP 10 * FROM users"));
+    }
+
+    #[test]
+    fn no_limit_for_bare_select() {
+        assert!(!has_user_limit("SELECT * FROM users"));
+    }
+
+    #[test]
+    fn limit_inside_string_not_detected() {
+        assert!(!has_user_limit("SELECT 'LIMIT 10' FROM users"));
+    }
+
+    #[test]
+    fn limit_inside_comment_not_detected() {
+        assert!(!has_user_limit("SELECT * FROM users -- LIMIT 10"));
+    }
+
+    #[test]
+    fn strips_trailing_limit() {
+        let result = strip_limit_offset("SELECT * FROM users LIMIT 10");
+        assert_eq!(result, "SELECT * FROM users");
+    }
+
+    #[test]
+    fn strips_limit_offset() {
+        let result = strip_limit_offset("SELECT * FROM users LIMIT 10 OFFSET 5");
+        assert_eq!(result, "SELECT * FROM users");
+    }
+
+    #[test]
+    fn inject_limit_pg() {
+        let result = inject_limit_offset("SELECT * FROM users", &DatabaseType::PostgreSQL, 100, 0);
+        assert_eq!(result, "SELECT * FROM users LIMIT 100 OFFSET 0");
+    }
+
+    #[test]
+    fn inject_limit_sqlserver() {
+        let result = inject_limit_offset("SELECT * FROM users", &DatabaseType::SQLServer, 100, 0);
+        assert_eq!(result, "SELECT * FROM users OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY");
+    }
+}
+
 

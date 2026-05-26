@@ -83,3 +83,79 @@ impl SafetyGate {
         SafetyAction::Allow
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gate() -> SafetyGate { SafetyGate::default() }
+
+    #[test]
+    fn allows_select() {
+        assert!(matches!(gate().evaluate("SELECT * FROM users"), SafetyAction::Allow));
+    }
+
+    #[test]
+    fn denies_multi_statement() {
+        let r = gate().evaluate("SELECT 1; DROP TABLE users;");
+        assert!(matches!(r, SafetyAction::Deny { .. }));
+    }
+
+    #[test]
+    fn allows_single_statement_with_trailing_semicolon() {
+        assert!(matches!(gate().evaluate("SELECT 1;"), SafetyAction::Allow));
+    }
+
+    #[test]
+    fn confirms_drop_table() {
+        let r = gate().evaluate("DROP TABLE users");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn confirms_truncate() {
+        let r = gate().evaluate("TRUNCATE TABLE users");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn denies_delete_without_where() {
+        let r = gate().evaluate("DELETE FROM users");
+        assert!(matches!(r, SafetyAction::Deny { .. }));
+    }
+
+    #[test]
+    fn confirms_delete_with_where() {
+        let r = gate().evaluate("DELETE FROM users WHERE id = 1");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn confirms_insert() {
+        let r = gate().evaluate("INSERT INTO users VALUES (1, 'test')");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn confirms_update() {
+        let r = gate().evaluate("UPDATE users SET name = 'x' WHERE id = 1");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn confirms_create_table() {
+        let r = gate().evaluate("CREATE TABLE t (id INT)");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn case_insensitive() {
+        let r = gate().evaluate("drop table users");
+        assert!(matches!(r, SafetyAction::Confirm { .. }));
+    }
+
+    #[test]
+    fn allows_single_statement_no_semicolons() {
+        assert!(matches!(gate().evaluate("SELECT 1"), SafetyAction::Allow));
+    }
+}
