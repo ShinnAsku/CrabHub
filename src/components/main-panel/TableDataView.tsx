@@ -134,6 +134,16 @@ export default function TableDataView({
   const colCount = selectedTableData?.columns.length ?? 0;
   const { widths, onMouseDown } = useColumnResize(colCount);
 
+  // Scroll to new rows when added
+  const newRowsEndRef = useRef<HTMLDivElement>(null);
+  const prevNewRowsLen = useRef(newRows.length);
+  useEffect(() => {
+    if (newRows.length > prevNewRowsLen.current) {
+      setTimeout(() => newRowsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 50);
+    }
+    prevNewRowsLen.current = newRows.length;
+  }, [newRows.length]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Data Toolbar */}
@@ -448,6 +458,7 @@ export default function TableDataView({
                   </tr>
                 );
               })}
+              <div ref={newRowsEndRef} />
             </tbody>
           </table>
         ) : (

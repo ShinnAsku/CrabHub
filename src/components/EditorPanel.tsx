@@ -32,6 +32,7 @@ import VisualQueryBuilder from "./query-builder/VisualQueryBuilder";
 import QuickChartPanel from "./QuickChartPanel";
 import WelcomeScreen from "./WelcomeScreen";
 import { EditorContextMenu } from "./EditorContextMenu";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 // SQL keywords for autocompletion
 type ResultTab = "results" | "messages";
@@ -183,6 +184,9 @@ function QueryEditor() {
 
   // Connection selector state
   const [selectedConnId, setSelectedConnId] = useState<string | null>(activeConnectionId);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const result = activeTabId ? queryResults[activeTabId] : undefined;
@@ -1238,15 +1242,21 @@ function QueryEditor() {
                   }}
                   onDeleteRows={async (rowIndices) => {
                     if (!activeTab?.tableName || !effectiveConnectionId) return;
-                    const msg = t('table.deleteConfirm', { count: String(rowIndices.length) });
-                    if (!window.confirm(msg)) return;
-                    for (const idx of rowIndices) {
-                      const row = result?.rows[idx];
-                      if (!row) continue;
-                      const whereConditions = buildWhereConditions(result!.columns, row);
-                      await deleteTableRows(effectiveConnectionId, activeTab.tableName, whereConditions, activeTab.schemaName);
-                    }
-                    handleExecute();
+                    const tableName = activeTab.tableName;
+                    const schemaName = activeTab.schemaName;
+                    setConfirmDialog({
+                      message: t('table.deleteConfirm', { count: String(rowIndices.length) }),
+                      onConfirm: async () => {
+                        setConfirmDialog(null);
+                        for (const idx of rowIndices) {
+                          const row = result?.rows[idx];
+                          if (!row) continue;
+                          const whereConditions = buildWhereConditions(result!.columns, row);
+                          await deleteTableRows(effectiveConnectionId, tableName, whereConditions, schemaName);
+                        }
+                        handleExecute();
+                      },
+                    });
                   }}
                   onGenerateDeleteSQL={(rowIndices) => {
                     const statements = rowIndices.map(idx => {
@@ -1308,6 +1318,14 @@ function QueryEditor() {
           columns={chartPanel.columns}
           rows={chartPanel.rows}
           onClose={() => setChartPanel(null)}
+        />
+      )}
+      {confirmDialog && (
+        <ConfirmDialog
+          open
+          message={confirmDialog.message}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
         />
       )}
     </div>

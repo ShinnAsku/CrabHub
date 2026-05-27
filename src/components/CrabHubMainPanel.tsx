@@ -10,6 +10,7 @@ import ObjectListView from "./main-panel/ObjectListView";
 import TableDataView from "./main-panel/TableDataView";
 import TableContextMenu from "./main-panel/TableContextMenu";
 import WelcomeScreen from "./WelcomeScreen";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { log } from "@/lib/log";
 
 interface CrabHubMainPanelProps {
@@ -67,6 +68,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [dataMessage, setDataMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; title?: string; variant?: "destructive"; onConfirm: () => void } | null>(null);
   const [tableColumnInfoMap, setTableColumnInfoMap] = useState<Record<string, ColumnInfo[]>>({});
 
   // Pagination state per table tab (keyed by tableId)
@@ -312,64 +314,66 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   }, [activeTableTab, selectedTableData, editedRows, newRows, tableColumnInfoMap, refreshCurrentTable]);
 
   // Delete selected rows
-  const handleDeleteRows = useCallback(async () => {
+  const handleDeleteRows = useCallback(() => {
     if (!activeTableTab || !selectedTableData) return;
     const count = selectedRowIndices.size;
     if (count === 0) return;
 
-    const confirmMsg = t('data.confirmDelete').replace('{count}', String(count));
-    if (!window.confirm(confirmMsg)) return;
+    setConfirmDialog({
+      title: t('common.confirm'),
+      message: t('data.confirmDelete').replace('{count}', String(count)),
+      variant: "destructive",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const connId = activeTableTab.connectionId;
+        const tableName = activeTableTab.tableName;
+        const schema = activeTableTab.schemaName;
+        const totalOriginalRows = selectedTableData.rows.length;
 
-    const connId = activeTableTab.connectionId;
-    const tableName = activeTableTab.tableName;
-    const schema = activeTableTab.schemaName;
-    const totalOriginalRows = selectedTableData.rows.length;
+        setIsSaving(true);
+        setDataMessage(null);
 
-    setIsSaving(true);
-    setDataMessage(null);
+        try {
+          const newRowIndicesToRemove: number[] = [];
+          const existingRowIndices: number[] = [];
 
-    try {
-      // Separate new rows vs existing rows
-      const newRowIndicesToRemove: number[] = [];
-      const existingRowIndices: number[] = [];
+          for (const idx of selectedRowIndices) {
+            if (idx >= totalOriginalRows) {
+              newRowIndicesToRemove.push(idx - totalOriginalRows);
+            } else {
+              existingRowIndices.push(idx);
+            }
+          }
 
-      for (const idx of selectedRowIndices) {
-        if (idx >= totalOriginalRows) {
-          newRowIndicesToRemove.push(idx - totalOriginalRows);
-        } else {
-          existingRowIndices.push(idx);
+          if (newRowIndicesToRemove.length > 0) {
+            const removeSet = new Set(newRowIndicesToRemove);
+            setNewRows(prev => prev.filter((_, i) => !removeSet.has(i)));
+          }
+
+          for (const rowIdx of existingRowIndices) {
+            const row = selectedTableData.rows[rowIdx];
+            if (!row) continue;
+            const colsForWhere = (tableColumnInfoMap[activeTableTab.tableId] || selectedTableData.columns).map((c: ColumnInfo) => ({
+              name: c.name,
+              isPrimaryKey: c.primaryKey ?? false,
+            }));
+            const where = buildWhereConditions(colsForWhere, row);
+            await deleteTableRows(connId, tableName, where, schema);
+          }
+
+          setDataMessage({ type: "success", text: t('data.saveSuccess') });
+          setSelectedRowIndices(new Set());
+          if (existingRowIndices.length > 0) {
+            refreshCurrentTable();
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setDataMessage({ type: "error", text: `${t('data.saveFailed')}: ${msg}` });
+        } finally {
+          setIsSaving(false);
         }
-      }
-
-      // Remove new rows from state
-      if (newRowIndicesToRemove.length > 0) {
-        const removeSet = new Set(newRowIndicesToRemove);
-        setNewRows(prev => prev.filter((_, i) => !removeSet.has(i)));
-      }
-
-      // Delete existing rows from database
-      for (const rowIdx of existingRowIndices) {
-        const row = selectedTableData.rows[rowIdx];
-        if (!row) continue;
-        const colsForWhere = (tableColumnInfoMap[activeTableTab.tableId] || selectedTableData.columns).map((c: ColumnInfo) => ({
-          name: c.name,
-          isPrimaryKey: c.primaryKey ?? false,
-        }));
-        const where = buildWhereConditions(colsForWhere, row);
-        await deleteTableRows(connId, tableName, where, schema);
-      }
-
-      setDataMessage({ type: "success", text: t('data.saveSuccess') });
-      setSelectedRowIndices(new Set());
-      if (existingRowIndices.length > 0) {
-        refreshCurrentTable();
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setDataMessage({ type: "error", text: `${t('data.saveFailed')}: ${msg}` });
-    } finally {
-      setIsSaving(false);
-    }
+      },
+    });
   }, [activeTableTab, selectedTableData, selectedRowIndices, tableColumnInfoMap, refreshCurrentTable]);
 
   // Cancel all pending changes
@@ -380,31 +384,43 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
   // Pagination handlers
   const handlePageChange = useCallback((page: number) => {
     if (!activeTableTab) return;
-    if (hasPendingChanges && !window.confirm(t('pagination.unsavedWarning'))) return;
-    clearCrudState();
-    const tableId = activeTableTab.tableId;
-    const currentPageSize = paginationState[tableId]?.pageSize || 1000;
-    setPaginationState(prev => ({
-      ...prev,
-      [tableId]: { currentPage: page, pageSize: currentPageSize }
-    }));
-    setTableDataCache(prev => { const next = { ...prev }; delete next[tableId]; return next; });
-    const tableNode: SchemaNode = { id: tableId, name: activeTableTab.tableName, type: "table", schemaName: activeTableTab.schemaName };
-    loadTableData(tableNode, activeTableTab.schemaName, activeTableTab.connectionId, page, currentPageSize);
+    const doChange = () => {
+      clearCrudState();
+      const tableId = activeTableTab.tableId;
+      const currentPageSize = paginationState[tableId]?.pageSize || 1000;
+      setPaginationState(prev => ({
+        ...prev,
+        [tableId]: { currentPage: page, pageSize: currentPageSize }
+      }));
+      setTableDataCache(prev => { const next = { ...prev }; delete next[tableId]; return next; });
+      const tableNode: SchemaNode = { id: tableId, name: activeTableTab.tableName, type: "table", schemaName: activeTableTab.schemaName };
+      loadTableData(tableNode, activeTableTab.schemaName, activeTableTab.connectionId, page, currentPageSize);
+    };
+    if (hasPendingChanges) {
+      setConfirmDialog({ message: t('pagination.unsavedWarning'), onConfirm: () => { setConfirmDialog(null); doChange(); } });
+      return;
+    }
+    doChange();
   }, [activeTableTab, hasPendingChanges, clearCrudState, loadTableData, paginationState]);
 
   const handlePageSizeChange = useCallback((pageSize: number) => {
     if (!activeTableTab) return;
-    if (hasPendingChanges && !window.confirm(t('pagination.unsavedWarning'))) return;
-    clearCrudState();
-    const tableId = activeTableTab.tableId;
-    setPaginationState(prev => ({
-      ...prev,
-      [tableId]: { currentPage: 1, pageSize }
-    }));
-    setTableDataCache(prev => { const next = { ...prev }; delete next[tableId]; return next; });
-    const tableNode: SchemaNode = { id: tableId, name: activeTableTab.tableName, type: "table", schemaName: activeTableTab.schemaName };
-    loadTableData(tableNode, activeTableTab.schemaName, activeTableTab.connectionId, 1, pageSize);
+    const doChange = () => {
+      clearCrudState();
+      const tableId = activeTableTab.tableId;
+      setPaginationState(prev => ({
+        ...prev,
+        [tableId]: { currentPage: 1, pageSize }
+      }));
+      setTableDataCache(prev => { const next = { ...prev }; delete next[tableId]; return next; });
+      const tableNode: SchemaNode = { id: tableId, name: activeTableTab.tableName, type: "table", schemaName: activeTableTab.schemaName };
+      loadTableData(tableNode, activeTableTab.schemaName, activeTableTab.connectionId, 1, pageSize);
+    };
+    if (hasPendingChanges) {
+      setConfirmDialog({ message: t('pagination.unsavedWarning'), onConfirm: () => { setConfirmDialog(null); doChange(); } });
+      return;
+    }
+    doChange();
   }, [activeTableTab, hasPendingChanges, clearCrudState, loadTableData]);
 
   // Export data
@@ -693,64 +709,75 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
     });
   }, [activeConnection, currentSchemaName, addTab]);
 
-  const handleDeleteTableAction = useCallback(async (table: SchemaNode) => {
+  const handleDeleteTableAction = useCallback((table: SchemaNode) => {
     if (!activeConnection) return;
-    const msg = t('sidebar.confirmDeleteTable', { name: table.name });
-    if (!window.confirm(msg)) return;
-    try {
-      const dbType = activeConnection.type;
-      const schema = table.schemaName || currentSchemaName;
-      let fullName = table.name;
-      if (schema && !['mysql', 'sqlite'].includes(dbType)) {
-        fullName = `"${schema}"."${table.name}"`;
-      } else if (dbType === 'mysql') {
-        fullName = `\`${table.name}\``;
-      } else if (dbType === 'mssql') {
-        fullName = schema ? `[${schema}].[${table.name}]` : `[${table.name}]`;
-      } else {
-        fullName = `"${table.name}"`;
-      }
-      await executeSql(activeConnection.id, `DROP TABLE ${fullName}`);
-      // Refresh tables
-      getTables(activeConnection.id).then((result) => {
-        const metaMap: Record<string, TableInfo> = {};
-        const tableNodes: SchemaNode[] = result
-          .filter((ti) => !currentSchemaName || !ti.schema || ti.schema === currentSchemaName)
-          .map((ti) => {
-            const id = `${ti.schema || ''}.${ti.name}`;
-            metaMap[id] = ti;
-            return { id, name: ti.name, type: (ti.tableType === 'VIEW' ? 'view' : 'table') as SchemaNode['type'], schemaName: ti.schema };
+    setConfirmDialog({
+      title: t('common.confirm'),
+      message: t('sidebar.confirmDeleteTable', { name: table.name }),
+      variant: "destructive",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const dbType = activeConnection.type;
+          const schema = table.schemaName || currentSchemaName;
+          let fullName = table.name;
+          if (schema && !['mysql', 'sqlite'].includes(dbType)) {
+            fullName = `"${schema}"."${table.name}"`;
+          } else if (dbType === 'mysql') {
+            fullName = `\`${table.name}\``;
+          } else if (dbType === 'mssql') {
+            fullName = schema ? `[${schema}].[${table.name}]` : `[${table.name}]`;
+          } else {
+            fullName = `"${table.name}"`;
+          }
+          await executeSql(activeConnection.id, `DROP TABLE ${fullName}`);
+          getTables(activeConnection.id).then((result) => {
+            const metaMap: Record<string, TableInfo> = {};
+            const tableNodes: SchemaNode[] = result
+              .filter((ti) => !currentSchemaName || !ti.schema || ti.schema === currentSchemaName)
+              .map((ti) => {
+                const id = `${ti.schema || ''}.${ti.name}`;
+                metaMap[id] = ti;
+                return { id, name: ti.name, type: (ti.tableType === 'VIEW' ? 'view' : 'table') as SchemaNode['type'], schemaName: ti.schema };
+              });
+            setLoadedTables(tableNodes);
+            setTableMetadataMap(metaMap);
           });
-        setLoadedTables(tableNodes);
-        setTableMetadataMap(metaMap);
-      });
-    } catch (error) {
-      alert(String(error));
-    }
+        } catch (error) {
+          alert(String(error));
+        }
+      },
+    });
   }, [activeConnection, currentSchemaName]);
 
-  const handleTruncateTableAction = useCallback(async (table: SchemaNode) => {
+  const handleTruncateTableAction = useCallback((table: SchemaNode) => {
     if (!activeConnection) return;
-    const msg = t('sidebar.confirmTruncateTable', { name: table.name });
-    if (!window.confirm(msg)) return;
-    try {
-      const dbType = activeConnection.type;
-      const schema = table.schemaName || currentSchemaName;
-      let fullName = table.name;
-      if (schema && !['mysql', 'sqlite'].includes(dbType)) {
-        fullName = `"${schema}"."${table.name}"`;
-      } else if (dbType === 'mysql') {
-        fullName = `\`${table.name}\``;
-      } else if (dbType === 'mssql') {
-        fullName = schema ? `[${schema}].[${table.name}]` : `[${table.name}]`;
-      } else {
-        fullName = `"${table.name}"`;
-      }
-      const sql = dbType === 'sqlite' ? `DELETE FROM ${fullName}` : `TRUNCATE TABLE ${fullName}`;
-      await executeSql(activeConnection.id, sql);
-    } catch (error) {
-      alert(String(error));
-    }
+    setConfirmDialog({
+      title: t('common.confirm'),
+      message: t('sidebar.confirmTruncateTable', { name: table.name }),
+      variant: "destructive",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const dbType = activeConnection.type;
+          const schema = table.schemaName || currentSchemaName;
+          let fullName = table.name;
+          if (schema && !['mysql', 'sqlite'].includes(dbType)) {
+            fullName = `"${schema}"."${table.name}"`;
+          } else if (dbType === 'mysql') {
+            fullName = `\`${table.name}\``;
+          } else if (dbType === 'mssql') {
+            fullName = schema ? `[${schema}].[${table.name}]` : `[${table.name}]`;
+          } else {
+            fullName = `"${table.name}"`;
+          }
+          const sql = dbType === 'sqlite' ? `DELETE FROM ${fullName}` : `TRUNCATE TABLE ${fullName}`;
+          await executeSql(activeConnection.id, sql);
+        } catch (error) {
+          alert(String(error));
+        }
+      },
+    });
   }, [activeConnection, currentSchemaName]);
 
   // Handle duplicate table
@@ -919,6 +946,16 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
           onDuplicateTable={handleDuplicateTable}
           onTruncate={handleTruncateTableAction}
           onDeleteTable={handleDeleteTableAction}
+        />
+      )}
+      {confirmDialog && (
+        <ConfirmDialog
+          open
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          variant={confirmDialog.variant}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
         />
       )}
     </div>

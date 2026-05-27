@@ -359,7 +359,7 @@ export async function updateTableRows(
     table,
     schema: schema ?? null,
     updates,
-    where_conditions: whereConditions,
+    whereConditions,
   });
   return {
     success: true,
@@ -397,7 +397,7 @@ export async function deleteTableRows(
     id,
     table,
     schema: schema ?? null,
-    where_conditions: whereConditions,
+    whereConditions,
   });
   return {
     success: true,

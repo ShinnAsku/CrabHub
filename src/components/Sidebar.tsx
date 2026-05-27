@@ -34,6 +34,7 @@ import CreateDatabaseDialog from "./CreateDatabaseDialog";
 import DatabaseIcon from "./DatabaseIcon";
 import { generateCopyTableName, buildDuplicateTableSQL } from "@/lib/export";
 import { log } from "@/lib/log";
+import { ConfirmDialog } from "./ConfirmDialog";
 import type { SidebarView, TreeNode, TreeNodeType } from "./sidebar/types";
 import { ContextMenu, TreeNodeContextMenu } from "./sidebar/ContextMenus";
 
@@ -51,6 +52,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [createDbDialogOpen, setCreateDbDialogOpen] = useState(false);
   const [createDbConnectionId, setCreateDbConnectionId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; title?: string; variant?: "destructive"; onConfirm: () => void } | null>(null);
 
   const { activeConnectionId, connections, loadConnections } = useConnectionStore();
   const { schemaData, setSchemaData } = useUIStore();
@@ -199,64 +201,76 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   };
 
   // Handle delete table from context menu
-  const handleDeleteTable = async (node: TreeNode) => {
+  const handleDeleteTable = (node: TreeNode) => {
     const connId = node.connectionId;
     if (!connId) return;
-    const msg = t('sidebar.confirmDeleteTable', { name: node.name });
-    if (!window.confirm(msg)) return;
-    try {
-      const { executeSql } = await import("@/lib/tauri-commands");
-      const conn = connections.find(c => c.id === connId);
-      const dbType = conn?.type || 'postgresql';
-      let tableName = node.name;
-      if (node.schemaName && !['mysql', 'sqlite'].includes(dbType)) {
-        tableName = `"${node.schemaName}"."${node.name}"`;
-      } else if (dbType === 'mysql') {
-        tableName = `\`${node.name}\``;
-      } else if (dbType === 'mssql') {
-        tableName = node.schemaName ? `[${node.schemaName}].[${node.name}]` : `[${node.name}]`;
-      } else {
-        tableName = `"${node.name}"`;
-      }
-      await executeSql(connId, `DROP TABLE ${tableName}`);
-      const newTreeData = { ...treeData };
-      Object.keys(newTreeData).forEach((key) => {
-        if (key.startsWith(connId)) delete newTreeData[key];
-      });
-      setTreeData(newTreeData);
-      if (node.connectionId) await loadSchemaData(node.connectionId);
-    } catch (error) {
-      console.error('[Sidebar] Failed to delete table:', error);
-      alert(String(error));
-    }
+    setConfirmDialog({
+      title: t('common.confirm'),
+      message: t('sidebar.confirmDeleteTable', { name: node.name }),
+      variant: "destructive",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const { executeSql } = await import("@/lib/tauri-commands");
+          const conn = connections.find(c => c.id === connId);
+          const dbType = conn?.type || 'postgresql';
+          let tableName = node.name;
+          if (node.schemaName && !['mysql', 'sqlite'].includes(dbType)) {
+            tableName = `"${node.schemaName}"."${node.name}"`;
+          } else if (dbType === 'mysql') {
+            tableName = `\`${node.name}\``;
+          } else if (dbType === 'mssql') {
+            tableName = node.schemaName ? `[${node.schemaName}].[${node.name}]` : `[${node.name}]`;
+          } else {
+            tableName = `"${node.name}"`;
+          }
+          await executeSql(connId, `DROP TABLE ${tableName}`);
+          const newTreeData = { ...treeData };
+          Object.keys(newTreeData).forEach((key) => {
+            if (key.startsWith(connId)) delete newTreeData[key];
+          });
+          setTreeData(newTreeData);
+          if (node.connectionId) await loadSchemaData(node.connectionId);
+        } catch (error) {
+          console.error('[Sidebar] Failed to delete table:', error);
+          alert(String(error));
+        }
+      },
+    });
   };
 
   // Handle truncate table from context menu
-  const handleTruncateTable = async (node: TreeNode) => {
+  const handleTruncateTable = (node: TreeNode) => {
     const connId = node.connectionId;
     if (!connId) return;
-    const msg = t('sidebar.confirmTruncateTable', { name: node.name });
-    if (!window.confirm(msg)) return;
-    try {
-      const { executeSql } = await import("@/lib/tauri-commands");
-      const conn = connections.find(c => c.id === connId);
-      const dbType = conn?.type || 'postgresql';
-      let tableName = node.name;
-      if (node.schemaName && !['mysql', 'sqlite'].includes(dbType)) {
-        tableName = `"${node.schemaName}"."${node.name}"`;
-      } else if (dbType === 'mysql') {
-        tableName = `\`${node.name}\``;
-      } else if (dbType === 'mssql') {
-        tableName = node.schemaName ? `[${node.schemaName}].[${node.name}]` : `[${node.name}]`;
-      } else {
-        tableName = `"${node.name}"`;
-      }
-      const sql = dbType === 'sqlite' ? `DELETE FROM ${tableName}` : `TRUNCATE TABLE ${tableName}`;
-      await executeSql(connId, sql);
-    } catch (error) {
-      console.error('[Sidebar] Failed to truncate table:', error);
-      alert(String(error));
-    }
+    setConfirmDialog({
+      title: t('common.confirm'),
+      message: t('sidebar.confirmTruncateTable', { name: node.name }),
+      variant: "destructive",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const { executeSql } = await import("@/lib/tauri-commands");
+          const conn = connections.find(c => c.id === connId);
+          const dbType = conn?.type || 'postgresql';
+          let tableName = node.name;
+          if (node.schemaName && !['mysql', 'sqlite'].includes(dbType)) {
+            tableName = `"${node.schemaName}"."${node.name}"`;
+          } else if (dbType === 'mysql') {
+            tableName = `\`${node.name}\``;
+          } else if (dbType === 'mssql') {
+            tableName = node.schemaName ? `[${node.schemaName}].[${node.name}]` : `[${node.name}]`;
+          } else {
+            tableName = `"${node.name}"`;
+          }
+          const sql = dbType === 'sqlite' ? `DELETE FROM ${tableName}` : `TRUNCATE TABLE ${tableName}`;
+          await executeSql(connId, sql);
+        } catch (error) {
+          console.error('[Sidebar] Failed to truncate table:', error);
+          alert(String(error));
+        }
+      },
+    });
   };
 
   // Handle open table from context menu - reuses double-click logic
@@ -448,6 +462,16 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
           />
         ) : null;
       })()}
+      {confirmDialog && (
+        <ConfirmDialog
+          open
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          variant={confirmDialog.variant}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   );
 }
