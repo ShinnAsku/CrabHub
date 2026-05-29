@@ -36,6 +36,8 @@ struct ConnectionEntry {
     reconnect_count: u32,
     /// SSH tunnel (kept alive for the lifetime of the connection)
     ssh_tunnel: Option<crate::ssh::tunnel::SshTunnel>,
+    /// True when the user manually disconnected — triggers auto-reconnect on next SQL
+    disconnected: bool,
 }
 
 /// Manages multiple database connections
@@ -243,6 +245,7 @@ impl ConnectionManager {
             is_healthy: true,
             reconnect_count: 0,
             ssh_tunnel,
+            disconnected: false,
         };
 
         let mut connections = self.connections.write().await;
@@ -257,7 +260,9 @@ impl ConnectionManager {
         })
     }
 
-    /// Disconnect from a database and all its sub-connections
+    /// Disconnect from a database and all its sub-connections.
+    /// The connection entry is kept in the map (with disconnected=true) so that
+    /// auto-reconnect can re-establish the connection on the next SQL execution.
     pub async fn disconnect(&self, id: &str) -> Result<(), DbError> {
         let mut connections = self.connections.write().await;
 
@@ -276,12 +281,15 @@ impl ConnectionManager {
             }
         }
 
-        if let Some(entry) = connections.remove(id) {
+        if let Some(entry) = connections.get_mut(id) {
             entry.connection.close().await;
-            if let Some(tunnel) = entry.ssh_tunnel {
+            if let Some(tunnel) = entry.ssh_tunnel.take() {
                 tunnel.close().await;
             }
-            log::info!("Disconnected from database with id '{}'", id);
+            entry.is_healthy = false;
+            entry.disconnected = true;
+            entry.reconnect_count = 0; // reset for fresh reconnect budget
+            log::info!("Disconnected from database '{}' (entry kept for auto-reconnect)", id);
             Ok(())
         } else {
             Err(DbError::NotFound(format!(
@@ -363,6 +371,9 @@ impl ConnectionManager {
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        if entry.disconnected {
+            return Err(DbError::ConnectionError("Connection is disconnected".into()));
+        }
         // 5-minute hard timeout prevents queries from hanging indefinitely
         let timeout = tokio::time::sleep(std::time::Duration::from_secs(300));
         tokio::pin!(timeout);
@@ -394,6 +405,9 @@ impl ConnectionManager {
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        if entry.disconnected {
+            return Err(DbError::ConnectionError("Connection is disconnected".into()));
+        }
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             entry.connection.query_sql(sql),
@@ -412,6 +426,9 @@ impl ConnectionManager {
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        if entry.disconnected {
+            return Err(DbError::ConnectionError("Connection is disconnected".into()));
+        }
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             entry.connection.execute_sql(sql),
@@ -435,6 +452,9 @@ impl ConnectionManager {
         let entry = connections
             .get(id)
             .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        if entry.disconnected {
+            return Err(DbError::ConnectionError("Connection is disconnected".into()));
+        }
 
         // 5-minute hard timeout matches the cancellable path; prevents runaway
         // queries from holding a pool connection indefinitely.
@@ -528,6 +548,7 @@ impl ConnectionManager {
                     tokio::spawn(async move { old.close().await; });
                     *entry.last_heartbeat.lock().unwrap() = Instant::now();
                     entry.is_healthy = true;
+                    entry.disconnected = false;
                     // Reset attempt counter so future transient failures get a
                     // full reconnect budget again. Without this, a single
                     // successful reconnect "consumes" the budget and the next
@@ -686,6 +707,7 @@ impl ConnectionManager {
             is_healthy: true,
             reconnect_count: 0,
             ssh_tunnel: None,
+            disconnected: false,
         };
 
         self.connections.write().await.insert(sub_id.clone(), sub_entry);

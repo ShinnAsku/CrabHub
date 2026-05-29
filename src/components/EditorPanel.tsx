@@ -482,6 +482,12 @@ function QueryEditor() {
       setActiveResultIdx(0);
       setLoadMoreState(newLoadMoreState);
 
+      // Sync frontend connection state after auto-reconnect
+      const currentConn = useConnectionStore.getState().connections.find(c => c.id === effectiveConnectionId);
+      if (currentConn && !currentConn.connected) {
+        useConnectionStore.getState().updateConnection(effectiveConnectionId, { connected: true, lastConnected: new Date() });
+      }
+
       if (collectedResults.length > 0) {
         setQueryResult(activeTabId, collectedResults[0]!);
         setResultTab("results");

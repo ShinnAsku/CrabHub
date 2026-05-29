@@ -107,7 +107,7 @@ export function ContextMenu({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[9999]" onClick={onClose} />
+      <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
         style={{
@@ -274,7 +274,7 @@ export function TreeNodeContextMenu({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[9999]" onClick={onClose} />
+      <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
         style={{

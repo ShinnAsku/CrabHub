@@ -1568,7 +1568,7 @@ function ConnectionItem({
       <DatabaseIcon type={connection.type} connected={connection.connected} size={14} isActive={isActive} />
 
       {/* Connection name */}
-      <span className="flex-1 truncate">{connection.name}</span>
+      <span className={`flex-1 truncate ${!connection.connected ? 'text-muted-foreground/50' : ''}`}>{connection.name}</span>
 
       {/* Connection status and actions */}
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
