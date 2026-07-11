@@ -40,3 +40,4 @@ coverage/
 *.temp
 .claude/settings.local.json
 .superpowers/
+.mcp-server/

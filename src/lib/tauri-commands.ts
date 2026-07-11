@@ -81,6 +81,7 @@ export async function connectDatabase(config: ConnectionConfig): Promise<Connect
     sslEnabled: config.enableSsl || false,
     keepaliveInterval: config.keepaliveInterval || 30,
     autoReconnect: config.autoReconnect !== false,
+    queryTimeoutSecs: config.queryTimeoutSecs ?? 300,
     poolOptions: sanitizePoolOptions(config.poolOptions)
   };
   return safeInvoke<ConnectResult>("connect_to_database", { config: backendConfig });
@@ -272,6 +273,7 @@ export async function testConnection(config: ConnectionConfig): Promise<boolean>
     sslEnabled: config.enableSsl || false,
     keepaliveInterval: config.keepaliveInterval || 30,
     autoReconnect: config.autoReconnect !== false,
+    queryTimeoutSecs: config.queryTimeoutSecs ?? 300,
     poolOptions: sanitizePoolOptions(config.poolOptions)
   };
   try {
@@ -414,7 +416,7 @@ export async function getTableData(
   orderBy?: string,
   schema?: string
 ): Promise<QueryResult> {
-  const raw = await safeInvoke<any>("get_table_data", {
+  const raw = await safeInvoke<RawQueryResult>("get_table_data", {
     id,
     table,
     schema: schema ?? null,
@@ -422,26 +424,52 @@ export async function getTableData(
     pageSize,
     orderBy: orderBy ?? null,
   });
+  return mapRawQueryResult(raw);
+}
 
-  const columns = (raw.columns || []).map((c: any) => ({
-    name: c.name,
-    dataType: c.dataType,
-    nullable: c.nullable,
-    isPrimaryKey: c.isPrimaryKey,
-  }));
+// ---------------------------------------------------------------------------
+// Streaming export (Rust-side, memory-flat, no MAX_DISPLAY_ROWS cap)
+// ---------------------------------------------------------------------------
 
-  return {
-    columns,
-    rows: (raw.rows || []).map((row: any) => {
-      const newRow: Record<string, any> = {};
-      for (const [key, value] of Object.entries(row)) {
-        newRow[key] = value;
-      }
-      return newRow;
-    }),
-    rowCount: raw.rowCount ?? 0,
-    duration: raw.executionTimeMs ?? 0,
-  };
+export type StreamExportFormat = "csv" | "json" | "sql" | "xlsx";
+
+export interface ExportSummary {
+  rowsWritten: number;
+  filePath: string;
+  cancelled: boolean;
+}
+
+/**
+ * Stream a query's FULL result set to a file on the Rust side.
+ * Progress is emitted via `export-progress` events carrying
+ * `{ exportId, rowsWritten, done }`.
+ */
+export async function exportQueryToFile(
+  id: string,
+  sql: string,
+  format: StreamExportFormat,
+  filePath: string,
+  exportId: string,
+  tableName?: string
+): Promise<ExportSummary> {
+  return safeInvoke<ExportSummary>("export_query_to_file", {
+    id,
+    sql,
+    format,
+    filePath,
+    exportId,
+    tableName: tableName ?? null,
+  });
+}
+
+/** Request cancellation of a running export (takes effect between batches). */
+export async function cancelExport(exportId: string): Promise<void> {
+  return safeInvoke<void>("cancel_export", { exportId });
+}
+
+/** Drop the backend's cached schema metadata for a connection (used by refresh). */
+export async function invalidateMetadataCache(id: string): Promise<void> {
+  return safeInvoke<void>("invalidate_metadata_cache", { id });
 }
 
 // Driver discovery

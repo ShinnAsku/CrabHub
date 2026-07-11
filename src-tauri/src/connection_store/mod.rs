@@ -84,7 +84,8 @@ impl ConnectionStore {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_connected_at TIMESTAMP,
-                connection_count INTEGER DEFAULT 0
+                connection_count INTEGER DEFAULT 0,
+                query_timeout_secs INTEGER DEFAULT 300
             );
 
             -- Connection groups table
@@ -177,8 +178,8 @@ impl ConnectionStore {
                 database, enable_ssl, ssl_ca_cert, ssl_client_cert, ssl_client_key,
                 ssh_tunnel_enabled, ssh_host, ssh_port, ssh_username, ssh_password_encrypted,
                 ssh_private_key, keepalive_interval, auto_reconnect, color_label, tags,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                created_at, updated_at, query_timeout_secs
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 conn.id,
                 conn.name,
@@ -204,6 +205,7 @@ impl ConnectionStore {
                 conn.tags,
                 now,
                 now,
+                conn.query_timeout_secs,
             ],
         )
         .map_err(|e: rusqlite::Error| e.to_string())?;
@@ -239,6 +241,9 @@ impl ConnectionStore {
             created_at: row.get(22)?, updated_at: row.get(23)?,
             last_connected_at: row.get(24)?,
             connection_count: row.get(25)?,
+            // Column appended by migration; missing on rows read via older
+            // SELECT * orderings is impossible, but default defensively.
+            query_timeout_secs: row.get(26).unwrap_or(300),
         };
         // Decrypt password in-place for transport
         if let Some(enc) = &conn.password_encrypted {
@@ -331,6 +336,7 @@ impl ConnectionStore {
                 ssh_tunnel_enabled = ?, ssh_host = ?, ssh_port = ?,
                 ssh_username = ?, ssh_password_encrypted = ?, ssh_private_key = ?,
                 keepalive_interval = ?, auto_reconnect = ?, color_label = ?, tags = ?,
+                query_timeout_secs = ?,
                 updated_at = ?
             WHERE id = ?",
             params![
@@ -355,6 +361,7 @@ impl ConnectionStore {
                 if conn.auto_reconnect { 1 } else { 0 },
                 conn.color_label,
                 conn.tags,
+                conn.query_timeout_secs,
                 now,
                 conn.id,
             ],

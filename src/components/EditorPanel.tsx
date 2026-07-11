@@ -181,6 +181,9 @@ function QueryEditor() {
   const dbSchemasRef = useRef<string[]>([]);
   const dbTablesRef = useRef<{ name: string; schema?: string }[]>([]);
   const dbColumnsRef = useRef<Record<string, string[]>>({});
+  /// Mirror of effectiveConnectionId for the completion provider (registered
+  /// once with an empty closure — reading state directly would go stale).
+  const effectiveConnIdRef = useRef<string | null>(null);
 
   // Connection selector state
   const [selectedConnId, setSelectedConnId] = useState<string | null>(activeConnectionId);
@@ -210,28 +213,27 @@ function QueryEditor() {
 
   // Handle database change
 
-  // Load schemas, tables, and columns for autocomplete when connection changes
+  // Load schemas and table NAMES for autocomplete when connection changes.
+  // Table names are cheap (one metadata query); column lists are fetched
+  // lazily by the completion provider the first time `table.` is typed —
+  // the previous eager per-table loop capped at 50 tables and fired up to
+  // 50 queries on every connection switch.
   useEffect(() => {
+    effectiveConnIdRef.current = effectiveConnectionId ?? null;
     if (!effectiveConnectionId) {
       dbSchemasRef.current = [];
       dbTablesRef.current = [];
       dbColumnsRef.current = {};
       return;
     }
+    dbColumnsRef.current = {};
     // Load schemas
     getSchemas(effectiveConnectionId).then((schemas) => {
       dbSchemasRef.current = schemas;
     }).catch(() => { dbSchemasRef.current = []; });
-    // Load tables
+    // Load table names (ALL tables — no 50-table cap)
     getTables(effectiveConnectionId).then((tables) => {
       dbTablesRef.current = tables.map((t) => ({ name: t.name, schema: t.schema }));
-      // Load columns for each table (limit to first 50 tables to avoid overload)
-      const tablesToLoad = tables.slice(0, 50);
-      tablesToLoad.forEach((table) => {
-        getColumns(effectiveConnectionId, table.name, table.schema).then((cols) => {
-          dbColumnsRef.current[table.name] = cols.map((c) => c.name);
-        }).catch(() => {});
-      });
     }).catch(() => { dbTablesRef.current = []; });
   }, [effectiveConnectionId]);
 
@@ -259,7 +261,7 @@ function QueryEditor() {
     if (!completionDisposableRef.current) {
       completionDisposableRef.current = monacoInstance.languages.registerCompletionItemProvider("sql", {
         triggerCharacters: ['.', ' '],
-        provideCompletionItems: (model: any, position: any) => {
+        provideCompletionItems: async (model: any, position: any) => {
           const word = model.getWordUntilPosition(position);
           const range = {
             startLineNumber: position.lineNumber,
@@ -295,8 +297,20 @@ function QueryEditor() {
                   });
                 });
             }
-            // If prefix is a table name, suggest columns
-            const cols = dbColumnsRef.current[prefix];
+            // If prefix is a table name, suggest columns — fetched on demand
+            // the first time and cached for the connection's lifetime.
+            let cols = dbColumnsRef.current[prefix];
+            if (!cols) {
+              const tableMeta = dbTablesRef.current.find((t) => t.name === prefix);
+              const connId = effectiveConnIdRef.current;
+              if (tableMeta && connId) {
+                try {
+                  const fetched = await getColumns(connId, tableMeta.name, tableMeta.schema);
+                  cols = fetched.map((c) => c.name);
+                  dbColumnsRef.current[prefix] = cols;
+                } catch { /* table may be a alias or unreadable — no columns */ }
+              }
+            }
             if (cols) {
               cols.forEach((col) => {
                 suggestions.push({

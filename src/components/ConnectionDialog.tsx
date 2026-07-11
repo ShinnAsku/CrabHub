@@ -95,6 +95,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
   const [sslClientCert, setSslClientCert] = useState("");
   const [sslClientKey, setSslClientKey] = useState("");
   const [keepaliveInterval, setKeepaliveInterval] = useState(30);
+  const [queryTimeoutSecs, setQueryTimeoutSecs] = useState(300);
   const [autoReconnect, setAutoReconnect] = useState(true);
 
   // Connection pool overrides (empty string = use backend default)
@@ -190,6 +191,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
         setDatabase(editConnection.database || "");
         setSslEnabled(editConnection.enableSsl || false);
         setKeepaliveInterval(editConnection.keepaliveInterval ?? 30);
+        setQueryTimeoutSecs(editConnection.queryTimeoutSecs ?? 300);
         setAutoReconnect(editConnection.autoReconnect ?? true);
         const po = editConnection.poolOptions;
         setPoolMaxConnections(po?.maxConnections != null ? String(po.maxConnections) : "");
@@ -273,6 +275,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
       setSslClientCert("");
       setSslClientKey("");
       setKeepaliveInterval(30);
+      setQueryTimeoutSecs(300);
       setAutoReconnect(true);
       setPoolMaxConnections("");
       setPoolIdleTimeoutSecs("");
@@ -305,6 +308,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
     setSslClientCert("");
     setSslClientKey("");
     setKeepaliveInterval(30);
+    setQueryTimeoutSecs(300);
     setAutoReconnect(true);
     setPoolMaxConnections("");
     setPoolIdleTimeoutSecs("");
@@ -481,6 +485,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
             enableSsl: sslEnabled,
             keepaliveInterval,
             autoReconnect,
+            queryTimeoutSecs,
             filePath: isSQLite ? filePath : undefined,
             poolOptions: buildPoolOptions(),
             sshTunnel: sshEnabled ? {
@@ -529,6 +534,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           enableSsl: sslEnabled,
           keepaliveInterval,
           autoReconnect,
+          queryTimeoutSecs,
           poolOptions: buildPoolOptions(),
           sshTunnel: sshEnabled ? {
             host: sshHost,
@@ -568,6 +574,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           enableSsl: sslEnabled,
           keepaliveInterval,
           autoReconnect,
+          queryTimeoutSecs,
           poolOptions: buildPoolOptions(),
           connected,
         });
@@ -789,6 +796,19 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                 />
                 <span className="text-[11px] text-muted-foreground">{t('connection.seconds')}</span>
                 <span className="text-[11px] text-muted-foreground/60">({t('connection.keepaliveHint')})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-muted-foreground whitespace-nowrap">{t('connection.queryTimeout')}</label>
+                <input
+                  type="number"
+                  value={queryTimeoutSecs}
+                  onChange={(e) => setQueryTimeoutSecs(Math.max(0, Number(e.target.value)))}
+                  min={0}
+                  max={86400}
+                  className="w-20 px-2 py-1 text-xs bg-background border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] text-foreground"
+                />
+                <span className="text-[11px] text-muted-foreground">{t('connection.seconds')}</span>
+                <span className="text-[11px] text-muted-foreground/60">({t('connection.queryTimeoutHint')})</span>
               </div>
               <div className="flex items-center justify-between">
                 <label className="text-[11px] text-muted-foreground">{t('connection.autoReconnect')}</label>

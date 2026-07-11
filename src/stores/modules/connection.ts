@@ -51,6 +51,10 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         ...c,
         type: c.db_type,
         password: c.password_encrypted || undefined,
+        enableSsl: c.enable_ssl ?? false,
+        keepaliveInterval: c.keepalive_interval ?? 30,
+        autoReconnect: c.auto_reconnect ?? true,
+        queryTimeoutSecs: c.query_timeout_secs ?? 300,
         connected: false,
         lastConnected: c.last_connected_at ? new Date(c.last_connected_at) : undefined,
       }));
@@ -92,6 +96,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           enable_ssl: newConn.enableSsl ?? false,
           keepalive_interval: newConn.keepaliveInterval,
           auto_reconnect: newConn.autoReconnect,
+          query_timeout_secs: newConn.queryTimeoutSecs ?? 300,
         },
       };
       log.debug("[ConnectionStore] addConnection: 发送到后端的数据:", JSON.stringify(payload, null, 2));
@@ -135,6 +140,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           enable_ssl: updated.enableSsl ?? false,
           keepalive_interval: updated.keepaliveInterval,
           auto_reconnect: updated.autoReconnect,
+          query_timeout_secs: updated.queryTimeoutSecs ?? 300,
         },
       };
       log.debug("[ConnectionStore] updateConnection: 发送到后端:", JSON.stringify(payload, null, 2));

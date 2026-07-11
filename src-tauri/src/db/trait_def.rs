@@ -32,6 +32,19 @@ pub trait DatabaseConnection: Send + Sync {
     fn db_type(&self) -> DatabaseType;
     async fn close(&self);
 
+    /// Best-effort SERVER-SIDE cancellation of the currently running query.
+    ///
+    /// Dropping the query future (client-side cancel) leaves the statement
+    /// running on the server and keeps a pool connection busy. Drivers that
+    /// can, should ask the server to abort it (pg_cancel_backend, KILL QUERY,
+    /// wire-protocol CancelRequest, ...).
+    ///
+    /// Returns `true` if a cancel request was sent. Implementations must not
+    /// error: failures are logged and swallowed (cancel is best-effort).
+    async fn cancel_running_query(&self) -> bool {
+        false
+    }
+
     // --- Metadata ---
     async fn get_tables(&self) -> Result<Vec<TableInfo>, DbError>;
     async fn get_columns(

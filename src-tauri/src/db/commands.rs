@@ -4,7 +4,7 @@ use tauri::State;
 use super::manager::ConnectionManager;
 use super::types::{
     ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, DatabaseType, DriverCapabilities,
-    ExecuteResult, PagedQueryResult, QueryResult, TableInfo,
+    ExecuteResult, TableInfo, WirePagedQueryResult, WireQueryResult,
 };
 
 // Re-export for use in command signatures
@@ -40,10 +40,11 @@ pub async fn execute_query(
     state: State<'_, Arc<ConnectionManager>>,
     id: String,
     sql: String,
-) -> Result<QueryResult, String> {
+) -> Result<WireQueryResult, String> {
     state
         .query(&id, &sql)
         .await
+        .map(WireQueryResult::from)
         .map_err(|e| e.to_string())
 }
 
@@ -55,10 +56,11 @@ pub async fn execute_query_paged(
     sql: String,
     limit: u64,
     offset: u64,
-) -> Result<PagedQueryResult, String> {
+) -> Result<WirePagedQueryResult, String> {
     state
         .query_paged(&id, &sql, limit, offset)
         .await
+        .map(WirePagedQueryResult::from)
         .map_err(|e| e.to_string())
 }
 
@@ -85,7 +87,9 @@ pub async fn execute_batch(
             || upper.starts_with("EXPLAIN");
         if is_query {
             match state.query_paged(&id, trimmed, 500, 0).await {
-                Ok(r) => results.push(serde_json::to_value(r).map_err(|e| e.to_string())?),
+                Ok(r) => results.push(
+                    serde_json::to_value(WirePagedQueryResult::from(r)).map_err(|e| e.to_string())?,
+                ),
                 Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
             }
         } else {
@@ -352,10 +356,11 @@ pub async fn get_table_data(
     page: u32,
     page_size: u32,
     order_by: Option<String>,
-) -> Result<QueryResult, String> {
+) -> Result<WireQueryResult, String> {
     state
         .get_table_data(&id, &table, schema.as_deref(), page, page_size, order_by.as_deref())
         .await
+        .map(WireQueryResult::from)
         .map_err(|e| e.to_string())
 }
 
@@ -366,6 +371,16 @@ pub async fn cancel_query(
     id: String,
 ) -> Result<bool, String> {
     Ok(state.cancel_query(&id).await)
+}
+
+/// Drop cached schema metadata for a connection (sidebar refresh)
+#[tauri::command]
+pub async fn invalidate_metadata_cache(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+) -> Result<(), String> {
+    state.invalidate_metadata(&id).await;
+    Ok(())
 }
 
 /// Get driver capabilities for a connection

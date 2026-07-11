@@ -85,6 +85,7 @@ pub async fn run() {
             db::commands::execute_query_paged,
             db::commands::execute_batch,
             db::commands::cancel_query,
+            db::commands::invalidate_metadata_cache,
             db::commands::get_driver_capabilities,
             db::commands::execute_sql,
             db::commands::get_tables,
@@ -106,6 +107,9 @@ pub async fn run() {
             db::commands::insert_table_row,
             db::commands::delete_table_rows,
             db::commands::get_table_data,
+            // Streaming export commands
+            db::export::export_query_to_file,
+            db::export::cancel_export,
             // AI commands
             ai::commands::test_ai_connection,
             ai::commands::ai_chat,

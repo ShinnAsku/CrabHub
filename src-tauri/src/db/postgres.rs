@@ -15,6 +15,11 @@ use super::types::{
 pub struct PostgresConnection {
     pool: sqlx::PgPool,
     db_type_label: DatabaseType,
+    /// Connection string kept for opening short-lived admin connections (cancel).
+    connection_string: String,
+    /// Unique application_name tag identifying this connection's sessions
+    /// in pg_stat_activity, used for server-side query cancellation.
+    app_name: String,
 }
 
 impl PostgresConnection {
@@ -77,6 +82,15 @@ impl PostgresConnection {
 
         log::info!("Connecting to PostgreSQL at {}:{}", host, port);
 
+        // Tag all sessions from this pool so cancel_running_query can find
+        // them in pg_stat_activity without tracking backend pids.
+        let app_name = format!("crabhub-{}", config.id);
+        let connection_string = format!(
+            "{}&application_name={}",
+            connection_string,
+            encode(&app_name)
+        );
+
         let pc = crate::db::pool_config::PoolConfig::with_overrides(&config.db_type, config.pool_options.as_ref());
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(pc.max_connections)
@@ -94,6 +108,8 @@ impl PostgresConnection {
         Ok(Self {
             pool,
             db_type_label: config.db_type.clone(),
+            connection_string,
+            app_name,
         })
     }
 }
@@ -127,8 +143,7 @@ impl DatabaseConnection for PostgresConnection {
         let (columns, rows) = pg_utils::parse_pg_rows(&result);
         let row_count = rows.len() as u64;
 
-        Ok(QueryResult {
-            columns,
+        Ok(QueryResult {            columns,
             rows,
             row_count,
             execution_time_ms: elapsed,
@@ -308,6 +323,10 @@ impl DatabaseConnection for PostgresConnection {
 
     fn db_type(&self) -> DatabaseType {
         self.db_type_label.clone()
+    }
+
+    async fn cancel_running_query(&self) -> bool {
+        pg_utils::cancel_by_application_name(&self.connection_string, &self.app_name).await
     }
 
     async fn export_table_sql(

@@ -64,3 +64,4 @@ tempfile = "3.10"
 zip = "0.6"
 
 anyhow = "1.0"
+rust_xlsxwriter = "0.92.0"

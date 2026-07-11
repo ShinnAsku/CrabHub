@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Upload, Download, X, Loader2, Check } from "lucide-react";
 import { useConnectionStore, useUIStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
-import { getSchemas, getTables, getTableData, exportTableSql, executeSql, insertTableRow } from "@/lib/tauri-commands";
+import { getSchemas, getTables, getTableData, exportTableSql, executeSql, insertTableRow, exportQueryToFile } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, downloadFile, importFromCSV, importFromJSON } from "@/lib/export";
 import type { TableInfo } from "@/types";
 
@@ -26,7 +26,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
   const [loadingTables, setLoadingTables] = useState(false);
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
 
-  const [format, setFormat] = useState<"sql" | "csv" | "json">("sql");
+  const [format, setFormat] = useState<"sql" | "csv" | "json" | "xlsx">("sql");
   const [executing, setExecuting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -159,19 +159,52 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
         await downloadFile(content, `${dbName}_export.sql`, "text/sql");
         setMessage({ type: "success", text: t('importExport.exportSuccess') });
       } else {
-        // CSV/JSON: export data for each table
-        for (const tableName of selectedTables) {
-          const result = await getTableData(selectedConnId, tableName, 1, 100000, undefined, schema);
-          if (!result.columns || result.columns.length === 0) continue;
-          if (format === "csv") {
-            const content = exportToCSV(result.columns, result.rows);
-            await downloadFile(content, `${tableName}.csv`, "text/csv");
-          } else {
-            const content = exportToJSON(result.columns, result.rows);
-            await downloadFile(content, `${tableName}.json`, "application/json");
+        // CSV/JSON/XLSX: export table data
+        const conn = connectedConns.find((c) => c.id === selectedConnId);
+        const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+        if (isTauri) {
+          // Streaming Rust-side export: memory-flat, exports the FULL table
+          // (the old path loaded at most 100k rows into the webview).
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const dir = await open({ directory: true, title: t('importExport.chooseExportDir') });
+          if (!dir || Array.isArray(dir)) { setExecuting(false); return; }
+
+          const mysqlFamily = ["mysql", "oceanbase", "tidb", "tdsql"];
+          const q = (ident: string) =>
+            mysqlFamily.includes(conn?.type ?? "")
+              ? `\`${ident.replace(/`/g, "``")}\``
+              : `"${ident.replace(/"/g, '""')}"`;
+
+          let totalRows = 0;
+          for (const tableName of selectedTables) {
+            const source = schema ? `${q(schema)}.${q(tableName)}` : q(tableName);
+            const summary = await exportQueryToFile(
+              selectedConnId,
+              `SELECT * FROM ${source}`,
+              format,
+              `${dir}/${tableName}.${format}`,
+              `export-${Date.now()}-${tableName}`,
+              tableName
+            );
+            totalRows += summary.rowsWritten;
           }
+          setMessage({ type: "success", text: `${t('importExport.exportSuccess')} (${totalRows} rows)` });
+        } else {
+          // Browser/mock fallback: in-memory export of loaded rows
+          for (const tableName of selectedTables) {
+            const result = await getTableData(selectedConnId, tableName, 1, 100000, undefined, schema);
+            if (!result.columns || result.columns.length === 0) continue;
+            if (format === "csv") {
+              const content = exportToCSV(result.columns, result.rows);
+              await downloadFile(content, `${tableName}.csv`, "text/csv");
+            } else {
+              const content = exportToJSON(result.columns, result.rows);
+              await downloadFile(content, `${tableName}.json`, "application/json");
+            }
+          }
+          setMessage({ type: "success", text: t('importExport.exportSuccess') });
         }
-        setMessage({ type: "success", text: t('importExport.exportSuccess') });
       }
     } catch (err) {
       setMessage({
@@ -181,7 +214,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
     } finally {
       setExecuting(false);
     }
-  }, [selectedConnId, selectedTables, selectedSchema, format]);
+  }, [selectedConnId, selectedTables, selectedSchema, format, connectedConns]);
 
   // Import handler
   const handleImport = useCallback(async () => {
@@ -408,7 +441,7 @@ function ImportExportDialog({ isOpen, mode, onClose }: ImportExportDialogProps) 
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-foreground">{t('importExport.selectFormat')}</label>
                     <div className="flex items-center gap-4">
-                      {(["sql", "csv", "json"] as const).map((f) => (
+                      {(["sql", "csv", "json", "xlsx"] as const).map((f) => (
                         <label key={f} className="flex items-center gap-1.5 text-xs cursor-pointer">
                           <input
                             type="radio"

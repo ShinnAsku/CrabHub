@@ -11,6 +11,10 @@ fn default_auto_reconnect() -> bool {
     true
 }
 
+fn default_query_timeout_secs() -> u64 {
+    300
+}
+
 /// Supported database types
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatabaseType {
@@ -342,6 +346,10 @@ pub struct ConnectionConfig {
     pub keepalive_interval: u64,
     #[serde(default = "default_auto_reconnect")]
     pub auto_reconnect: bool,
+    /// Hard timeout for user-initiated queries, in seconds. 0 = unlimited.
+    /// Metadata queries keep their own fixed 60s limit.
+    #[serde(default = "default_query_timeout_secs")]
+    pub query_timeout_secs: u64,
     pub ssh_tunnel: Option<SshTunnelConfig>,
     #[serde(default)]
     pub pool_options: Option<PoolOptions>,
@@ -381,6 +389,78 @@ pub struct PagedQueryResult {
     pub row_count: u64,
     pub execution_time_ms: u64,
     pub has_more: bool,
+}
+
+// ============================================================================
+// Wire (IPC) result types
+// ============================================================================
+//
+// Internal QueryResult keeps object-shaped rows because driver metadata code
+// reads cells by column name. At the IPC boundary rows are converted to
+// positional arrays (aligned with `columns`) so column names are sent ONCE
+// instead of once per row — roughly halving the JSON payload for wide results.
+// The frontend `mapRawQueryResult` already accepts both shapes.
+
+/// Query result serialized for the IPC boundary: rows are positional arrays.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WireQueryResult {
+    pub columns: Vec<ColumnInfo>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub row_count: u64,
+    pub execution_time_ms: u64,
+}
+
+/// Paged query result serialized for the IPC boundary: rows are positional arrays.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WirePagedQueryResult {
+    pub columns: Vec<ColumnInfo>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub row_count: u64,
+    pub execution_time_ms: u64,
+    pub has_more: bool,
+}
+
+/// Convert object rows to positional arrays following `columns` order.
+/// Cells missing from a row map (shouldn't happen, but defensive) become null.
+fn rows_to_wire(
+    columns: &[ColumnInfo],
+    rows: Vec<serde_json::Map<String, serde_json::Value>>,
+) -> Vec<Vec<serde_json::Value>> {
+    rows.into_iter()
+        .map(|mut row| {
+            columns
+                .iter()
+                .map(|c| row.remove(&c.name).unwrap_or(serde_json::Value::Null))
+                .collect()
+        })
+        .collect()
+}
+
+impl From<QueryResult> for WireQueryResult {
+    fn from(r: QueryResult) -> Self {
+        let rows = rows_to_wire(&r.columns, r.rows);
+        WireQueryResult {
+            columns: r.columns,
+            rows,
+            row_count: r.row_count,
+            execution_time_ms: r.execution_time_ms,
+        }
+    }
+}
+
+impl From<PagedQueryResult> for WirePagedQueryResult {
+    fn from(r: PagedQueryResult) -> Self {
+        let rows = rows_to_wire(&r.columns, r.rows);
+        WirePagedQueryResult {
+            columns: r.columns,
+            rows,
+            row_count: r.row_count,
+            execution_time_ms: r.execution_time_ms,
+            has_more: r.has_more,
+        }
+    }
 }
 
 /// Table metadata information
@@ -534,4 +614,76 @@ pub struct ConnectionStatus {
     pub last_heartbeat: String,
     pub keepalive_interval: u64,
     pub auto_reconnect: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn col(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_string(),
+            data_type: "text".to_string(),
+            nullable: true,
+            is_primary_key: false,
+            default_value: None,
+            comment: None,
+            character_maximum_length: None,
+            numeric_precision: None,
+            numeric_scale: None,
+        }
+    }
+
+    fn obj_row(pairs: &[(&str, serde_json::Value)]) -> serde_json::Map<String, serde_json::Value> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    #[test]
+    fn wire_rows_follow_column_order() {
+        let result = QueryResult {
+            columns: vec![col("id"), col("name")],
+            rows: vec![
+                // Map iteration order differs from column order — conversion must align.
+                obj_row(&[("name", json!("alice")), ("id", json!(1))]),
+                obj_row(&[("id", json!(2)), ("name", json!("bob"))]),
+            ],
+            row_count: 2,
+            execution_time_ms: 5,
+        };
+        let wire = WireQueryResult::from(result);
+        assert_eq!(wire.rows, vec![
+            vec![json!(1), json!("alice")],
+            vec![json!(2), json!("bob")],
+        ]);
+        assert_eq!(wire.row_count, 2);
+    }
+
+    #[test]
+    fn wire_rows_missing_cell_becomes_null() {
+        let result = QueryResult {
+            columns: vec![col("a"), col("b")],
+            rows: vec![obj_row(&[("a", json!(true))])],
+            row_count: 1,
+            execution_time_ms: 0,
+        };
+        let wire = WireQueryResult::from(result);
+        assert_eq!(wire.rows, vec![vec![json!(true), serde_json::Value::Null]]);
+    }
+
+    #[test]
+    fn wire_serialization_has_no_per_row_column_names() {
+        let result = PagedQueryResult {
+            columns: vec![col("very_long_column_name")],
+            rows: vec![obj_row(&[("very_long_column_name", json!(42))]); 3],
+            row_count: 3,
+            execution_time_ms: 0,
+            has_more: false,
+        };
+        let wire = WirePagedQueryResult::from(result);
+        let json = serde_json::to_string(&wire).unwrap();
+        // Column name must appear exactly once (in `columns`), not once per row.
+        assert_eq!(json.matches("very_long_column_name").count(), 1);
+        assert!(json.contains("\"rows\":[[42],[42],[42]]"));
+    }
 }

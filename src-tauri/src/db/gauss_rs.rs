@@ -14,6 +14,9 @@ use super::types::{
 
 pub struct GaussAsyncConnection {
     client: GClient,
+    /// Wire-protocol cancel token captured at connect time; sends a
+    /// CancelRequest for whatever is currently running on this connection.
+    cancel_token: tokio_gaussdb::CancelToken,
 }
 
 impl GaussAsyncConnection {
@@ -60,7 +63,8 @@ impl GaussAsyncConnection {
             }
         });
 
-        Ok(Self { client })
+        let cancel_token = client.cancel_token();
+        Ok(Self { client, cancel_token })
     }
 }
 
@@ -82,6 +86,19 @@ impl DatabaseConnection for GaussAsyncConnection {
     }
 
     fn db_type(&self) -> DatabaseType { DatabaseType::GaussDB }
+
+    async fn cancel_running_query(&self) -> bool {
+        match self.cancel_token.cancel_query(NoTls).await {
+            Ok(()) => {
+                log::info!("[cancel] GaussDB CancelRequest sent");
+                true
+            }
+            Err(e) => {
+                log::warn!("[cancel] GaussDB cancel failed: {}", e);
+                false
+            }
+        }
+    }
 
     async fn close(&self) { /* connection task handles cleanup */ }
 

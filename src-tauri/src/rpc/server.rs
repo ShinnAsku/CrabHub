@@ -1,4 +1,4 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc, RpcModule};
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use serde_json;
 use std::sync::Arc;
 
@@ -10,6 +10,8 @@ use crate::rpc::types::{PluginInfo, ConnectionResult};
 pub trait PluginRpc {
     #[method(name = "plugin_info")]
     async fn plugin_info(&self) -> RpcResult<PluginInfo>;
+    #[method(name = "list_connections")]
+    async fn list_connections(&self) -> RpcResult<Vec<serde_json::Value>>;
     #[method(name = "connect")]
     async fn connect(&self, config: serde_json::Value) -> RpcResult<ConnectionResult>;
     #[method(name = "disconnect")]
@@ -60,6 +62,10 @@ impl PluginRpcServer for PluginRpcServerImpl {
             Ok(r) => Ok(ConnectionResult { success: true, connection_id: r.connection_id, message: None }),
             Err(e) => Ok(ConnectionResult { success: false, connection_id: String::new(), message: Some(e.to_string()) }),
         }
+    }
+
+    async fn list_connections(&self) -> RpcResult<Vec<serde_json::Value>> {
+        Ok(self.db_manager.list_connections().await)
     }
 
     async fn disconnect(&self, id: String) -> RpcResult<bool> {
@@ -138,8 +144,10 @@ impl PluginRpcServer for PluginRpcServerImpl {
 }
 
 pub async fn start_rpc_server(db_manager: Arc<ConnectionManager>) -> anyhow::Result<()> {
-    let server = PluginRpcServerImpl::new(db_manager);
-    let module = RpcModule::new(server);
+    // `into_rpc()` registers every #[method] on the module. The previous
+    // `RpcModule::new(server)` created an EMPTY module — the server ran but
+    // exposed zero methods, so every call returned "method not found".
+    let module = PluginRpcServerImpl::new(db_manager).into_rpc();
     let addr = "127.0.0.1:3030";
     let server = jsonrpsee::server::ServerBuilder::default().build(addr).await?;
     let handle = server.start(module);

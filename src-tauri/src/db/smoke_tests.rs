@@ -39,6 +39,7 @@ fn base_config(db_type: DatabaseType) -> ConnectionConfig {
         ssl_enabled: false,
         keepalive_interval: 60,
         auto_reconnect: false,
+        query_timeout_secs: 300,
         ssh_tunnel: None,
         pool_options: None,
     }

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -27,25 +28,59 @@ use crate::plugins::manager::PluginManager;
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 3;
 
-/// Per-connection state tracking
+/// Resolve the user-query timeout for a connection. 0 = unlimited
+/// (implemented as ~30 years, far beyond any session lifetime).
+fn user_query_timeout(config: &ConnectionConfig) -> Duration {
+    match config.query_timeout_secs {
+        0 => Duration::from_secs(60 * 60 * 24 * 365 * 30),
+        s => Duration::from_secs(s),
+    }
+}
+
+/// Per-connection state tracking.
+///
+/// Stored as `Arc` in the manager's map so callers clone the entry out and
+/// release the map lock *before* awaiting SQL. All mutable state uses interior
+/// mutability; the map lock is therefore only ever held for microseconds.
 struct ConnectionEntry {
-    connection: Box<dyn DatabaseConnection>,
+    /// Entry-level lock: queries take `read` (shared), reconnect swaps take
+    /// `write`. Holding it across an await blocks only THIS connection.
+    connection: RwLock<Box<dyn DatabaseConnection>>,
     config: ConnectionConfig,
     last_heartbeat: std::sync::Mutex<Instant>,
-    is_healthy: bool,
-    reconnect_count: u32,
+    is_healthy: AtomicBool,
+    reconnect_count: AtomicU32,
     /// SSH tunnel (kept alive for the lifetime of the connection)
-    ssh_tunnel: Option<crate::ssh::tunnel::SshTunnel>,
+    ssh_tunnel: std::sync::Mutex<Option<crate::ssh::tunnel::SshTunnel>>,
     /// True when the user manually disconnected — triggers auto-reconnect on next SQL
-    disconnected: bool,
+    disconnected: AtomicBool,
 }
+
+/// Cached metadata payload. Cheap to clone (all Vec-of-value types).
+#[derive(Clone)]
+enum CachedMeta {
+    Tables(Vec<TableInfo>),
+    Schemas(Vec<String>),
+    Columns(Vec<ColumnInfo>),
+}
+
+/// Sidebar tree expansion hits get_tables/get_schemas/get_columns repeatedly;
+/// a short TTL keeps the UI snappy without risking long-stale structure.
+const METADATA_CACHE_TTL: Duration = Duration::from_secs(60);
 
 /// Manages multiple database connections
 pub struct ConnectionManager {
-    connections: RwLock<HashMap<String, ConnectionEntry>>,
+    connections: RwLock<HashMap<String, Arc<ConnectionEntry>>>,
     plugin_manager: tokio::sync::Mutex<Option<Arc<PluginManager>>>,
-    /// Per-connection cancel senders. Dropping the sender cancels the active query.
-    cancel_tokens: RwLock<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
+    /// Per-connection cancellation token shared by ALL in-flight queries on
+    /// that connection. `cancel_query` fires it once; the next query lazily
+    /// installs a fresh token. A oneshot-per-connection was used before, but
+    /// starting a second concurrent query dropped (= fired) the first one's
+    /// sender and spuriously cancelled it.
+    cancel_tokens: RwLock<HashMap<String, tokio_util::sync::CancellationToken>>,
+    /// TTL cache for schema metadata, keyed by `{conn_id}\x00{kind}[\x00args]`.
+    /// Invalidated on TTL expiry, successful DDL, disconnect, and manual refresh.
+    metadata_cache: RwLock<HashMap<String, (Instant, CachedMeta)>>,
 }
 
 impl ConnectionManager {
@@ -55,22 +90,76 @@ impl ConnectionManager {
             connections: RwLock::new(HashMap::new()),
             plugin_manager: tokio::sync::Mutex::new(None),
             cancel_tokens: RwLock::new(HashMap::new()),
+            metadata_cache: RwLock::new(HashMap::new()),
         }
     }
 
-    /// Cancel the currently-running query on the given connection.
-    /// Works by removing and dropping the oneshot sender, which immediately
-    /// resolves the receiver in the `tokio::select!` branch.
-    pub async fn cancel_query(&self, id: &str) -> bool {
-        self.cancel_tokens.write().await.remove(id).is_some()
+    // --- Metadata cache helpers ---
+
+    async fn meta_get(&self, key: &str) -> Option<CachedMeta> {
+        let cache = self.metadata_cache.read().await;
+        cache
+            .get(key)
+            .filter(|(at, _)| at.elapsed() < METADATA_CACHE_TTL)
+            .map(|(_, v)| v.clone())
     }
 
-    /// Create a fresh cancel channel for a connection and return the receiver.
-    /// The sender is stored; dropping it (via cancel_query) cancels the query.
-    async fn cancel_token(&self, id: &str) -> tokio::sync::oneshot::Receiver<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.cancel_tokens.write().await.insert(id.to_string(), tx);
-        rx
+    async fn meta_put(&self, key: String, value: CachedMeta) {
+        self.metadata_cache.write().await.insert(key, (Instant::now(), value));
+    }
+
+    /// Drop all cached metadata for a connection (DDL ran, refresh clicked,
+    /// or the connection went away).
+    pub async fn invalidate_metadata(&self, id: &str) {
+        let prefix = format!("{}\x00", id);
+        let mut cache = self.metadata_cache.write().await;
+        cache.retain(|k, _| !k.starts_with(&prefix));
+    }
+
+    /// DDL statements change structure; anything else leaves the cache valid.
+    fn is_ddl(sql: &str) -> bool {
+        let upper = sql.trim_start().to_uppercase();
+        ["CREATE", "ALTER", "DROP", "RENAME", "TRUNCATE", "COMMENT"]
+            .iter()
+            .any(|kw| upper.starts_with(kw))
+    }
+
+    /// Cancel the currently-running quer(ies) on the given connection.
+    ///
+    /// Two-phase: (1) fire the shared CancellationToken, which immediately
+    /// resolves the `tokio::select!` branch of every in-flight query so the
+    /// UI unblocks; (2) best-effort SERVER-SIDE cancel in the background —
+    /// without it the statement keeps running on the server and holds a pool
+    /// connection hostage.
+    pub async fn cancel_query(&self, id: &str) -> bool {
+        let client_cancelled = match self.cancel_tokens.write().await.remove(id) {
+            Some(token) => {
+                token.cancel();
+                true
+            }
+            None => false,
+        };
+        if let Ok(entry) = self.entry(id).await {
+            let conn_id = id.to_string();
+            tokio::spawn(async move {
+                let connection = entry.connection.read().await;
+                if connection.cancel_running_query().await {
+                    log::info!("Server-side cancel dispatched for connection '{}'", conn_id);
+                }
+            });
+        }
+        client_cancelled
+    }
+
+    /// Get (or lazily create) the shared cancel token for a connection.
+    /// Cloning is cheap; every concurrent query on the connection listens on
+    /// the same token, so one cancel stops them all without affecting others.
+    async fn cancel_token(&self, id: &str) -> tokio_util::sync::CancellationToken {
+        let mut tokens = self.cancel_tokens.write().await;
+        tokens
+            .entry(id.to_string())
+            .or_insert_with(tokio_util::sync::CancellationToken::new)
+            .clone()
     }
 
     /// Inject the plugin manager (called during app setup)
@@ -80,6 +169,25 @@ impl ConnectionManager {
 
     async fn get_plugin_manager(&self) -> Option<Arc<PluginManager>> {
         self.plugin_manager.lock().await.clone()
+    }
+
+    /// Clone the entry Arc for `id`, holding the map lock only briefly.
+    /// Callers await SQL on the returned entry WITHOUT blocking the map.
+    async fn entry(&self, id: &str) -> Result<Arc<ConnectionEntry>, DbError> {
+        let connections = self.connections.read().await;
+        connections
+            .get(id)
+            .cloned()
+            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))
+    }
+
+    /// Like [`Self::entry`], but rejects manually disconnected connections.
+    async fn active_entry(&self, id: &str) -> Result<Arc<ConnectionEntry>, DbError> {
+        let entry = self.entry(id).await?;
+        if entry.disconnected.load(Ordering::Relaxed) {
+            return Err(DbError::ConnectionError("Connection is disconnected".into()));
+        }
+        Ok(entry)
     }
 
     /// Background loop that checks connection health without running SQL queries.
@@ -120,9 +228,9 @@ impl ConnectionManager {
                         host.as_deref().unwrap_or("?"),
                         idle_secs
                     );
-                    let mut conns = manager.connections.write().await;
-                    if let Some(e) = conns.get_mut(id) {
-                        e.is_healthy = false;
+                    let conns = manager.connections.read().await;
+                    if let Some(e) = conns.get(id) {
+                        e.is_healthy.store(false, Ordering::Relaxed);
                     }
                 }
             }
@@ -238,21 +346,26 @@ impl ConnectionManager {
             detected_type
         );
 
-        let entry = ConnectionEntry {
-            connection,
+        let entry = Arc::new(ConnectionEntry {
+            connection: RwLock::new(connection),
             config: config.clone(),
             last_heartbeat: std::sync::Mutex::new(Instant::now()),
-            is_healthy: true,
-            reconnect_count: 0,
-            ssh_tunnel,
-            disconnected: false,
-        };
+            is_healthy: AtomicBool::new(true),
+            reconnect_count: AtomicU32::new(0),
+            ssh_tunnel: std::sync::Mutex::new(ssh_tunnel),
+            disconnected: AtomicBool::new(false),
+        });
 
-        let mut connections = self.connections.write().await;
-        if let Some(old) = connections.insert(connection_id.clone(), entry) {
-            old.connection.close().await;
+        let old = {
+            let mut connections = self.connections.write().await;
+            connections.insert(connection_id.clone(), entry)
+        };
+        if let Some(old) = old {
+            old.connection.read().await.close().await;
             log::info!("Closed old connection for id '{}'", connection_id);
         }
+        // A (re)connect may target a different database; stale metadata must go.
+        self.invalidate_metadata(&connection_id).await;
 
         Ok(ConnectResult {
             connection_id,
@@ -264,31 +377,38 @@ impl ConnectionManager {
     /// The connection entry is kept in the map (with disconnected=true) so that
     /// auto-reconnect can re-establish the connection on the next SQL execution.
     pub async fn disconnect(&self, id: &str) -> Result<(), DbError> {
-        let mut connections = self.connections.write().await;
+        // Remove sub-connections and grab the main entry; the map lock is only
+        // held for this short block — closing happens outside it.
+        let (subs, entry) = {
+            let mut connections = self.connections.write().await;
+            let sub_prefix = format!("{}:sub:", id);
+            let sub_ids: Vec<String> = connections
+                .keys()
+                .filter(|k| k.starts_with(&sub_prefix))
+                .cloned()
+                .collect();
+            let subs: Vec<(String, Arc<ConnectionEntry>)> = sub_ids
+                .into_iter()
+                .filter_map(|sid| connections.remove(&sid).map(|e| (sid, e)))
+                .collect();
+            (subs, connections.get(id).cloned())
+        };
 
-        // Collect and close sub-connections
-        let sub_prefix = format!("{}:sub:", id);
-        let sub_ids: Vec<String> = connections
-            .keys()
-            .filter(|k| k.starts_with(&sub_prefix))
-            .cloned()
-            .collect();
-
-        for sub_id in &sub_ids {
-            if let Some(sub_entry) = connections.remove(sub_id) {
-                sub_entry.connection.close().await;
-                log::info!("Closed sub-connection '{}'", sub_id);
-            }
+        for (sub_id, sub_entry) in subs {
+            sub_entry.connection.read().await.close().await;
+            log::info!("Closed sub-connection '{}'", sub_id);
         }
 
-        if let Some(entry) = connections.get_mut(id) {
-            entry.connection.close().await;
-            if let Some(tunnel) = entry.ssh_tunnel.take() {
+        if let Some(entry) = entry {
+            entry.connection.read().await.close().await;
+            let tunnel = entry.ssh_tunnel.lock().unwrap().take();
+            if let Some(tunnel) = tunnel {
                 tunnel.close().await;
             }
-            entry.is_healthy = false;
-            entry.disconnected = true;
-            entry.reconnect_count = 0; // reset for fresh reconnect budget
+            entry.is_healthy.store(false, Ordering::Relaxed);
+            entry.disconnected.store(true, Ordering::Relaxed);
+            entry.reconnect_count.store(0, Ordering::Relaxed); // reset for fresh reconnect budget
+            self.invalidate_metadata(id).await;
             log::info!("Disconnected from database '{}' (entry kept for auto-reconnect)", id);
             Ok(())
         } else {
@@ -305,9 +425,16 @@ impl ConnectionManager {
         if let Err(DbError::ConnectionError(_)) = &result {
             if self.should_reconnect(id).await {
                 if self.reconnect(id).await.is_ok() {
-                    return self.execute_inner(id, sql).await;
+                    let retried = self.execute_inner(id, sql).await;
+                    if retried.is_ok() && Self::is_ddl(sql) {
+                        self.invalidate_metadata(id).await;
+                    }
+                    return retried;
                 }
             }
+        }
+        if result.is_ok() && Self::is_ddl(sql) {
+            self.invalidate_metadata(id).await;
         }
         result
     }
@@ -366,31 +493,26 @@ impl ConnectionManager {
     /// Run a query with cancellation support (for user-initiated queries).
     /// Uses both oneshot cancel AND tokio timeout to ensure queries can always be interrupted.
     async fn query_inner_cancellable(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
-        let mut cancel = self.cancel_token(id).await;
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        if entry.disconnected {
-            return Err(DbError::ConnectionError("Connection is disconnected".into()));
-        }
-        // 5-minute hard timeout prevents queries from hanging indefinitely
-        let timeout = tokio::time::sleep(std::time::Duration::from_secs(300));
+        let cancel = self.cancel_token(id).await;
+        let entry = self.active_entry(id).await?;
+        let connection = entry.connection.read().await;
+        // Configurable hard timeout (default 300s, 0 = unlimited) prevents
+        // queries from hanging indefinitely
+        let timeout_dur = user_query_timeout(&entry.config);
+        let timeout = tokio::time::sleep(timeout_dur);
         tokio::pin!(timeout);
         let result = tokio::select! {
-            r = entry.connection.query_sql(sql) => r,
-            _ = &mut cancel => {
+            r = connection.query_sql(sql) => r,
+            _ = cancel.cancelled() => {
                 log::info!("Query cancelled by user for connection '{}'", id);
                 Err(DbError::QueryError("Query cancelled".to_string()))
             }
             _ = &mut timeout => {
-                log::warn!("Query timed out (5min) for connection '{}'", id);
-                Err(DbError::Timeout("Query exceeded 5 minute limit".to_string()))
+                log::warn!("Query timed out ({}s) for connection '{}'", timeout_dur.as_secs(), id);
+                Err(DbError::Timeout(format!("Query exceeded {}s limit", timeout_dur.as_secs())))
             }
         };
-        // Clean up the cancel sender regardless of outcome
-        self.cancel_tokens.write().await.remove(id);
-        if let Ok(ref _r) = result {
+        if result.is_ok() {
             *entry.last_heartbeat.lock().unwrap() = Instant::now();
         }
         result
@@ -401,16 +523,11 @@ impl ConnectionManager {
     /// Has a 60-second timeout — metadata queries should be fast; anything longer
     /// indicates a stuck connection.
     async fn query_inner(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        if entry.disconnected {
-            return Err(DbError::ConnectionError("Connection is disconnected".into()));
-        }
+        let entry = self.active_entry(id).await?;
+        let connection = entry.connection.read().await;
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            entry.connection.query_sql(sql),
+            connection.query_sql(sql),
         )
         .await
         .map_err(|_| DbError::Timeout("Metadata query exceeded 60s limit".to_string()))?;
@@ -422,16 +539,11 @@ impl ConnectionManager {
 
     /// Non-cancellable execute (for metadata/internal use). 60s timeout.
     async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        if entry.disconnected {
-            return Err(DbError::ConnectionError("Connection is disconnected".into()));
-        }
+        let entry = self.active_entry(id).await?;
+        let connection = entry.connection.read().await;
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            entry.connection.execute_sql(sql),
+            connection.execute_sql(sql),
         )
         .await
         .map_err(|_| DbError::Timeout("Execute exceeded 60s limit".to_string()))?;
@@ -448,23 +560,18 @@ impl ConnectionManager {
         limit: u64,
         offset: u64,
     ) -> Result<PagedQueryResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        if entry.disconnected {
-            return Err(DbError::ConnectionError("Connection is disconnected".into()));
-        }
+        let entry = self.active_entry(id).await?;
+        let connection = entry.connection.read().await;
 
-        // 5-minute hard timeout matches the cancellable path; prevents runaway
-        // queries from holding a pool connection indefinitely.
-        let timeout = std::time::Duration::from_secs(300);
+        // Configurable hard timeout matching the cancellable path; prevents
+        // runaway queries from holding a pool connection indefinitely.
+        let timeout = user_query_timeout(&entry.config);
 
         // If the user already specified a LIMIT / TOP / FETCH, execute as-is
         if sql_limiter::has_user_limit(sql) {
-            let result = tokio::time::timeout(timeout, entry.connection.query_sql(sql))
+            let result = tokio::time::timeout(timeout, connection.query_sql(sql))
                 .await
-                .map_err(|_| DbError::Timeout("Query exceeded 5 minute limit".to_string()))??;
+                .map_err(|_| DbError::Timeout(format!("Query exceeded {}s limit", timeout.as_secs())))??;
             return Ok(PagedQueryResult {
                 columns: result.columns,
                 rows: result.rows,
@@ -475,15 +582,15 @@ impl ConnectionManager {
         }
 
         // Use streaming paged query that fetches at most limit+1 rows
-        let db_type = entry.connection.db_type();
+        let db_type = connection.db_type();
         let modified_sql =
             sql_limiter::inject_limit_offset(sql, &db_type, limit + 1, offset);
         let (result, has_more) = tokio::time::timeout(
             timeout,
-            entry.connection.query_sql_paged(&modified_sql, limit, offset),
+            connection.query_sql_paged(&modified_sql, limit, offset),
         )
         .await
-        .map_err(|_| DbError::Timeout("Query exceeded 5 minute limit".to_string()))??;
+        .map_err(|_| DbError::Timeout(format!("Query exceeded {}s limit", timeout.as_secs())))??;
 
         let row_count = result.rows.len() as u64;
         Ok(PagedQueryResult {
@@ -496,38 +603,34 @@ impl ConnectionManager {
     }
 
     async fn should_reconnect(&self, id: &str) -> bool {
-        let connections = self.connections.read().await;
-        if let Some(entry) = connections.get(id) {
-            entry.config.auto_reconnect && entry.reconnect_count < MAX_RECONNECT_ATTEMPTS
-        } else {
-            false
+        match self.entry(id).await {
+            Ok(entry) => {
+                entry.config.auto_reconnect
+                    && entry.reconnect_count.load(Ordering::Relaxed) < MAX_RECONNECT_ATTEMPTS
+            }
+            Err(_) => false,
         }
     }
 
     async fn reconnect(&self, id: &str) -> Result<(), DbError> {
-        let (config, attempt) = {
-            let mut connections = self.connections.write().await;
-            let entry = connections
-                .get_mut(id)
-                .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        let entry = self.entry(id).await?;
 
-            if entry.reconnect_count >= MAX_RECONNECT_ATTEMPTS {
-                log::error!(
-                    "Max reconnect attempts ({}) reached for connection '{}'",
-                    MAX_RECONNECT_ATTEMPTS,
-                    id
-                );
-                return Err(DbError::ConnectionError(format!(
-                    "Max reconnect attempts ({}) reached",
-                    MAX_RECONNECT_ATTEMPTS
-                )));
-            }
-
-            entry.reconnect_count += 1;
-            entry.is_healthy = false;
-            let attempt = entry.reconnect_count;
-            (entry.config.clone(), attempt)
-        };
+        let prev = entry.reconnect_count.fetch_add(1, Ordering::Relaxed);
+        if prev >= MAX_RECONNECT_ATTEMPTS {
+            entry.reconnect_count.store(MAX_RECONNECT_ATTEMPTS, Ordering::Relaxed);
+            log::error!(
+                "Max reconnect attempts ({}) reached for connection '{}'",
+                MAX_RECONNECT_ATTEMPTS,
+                id
+            );
+            return Err(DbError::ConnectionError(format!(
+                "Max reconnect attempts ({}) reached",
+                MAX_RECONNECT_ATTEMPTS
+            )));
+        }
+        entry.is_healthy.store(false, Ordering::Relaxed);
+        let attempt = prev + 1;
+        let config = entry.config.clone();
 
         let backoff_secs = 1u64 << (attempt - 1);
         log::info!(
@@ -542,24 +645,26 @@ impl ConnectionManager {
         let pm = self.get_plugin_manager().await;
         match Self::create_connection_async(&config, pm.as_deref()).await {
             Ok(new_conn) => {
-                let mut connections = self.connections.write().await;
-                if let Some(entry) = connections.get_mut(id) {
-                    let old = std::mem::replace(&mut entry.connection, new_conn);
-                    tokio::spawn(async move { old.close().await; });
-                    *entry.last_heartbeat.lock().unwrap() = Instant::now();
-                    entry.is_healthy = true;
-                    entry.disconnected = false;
-                    // Reset attempt counter so future transient failures get a
-                    // full reconnect budget again. Without this, a single
-                    // successful reconnect "consumes" the budget and the next
-                    // failure can trip MAX_RECONNECT_ATTEMPTS prematurely.
-                    entry.reconnect_count = 0;
-                    log::info!(
-                        "Successfully reconnected connection '{}' on attempt {}",
-                        id,
-                        attempt
-                    );
-                }
+                // Entry-level write lock: waits for in-flight queries on this
+                // connection to finish, but never blocks other connections.
+                let old = {
+                    let mut connection = entry.connection.write().await;
+                    std::mem::replace(&mut *connection, new_conn)
+                };
+                tokio::spawn(async move { old.close().await; });
+                *entry.last_heartbeat.lock().unwrap() = Instant::now();
+                entry.is_healthy.store(true, Ordering::Relaxed);
+                entry.disconnected.store(false, Ordering::Relaxed);
+                // Reset attempt counter so future transient failures get a
+                // full reconnect budget again. Without this, a single
+                // successful reconnect "consumes" the budget and the next
+                // failure can trip MAX_RECONNECT_ATTEMPTS prematurely.
+                entry.reconnect_count.store(0, Ordering::Relaxed);
+                log::info!(
+                    "Successfully reconnected connection '{}' on attempt {}",
+                    id,
+                    attempt
+                );
                 Ok(())
             }
             Err(e) => {
@@ -576,16 +681,35 @@ impl ConnectionManager {
 
     /// Get database type for a connection
     pub async fn get_db_type(&self, id: &str) -> Option<DatabaseType> {
+        let entry = self.entry(id).await.ok()?;
+        let db_type = entry.connection.read().await.db_type();
+        Some(db_type)
+    }
+
+    /// List all live connections (for the RPC / MCP surface). Excludes
+    /// sub-connections and never exposes credentials.
+    pub async fn list_connections(&self) -> Vec<serde_json::Value> {
         let connections = self.connections.read().await;
-        connections.get(id).map(|e| e.connection.db_type())
+        connections
+            .iter()
+            .filter(|(id, _)| !id.contains(":sub:"))
+            .map(|(id, e)| {
+                serde_json::json!({
+                    "id": id,
+                    "name": e.config.name,
+                    "dbType": e.config.db_type.as_str(),
+                    "host": e.config.host,
+                    "database": e.config.database,
+                    "healthy": e.is_healthy.load(Ordering::Relaxed),
+                    "disconnected": e.disconnected.load(Ordering::Relaxed),
+                })
+            })
+            .collect()
     }
 
     /// Get connection health status
     pub async fn get_connection_status(&self, id: &str) -> Result<ConnectionStatus, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        let entry = self.entry(id).await?;
 
         let elapsed = entry.last_heartbeat.lock().unwrap().elapsed();
         let last_heartbeat_str = if elapsed.as_secs() < 60 {
@@ -600,8 +724,8 @@ impl ConnectionManager {
 
         Ok(ConnectionStatus {
             connected: true,
-            healthy: entry.is_healthy,
-            reconnect_count: entry.reconnect_count,
+            healthy: entry.is_healthy.load(Ordering::Relaxed),
+            reconnect_count: entry.reconnect_count.load(Ordering::Relaxed),
             last_heartbeat: last_heartbeat_str,
             keepalive_interval: entry.config.keepalive_interval,
             auto_reconnect: entry.config.auto_reconnect,
@@ -637,11 +761,15 @@ impl ConnectionManager {
     // ========================================================================
 
     pub async fn get_tables(&self, id: &str) -> Result<Vec<TableInfo>, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_tables().await
+        let key = format!("{}\x00tables", id);
+        if let Some(CachedMeta::Tables(t)) = self.meta_get(&key).await {
+            return Ok(t);
+        }
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        let tables = connection.get_tables().await?;
+        self.meta_put(key, CachedMeta::Tables(tables.clone())).await;
+        Ok(tables)
     }
 
     pub async fn get_columns(
@@ -650,19 +778,27 @@ impl ConnectionManager {
         table: &str,
         schema: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_columns(table, schema).await
+        let key = format!("{}\x00columns\x00{}\x00{}", id, schema.unwrap_or(""), table);
+        if let Some(CachedMeta::Columns(c)) = self.meta_get(&key).await {
+            return Ok(c);
+        }
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        let columns = connection.get_columns(table, schema).await?;
+        self.meta_put(key, CachedMeta::Columns(columns.clone())).await;
+        Ok(columns)
     }
 
     pub async fn get_schemas(&self, id: &str) -> Result<Vec<String>, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_schemas().await
+        let key = format!("{}\x00schemas", id);
+        if let Some(CachedMeta::Schemas(s)) = self.meta_get(&key).await {
+            return Ok(s);
+        }
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        let schemas = connection.get_schemas().await?;
+        self.meta_put(key, CachedMeta::Schemas(schemas.clone())).await;
+        Ok(schemas)
     }
 
     /// Get schemas for a specific database by creating a cached sub-connection.
@@ -675,19 +811,16 @@ impl ConnectionManager {
         let sub_id = format!("{}:sub:{}", id, database_name);
 
         // Return cached if sub-connection already exists
-        {
-            let connections = self.connections.read().await;
-            if let Some(entry) = connections.get(&sub_id) {
-                return entry.connection.get_schemas().await;
-            }
+        if let Ok(entry) = self.entry(&sub_id).await {
+            let connection = entry.connection.read().await;
+            return connection.get_schemas().await;
         }
 
         // Clone parent config, swapping the target database
         let sub_config = {
-            let connections = self.connections.read().await;
-            let entry = connections
-                .get(id)
-                .ok_or_else(|| DbError::NotFound(format!("Parent connection '{}' not found", id)))?;
+            let entry = self.entry(id).await.map_err(|_| {
+                DbError::NotFound(format!("Parent connection '{}' not found", id))
+            })?;
             let mut cfg = entry.config.clone();
             cfg.database = Some(database_name.to_string());
             cfg.id = sub_id.clone();
@@ -700,15 +833,15 @@ impl ConnectionManager {
         let connection = Self::create_connection_async(&sub_config, pm.as_deref()).await?;
         let schemas = connection.get_schemas().await?;
 
-        let sub_entry = ConnectionEntry {
-            connection,
+        let sub_entry = Arc::new(ConnectionEntry {
+            connection: RwLock::new(connection),
             config: sub_config,
             last_heartbeat: std::sync::Mutex::new(Instant::now()),
-            is_healthy: true,
-            reconnect_count: 0,
-            ssh_tunnel: None,
-            disconnected: false,
-        };
+            is_healthy: AtomicBool::new(true),
+            reconnect_count: AtomicU32::new(0),
+            ssh_tunnel: std::sync::Mutex::new(None),
+            disconnected: AtomicBool::new(false),
+        });
 
         self.connections.write().await.insert(sub_id.clone(), sub_entry);
         log::info!("Sub-connection '{}': {} schemas in database '{}'", sub_id, schemas.len(), database_name);
@@ -722,11 +855,9 @@ impl ConnectionManager {
         table: &str,
         schema: Option<&str>,
     ) -> Result<String, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.export_table_sql(table, schema).await
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection.export_table_sql(table, schema).await
     }
 
     pub async fn export_database(
@@ -734,12 +865,10 @@ impl ConnectionManager {
         id: &str,
         tables: Option<&[String]>,
     ) -> Result<String, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
 
-        let all_tables = entry.connection.get_tables().await?;
+        let all_tables = connection.get_tables().await?;
         let tables_to_export: Vec<TableInfo> = match tables {
             Some(filter) => all_tables
                 .into_iter()
@@ -750,8 +879,7 @@ impl ConnectionManager {
 
         let mut sql_parts = Vec::new();
         for table in &tables_to_export {
-            let table_sql = entry
-                .connection
+            let table_sql = connection
                 .export_table_sql(&table.name, table.schema.as_deref())
                 .await?;
             sql_parts.push(table_sql);
@@ -770,11 +898,9 @@ impl ConnectionManager {
         id: &str,
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_views(schema).await
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection.get_views(schema).await
     }
 
     pub async fn get_indexes(
@@ -783,11 +909,9 @@ impl ConnectionManager {
         table: &str,
         schema: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_indexes(table, schema).await
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection.get_indexes(table, schema).await
     }
 
     pub async fn get_foreign_keys(
@@ -796,11 +920,9 @@ impl ConnectionManager {
         table: &str,
         schema: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_foreign_keys(table, schema).await
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection.get_foreign_keys(table, schema).await
     }
 
     pub async fn get_table_row_count(
@@ -809,11 +931,9 @@ impl ConnectionManager {
         table: &str,
         schema: Option<&str>,
     ) -> Result<u64, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry.connection.get_table_row_count(table, schema).await
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection.get_table_row_count(table, schema).await
     }
 
     pub async fn update_table_rows(
@@ -824,12 +944,9 @@ impl ConnectionManager {
         updates: &[(String, serde_json::Value)],
         where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry
-            .connection
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection
             .update_table_rows(table, schema, updates, where_conditions)
             .await
     }
@@ -841,12 +958,9 @@ impl ConnectionManager {
         schema: Option<&str>,
         values: &[(String, serde_json::Value)],
     ) -> Result<ExecuteResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry
-            .connection
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection
             .insert_table_row(table, schema, values)
             .await
     }
@@ -858,12 +972,9 @@ impl ConnectionManager {
         schema: Option<&str>,
         where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry
-            .connection
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection
             .delete_table_rows(table, schema, where_conditions)
             .await
     }
@@ -877,12 +988,9 @@ impl ConnectionManager {
         page_size: u32,
         order_by: Option<&str>,
     ) -> Result<QueryResult, DbError> {
-        let connections = self.connections.read().await;
-        let entry = connections
-            .get(id)
-            .ok_or_else(|| DbError::NotFound(format!("Connection '{}' not found", id)))?;
-        entry
-            .connection
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        connection
             .get_table_data(table, schema, page, page_size, order_by)
             .await
     }

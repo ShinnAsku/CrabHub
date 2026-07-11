@@ -39,6 +39,9 @@ pub struct Connection {
     pub keepalive_interval: u32,
     #[serde(default = "default_true")]
     pub auto_reconnect: bool,
+    /// Hard timeout for user queries in seconds; 0 = unlimited.
+    #[serde(default = "default_query_timeout")]
+    pub query_timeout_secs: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,6 +59,10 @@ fn default_keepalive() -> u32 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_query_timeout() -> u32 {
+    300
 }
 
 /// Connection group model

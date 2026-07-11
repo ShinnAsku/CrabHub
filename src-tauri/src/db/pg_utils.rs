@@ -7,6 +7,41 @@ use super::types::ColumnInfo;
 // Shared parsing utilities for PostgreSQL wire-protocol databases
 // ============================================================================
 
+/// Best-effort server-side cancel for PG-protocol databases.
+///
+/// Opens a short-lived admin connection and cancels every active backend
+/// tagged with `app_name` (excluding the admin connection itself). Errors are
+/// logged and swallowed — cancel must never fail the caller.
+///
+/// Returns `true` if the cancel statement was sent successfully.
+pub async fn cancel_by_application_name(connection_string: &str, app_name: &str) -> bool {
+    use sqlx::Connection;
+    let mut admin = match sqlx::postgres::PgConnection::connect(connection_string).await {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("[cancel] failed to open admin connection: {}", e);
+            return false;
+        }
+    };
+    let result = sqlx::query(
+        "SELECT pg_cancel_backend(pid) FROM pg_stat_activity \
+         WHERE application_name = $1 AND state = 'active' AND pid <> pg_backend_pid()",
+    )
+    .bind(app_name)
+    .fetch_all(&mut admin)
+    .await;
+    match result {
+        Ok(rows) => {
+            log::info!("[cancel] pg_cancel_backend sent to {} session(s) tagged '{}'", rows.len(), app_name);
+            true
+        }
+        Err(e) => {
+            log::warn!("[cancel] pg_cancel_backend failed for '{}': {}", app_name, e);
+            false
+        }
+    }
+}
+
 /// Build column info from a PgRow by inspecting column descriptions
 pub fn build_columns_from_pg_row(row: &sqlx::postgres::PgRow) -> Vec<ColumnInfo> {
     let columns = row.columns();

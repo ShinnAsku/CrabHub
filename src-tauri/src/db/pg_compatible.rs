@@ -17,6 +17,10 @@ use super::types::{
 pub struct PgCompatibleConnection {
     pool: sqlx::PgPool,
     dialect: DialectConfig,
+    /// Connection string kept for opening short-lived admin connections (cancel).
+    connection_string: String,
+    /// application_name tag for server-side query cancellation.
+    app_name: String,
 }
 
 impl PgCompatibleConnection {
@@ -29,13 +33,15 @@ impl PgCompatibleConnection {
         let password = config.password.as_deref().unwrap_or("");
         let database = config.database.as_deref().unwrap_or("");
 
+        let app_name = format!("crabhub-{}", config.id);
         let conn_str = format!(
-            "postgres://{}:{}@{}:{}/{}?sslmode=prefer",
+            "postgres://{}:{}@{}:{}/{}?sslmode=prefer&application_name={}",
             encode(username),
             encode(password),
             host,
             port,
             encode(database),
+            encode(&app_name),
         );
 
         log::info!(
@@ -60,6 +66,8 @@ impl PgCompatibleConnection {
         Ok(Self {
             pool,
             dialect,
+            connection_string: conn_str,
+            app_name,
         })
     }
 }
@@ -539,6 +547,13 @@ impl DatabaseConnection for PgCompatibleConnection {
 
     fn db_type(&self) -> DatabaseType {
         self.dialect.db_type.clone()
+    }
+
+    async fn cancel_running_query(&self) -> bool {
+        // Works on any PG-compatible engine that exposes pg_stat_activity /
+        // pg_cancel_backend (Kingbase, Vastbase, GaussDB-via-sqlx, ...).
+        // Engines lacking these simply log a warning and return false.
+        pg_utils::cancel_by_application_name(&self.connection_string, &self.app_name).await
     }
 
     async fn close(&self) {

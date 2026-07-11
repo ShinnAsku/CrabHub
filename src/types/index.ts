@@ -24,6 +24,8 @@ export interface ConnectionConfig {
   };
   keepaliveInterval?: number;
   autoReconnect?: boolean;
+  /** Hard timeout for user queries in seconds; 0 = unlimited. Default 300. */
+  queryTimeoutSecs?: number;
   /**
    * Optional connection-pool overrides. Any field left undefined uses the
    * per-database default chosen by the backend.

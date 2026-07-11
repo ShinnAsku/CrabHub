@@ -14,6 +14,11 @@ use super::types::{
 
 pub struct MySqlConnection {
     pool: sqlx::MySqlPool,
+    /// Connection string kept for opening short-lived admin connections (cancel).
+    connection_string: String,
+    /// CONNECTION_ID() of every pooled session, recorded on connect.
+    /// Used by cancel_running_query to issue KILL QUERY server-side.
+    session_ids: std::sync::Arc<std::sync::Mutex<Vec<u64>>>,
 }
 
 impl MySqlConnection {
@@ -101,12 +106,30 @@ impl MySqlConnection {
 
         log::info!("Connecting to MySQL at {}:{}", host, port);
 
+        let session_ids: std::sync::Arc<std::sync::Mutex<Vec<u64>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let ids_for_hook = session_ids.clone();
+
         let pc = crate::db::pool_config::PoolConfig::with_overrides(&config.db_type, config.pool_options.as_ref());
         let pool = sqlx::mysql::MySqlPoolOptions::new()
             .max_connections(pc.max_connections)
             .idle_timeout(Duration::from_secs(pc.idle_timeout_secs))
             .max_lifetime(Duration::from_secs(pc.max_lifetime_secs))
             .acquire_timeout(Duration::from_secs(pc.acquire_timeout_secs))
+            // Per-connection session setup. Runs for EVERY pooled connection
+            // (the previous one-shot `SET NAMES` only configured a single
+            // session). Also records CONNECTION_ID() for KILL QUERY support.
+            .after_connect(move |conn, _meta| {
+                let ids = ids_for_hook.clone();
+                Box::pin(async move {
+                    sqlx::query("SET NAMES utf8mb4").execute(&mut *conn).await?;
+                    let row: (u64,) = sqlx::query_as("SELECT CONNECTION_ID()")
+                        .fetch_one(&mut *conn)
+                        .await?;
+                    ids.lock().unwrap().push(row.0);
+                    Ok(())
+                })
+            })
             .connect(&connection_string)
             .await
             .map_err(|e| {
@@ -114,18 +137,9 @@ impl MySqlConnection {
                 DbError::ConnectionError(format!("Failed to connect to MySQL: {}", e))
             })?;
 
-        // Set charset to utf8mb4 to ensure string columns are returned properly
-        sqlx::query("SET NAMES utf8mb4")
-            .execute(&pool)
-            .await
-            .map_err(|e| {
-                log::warn!("Failed to SET NAMES utf8mb4: {}", e);
-                DbError::ConnectionError(format!("Failed to set charset: {}", e))
-            })?;
-
         log::info!("Successfully connected to MySQL");
 
-        Ok(Self { pool })
+        Ok(Self { pool, connection_string, session_ids })
     }
 }
 
@@ -595,6 +609,35 @@ impl DatabaseConnection for MySqlConnection {
 
     fn db_type(&self) -> DatabaseType {
         DatabaseType::MySQL
+    }
+
+    async fn cancel_running_query(&self) -> bool {
+        use sqlx::Connection;
+        // Snapshot tracked pool session ids. KILL QUERY only aborts the
+        // statement currently executing on a session — idle sessions and
+        // already-recycled ids ("Unknown thread id") are harmless no-ops.
+        let ids: Vec<u64> = self.session_ids.lock().unwrap().clone();
+        if ids.is_empty() {
+            return false;
+        }
+        let mut admin = match sqlx::mysql::MySqlConnection::connect(&self.connection_string).await {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("[cancel] failed to open MySQL admin connection: {}", e);
+                return false;
+            }
+        };
+        let mut sent = false;
+        for id in ids {
+            match sqlx::query(&format!("KILL QUERY {}", id)).execute(&mut admin).await {
+                Ok(_) => sent = true,
+                Err(e) => log::debug!("[cancel] KILL QUERY {} skipped: {}", id, e),
+            }
+        }
+        if sent {
+            log::info!("[cancel] KILL QUERY sent for pooled MySQL sessions");
+        }
+        sent
     }
 
     /// FIX Bug #2: Use SHOW CREATE TABLE with fallback to INFORMATION_SCHEMA

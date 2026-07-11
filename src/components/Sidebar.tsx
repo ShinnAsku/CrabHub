@@ -28,6 +28,7 @@ import {
   getDatabases,
   getTables,
   getViews,
+  invalidateMetadataCache,
 } from "@/lib/tauri-commands";
 import QueryHistory from "./QueryHistory";
 import CreateDatabaseDialog from "./CreateDatabaseDialog";
@@ -124,6 +125,10 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   // Handle refresh tree node - will be implemented in DatabaseTree
   const handleRefreshNode = async (node: TreeNode) => {
     log.debug('[Sidebar] Refreshing node:', node.name);
+    // Bypass the backend's metadata TTL cache so the reload sees fresh structure
+    if (node.connectionId) {
+      try { await invalidateMetadataCache(node.connectionId); } catch { /* best-effort */ }
+    }
     // This will be called from DatabaseTree with the actual implementation
   };
 
@@ -143,6 +148,7 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
   // Handle database created successfully
   const handleDatabaseCreated = async (connectionId: string) => {
     log.debug('[Sidebar] Database created, refreshing for:', connectionId);
+    try { await invalidateMetadataCache(connectionId); } catch { /* best-effort */ }
     // Clear cached tree data for this connection
     const newTreeData = { ...treeData };
     Object.keys(newTreeData).forEach((key) => {
