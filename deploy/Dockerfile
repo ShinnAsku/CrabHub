@@ -17,14 +17,14 @@ COPY src ./src
 RUN npm run build
 
 # --- Stage 2: server binary ---
-FROM rust:1.83-slim AS backend
+FROM rust:1-slim-bookworm AS backend
 # The lib crate links tauri (gtk/glib on Linux), so the gtk dev headers are
 # needed at BUILD time even though crabhub-server never opens a window.
 # The runtime stage stays slim: with `--as-needed` the unused gtk shared
 # libraries are not recorded in the final binary.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev perl make \
-    libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+    pkg-config libssl-dev perl make build-essential \
+    libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY src-tauri ./src-tauri
