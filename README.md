@@ -5,16 +5,20 @@
 ## 功能
 
 - **多数据库支持** — 15 种数据库：PostgreSQL、MySQL、SQLite、ClickHouse、GaussDB、Kingbase、Vastbase、YashanDB、OceanBase、TiDB、TDSQL、Oracle、SQL Server、DaMeng、GBase
+- **MCP 接入** — 内置 MCP Server，Claude Code / Cursor / VS Code 等 AI 客户端可直接使用 CrabHub 已配置的连接查库
 - **插件系统** — 兼容 Tabularis 协议，社区插件（DuckDB、Redis、CSV 等），支持 JSON-RPC 2.0 over stdio
 - **AI 助手** — 支持 DeepSeek / Qwen / Ollama / OpenAI，自然语言生成 SQL、执行计划分析、优化建议
-- **SQL 编辑器** — 基于 Monaco Editor，语法高亮、自动补全、格式化、多语句执行
-- **数据浏览与编辑** — Navicat 风格表格视图、行内编辑、分页、导入导出（CSV/JSON/SQL）
+- **SQL 编辑器** — 基于 Monaco Editor，语法高亮、schema 感知自动补全（列信息按需加载，无表数上限）、格式化、多语句执行
+- **数据浏览与编辑** — Navicat 风格表格视图、行内编辑、分页、导入导出（CSV/JSON/SQL/XLSX）
+- **流式导出** — Rust 侧分批拉取直写文件，内存恒定，任意大小表可导出，带进度与取消
+- **服务端查询取消** — 取消真正终止服务器上的查询（pg_cancel_backend / KILL QUERY / 协议级 CancelRequest），连接池不被幽灵查询占用
 - **ER 图** — 可视化表关系和外键，自动布局
 - **表设计器** — 字段、索引、外键、触发器设计，DDL 预览
 - **结构对比** — Schema Diff，生成迁移 SQL
 - **数据迁移** — 跨库表结构和数据迁移
 - **SQL 笔记本** — 类 Jupyter，SQL + Markdown 混合
 - **可视化查询构建器** — 拖拽式建表、JOIN、筛选
+- **性能** — 连接级锁粒度（慢查询不阻塞其他连接）、IPC 行数据数组化（宽表负载减半）、元数据 TTL 缓存、查询超时可配置（0 = 不限时）
 - **深色/浅色主题** — 中英双语，自适应窗口缩放
 - **安全** — OS Keyring 凭证存储，AES-256-GCM 加密，TLS/SSH 隧道，SQL 注入防护
 
@@ -110,8 +114,9 @@ crabhub/
 │   ├── src/
 │   │   ├── db/                       # 数据库驱动层
 │   │   │   ├── trait_def.rs          # DatabaseConnection trait
-│   │   │   ├── manager.rs            # 连接管理器（心跳、重连、DDL）
-│   │   │   ├── types.rs              # 连接配置、查询结果、错误类型
+│   │   │   ├── manager.rs            # 连接管理器（心跳、重连、取消、元数据缓存）
+│   │   │   ├── types.rs              # 连接配置、查询结果（含 IPC wire 类型）、错误类型
+│   │   │   ├── export.rs             # 流式导出（CSV/JSON/SQL/XLSX + 进度事件）
 │   │   │   ├── dialect.rs            # SQL 方言配置（PG/MySQL/Oracle/...）
 │   │   │   ├── sql_limiter.rs        # SQL 注入防护（tokenizer + LIMIT 注入）
 │   │   │   ├── postgres.rs           # PostgreSQL 驱动 (SQLx)
@@ -141,10 +146,13 @@ crabhub/
 │   │   │   ├── commands.rs           # AI 相关 Tauri 命令
 │   │   │   └── context.rs            # AI 上下文构建
 │   │   ├── ssh/                      # SSH 隧道（ssh2）
-│   │   ├── rpc/                      # jsonrpsee RPC 服务器
+│   │   ├── rpc/                      # jsonrpsee RPC 服务器（127.0.0.1:3030，MCP 后端）
 │   │   └── testing/                  # 测试工具（mock 数据 + benchmark）
 │   ├── icons/                        # 螃蟹图标 (ico/icns/png/svg, 40+ 平台)
 │   └── tauri.conf.json               # Tauri 配置
+│
+├── packages/
+│   └── mcp-server/                   # MCP Server（stdio → 本地 RPC 桥，零依赖）
 │
 ├── test/                             # 前端测试
 │   ├── unit/                         # 单元测试（stores, i18n, utils, commands）
@@ -208,8 +216,10 @@ crabhub/
 │                    │  ┌──────────────────────────────────────┐  │
 │  IPC ──────────────│──│  SS / SSH Tunnel / Auto-Reconnect    │  │
 │                    │  │  AES-256-GCM 凭证加密                 │  │
-│                    │  └──────────────────────────────────────┘  │
-└────────────────────┴────────────────────────────────────────────┘
+│                    │  └──────────────────────────────────────┘  ││                    │  ┌──────────────────────────────────────┐  │
+│  MCP 客户端 ───────│──│  RPC Server (127.0.0.1:3030)         │  │
+│  (Claude/Cursor)   │  │  ← packages/mcp-server (stdio 桥)    │  │
+│                    │  └──────────────────────────────────────┘  │└────────────────────┴────────────────────────────────────────────┘
 ```
 
 ## 快捷键
@@ -236,6 +246,34 @@ Linux:   ~/.local/share/crabhub/plugins/
 ```
 
 插件安装后重启应用即可在新建连接下拉列表中看到（插件类型会用分隔线标注）。
+
+## MCP 接入（AI Agent）
+
+CrabHub 内置 MCP Server，让 Claude Code、Cursor、VS Code 等 MCP 客户端直接使用你在 CrabHub 里已配置的数据库连接——**凭据留在本地，不经过 AI**。
+
+在 MCP 客户端配置（如 `.mcp.json`）中添加：
+
+```json
+{
+  "mcpServers": {
+    "crabhub": {
+      "command": "node",
+      "args": ["<repo>/packages/mcp-server/index.mjs"]
+    }
+  }
+}
+```
+
+前提：CrabHub 桌面应用正在运行且已连接数据库（MCP Server 通过本地 RPC `127.0.0.1:3030` 与应用通信，仅监听回环地址）。
+
+提供的工具：
+
+| 工具 | 说明 |
+|------|------|
+| `list_connections` | 列出应用中已打开的连接（不含凭据） |
+| `list_tables` | 列出表（含行数、主键等元数据） |
+| `get_columns` | 表的列元数据 |
+| `execute_sql` | 执行 SQL（SELECT 返回结果集，DML/DDL 返回影响行数） |
 
 ## 安全设计
 
