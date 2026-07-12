@@ -198,8 +198,10 @@ export interface BatchResultItem {
   error?: string;
 }
 
-// Helper: map raw backend query result to frontend format
-function mapRawQueryResult(raw: RawQueryResult): QueryResult {
+// Helper: map raw backend query result to frontend format.
+// Exported for unit tests — this is the single funnel every query result
+// passes through (object rows from legacy paths, array rows from wire types).
+export function mapRawQueryResult(raw: RawQueryResult): QueryResult {
   const columns = (raw.columns || []).map((c) => ({
     name: c.name,
     dataType: c.dataType,

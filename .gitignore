@@ -35,6 +35,11 @@ bun.lockb
 coverage/
 .nyc_output/
 
+# E2E artifacts
+e2e/.data/
+test-results/
+playwright-report/
+
 # Temporary files
 *.tmp
 *.temp

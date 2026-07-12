@@ -124,11 +124,11 @@ impl SQLOptimizer {
                 }
             }
             
-            // Check for ORDER BY columns
+            // Check for ORDER BY columns (first column only)
             if let Some(order_start) = where_clause.to_uppercase().find("ORDER BY") {
                 let order_clause = &where_clause[order_start + 8..];
                 let order_regex = Regex::new(r"(\w+)").unwrap();
-                for col_match in order_regex.captures_iter(order_clause) {
+                if let Some(col_match) = order_regex.captures(order_clause) {
                     if let Some(m) = col_match.get(1) {
                         let col_name = m.as_str().to_lowercase();
                         if !["asc", "desc", "nulls", "first", "last"].contains(&col_name.as_str()) {
@@ -140,7 +140,6 @@ impl SQLOptimizer {
                             });
                         }
                     }
-                    break; // Only take first match
                 }
             }
         }
@@ -168,30 +167,55 @@ impl SQLOptimizer {
     /// Rewrite query with basic optimizations
     pub fn rewrite_query(sql: &str) -> Result<String, String> {
         let mut rewritten = sql.to_string();
-        
-        // Convert multiple OR to IN
-        // This is a simple example - full implementation would be more complex
+
+        // Convert `col = 'a' OR col = 'b' OR col = 'c'` chains into `col IN (...)`.
+        // The regex crate does not support backreferences, so same-column
+        // matching is done in code by walking adjacent `col = 'val'` matches
+        // and checking the text between them is exactly one OR.
         if rewritten.to_uppercase().matches(" OR ").count() >= 2 {
-            // Pattern: col = val1 OR col = val2 OR col = val3
-            let or_pattern = Regex::new(r"(\w+)\s*=\s*'([^']+)'(?:\s+OR\s+\1\s*=\s*'([^']+)')+").unwrap();
-            if or_pattern.is_match(&rewritten) {
-                rewritten = or_pattern.replace_all(&rewritten, |caps: &regex::Captures| {
-                    let col = &caps[1];
-                    let mut values = Vec::new();
-                    for i in 2..=caps.len() {
-                        if let Some(m) = caps.get(i) {
-                            values.push(format!("'{}'", m.as_str()));
-                        }
-                    }
-                    if values.len() > 1 {
-                        format!("{} IN ({})", col, values.join(", "))
-                    } else {
-                        caps[0].to_string()
-                    }
-                }).to_string();
+            let eq = Regex::new(r"(\w+)\s*=\s*'([^']*)'").unwrap();
+            let matches: Vec<(std::ops::Range<usize>, String, String)> = eq
+                .captures_iter(&rewritten)
+                .map(|c| {
+                    let whole = c.get(0).unwrap();
+                    (whole.range(), c[1].to_string(), c[2].to_string())
+                })
+                .collect();
+
+            let is_or_gap = |s: &str| s.trim().eq_ignore_ascii_case("OR");
+
+            let mut out = String::with_capacity(rewritten.len());
+            let mut last_end = 0usize;
+            let mut i = 0usize;
+            while i < matches.len() {
+                let (range, col, val) = &matches[i];
+                // Extend the chain while the next match uses the same column
+                // and is joined by a bare OR.
+                let mut values = vec![val.clone()];
+                let mut j = i;
+                while j + 1 < matches.len()
+                    && matches[j + 1].1 == *col
+                    && is_or_gap(&rewritten[matches[j].0.end..matches[j + 1].0.start])
+                {
+                    values.push(matches[j + 1].2.clone());
+                    j += 1;
+                }
+                if values.len() >= 3 {
+                    out.push_str(&rewritten[last_end..range.start]);
+                    let list = values
+                        .iter()
+                        .map(|v| format!("'{}'", v))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    out.push_str(&format!("{} IN ({})", col, list));
+                    last_end = matches[j].0.end;
+                }
+                i = j + 1;
             }
+            out.push_str(&rewritten[last_end..]);
+            rewritten = out;
         }
-        
+
         Ok(rewritten)
     }
 }
@@ -216,5 +240,19 @@ mod tests {
     fn test_limit_suggestion() {
         let suggestions = SQLOptimizer::analyze("SELECT * FROM users ORDER BY created_at");
         assert!(suggestions.iter().any(|s| s.message.contains("LIMIT")));
+    }
+
+    #[test]
+    fn test_rewrite_or_chain_to_in() {
+        // Used to panic: the old regex relied on backreferences (unsupported).
+        let sql = "SELECT * FROM t WHERE status = 'a' OR status = 'b' OR status = 'c'";
+        let rewritten = SQLOptimizer::rewrite_query(sql).unwrap();
+        assert_eq!(rewritten, "SELECT * FROM t WHERE status IN ('a', 'b', 'c')");
+    }
+
+    #[test]
+    fn test_rewrite_leaves_mixed_columns_alone() {
+        let sql = "SELECT * FROM t WHERE a = '1' OR b = '2' OR c = '3'";
+        assert_eq!(SQLOptimizer::rewrite_query(sql).unwrap(), sql);
     }
 }

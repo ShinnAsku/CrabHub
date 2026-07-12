@@ -78,6 +78,7 @@ npm run tauri build
 | `npm run tauri build` | 生产构建 |
 | `npm run typecheck` | TypeScript 类型检查 |
 | `npm run test:unit` | 前端单元测试 (Vitest) |
+| `npm run test:e2e` | 端到端测试（Playwright，自动启动 crabhub-server + SQLite，需先 `npm run build`） |
 | `npm run rust:test` | Rust 单元测试 (cargo test) |
 | `npm run test:all` | 全部检查（TS + Rust + 测试） |
 

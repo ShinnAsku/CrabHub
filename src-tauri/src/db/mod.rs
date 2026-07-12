@@ -20,3 +20,5 @@ pub mod sql_limiter;
 
 #[cfg(test)]
 mod smoke_tests;
+#[cfg(test)]
+mod manager_tests;

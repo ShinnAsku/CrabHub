@@ -610,6 +610,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               <label className="text-xs text-muted-foreground">{t('connection.name')}</label>
               <input
                 type="text"
+                data-testid="conn-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t('connection.namePlaceholder')}
@@ -623,6 +624,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
               <div className="relative">
                 <select
                   value={type}
+                  data-testid="conn-type"
                   onChange={(e) => setType(e.target.value as Connection["type"])}
                   className="w-full appearance-none pl-7 pr-8 py-2 text-xs bg-background border border-border rounded-md outline-none focus:border-[hsl(var(--tab-active))] focus:ring-1 focus:ring-[hsl(var(--tab-active))/30 transition-all text-foreground cursor-pointer hover:border-muted-foreground/30"
                 >
@@ -689,6 +691,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
                   <div className="flex items-center gap-1.5">
                     <input
                       type="text"
+                      data-testid="conn-filepath"
                       value={filePath}
                       onChange={(e) => setFilePath(e.target.value)}
                       placeholder={sqliteMode === "new" ? t('connection.sqliteNewPlaceholder') : "/path/to/database.db"}
@@ -1134,6 +1137,7 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           <button
             onClick={handleSave}
             disabled={saving}
+            data-testid="conn-save"
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-primary text-primary-foreground rounded-lg
                        shadow-[0_2px_10px_-2px_hsl(var(--primary)/0.5)] hover:brightness-110 active:scale-[0.98]
                        transition-all duration-150 disabled:opacity-40"

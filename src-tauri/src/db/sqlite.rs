@@ -97,8 +97,28 @@ impl DatabaseConnection for SQLiteConnection {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if result.is_empty() {
+            // No rows: recover column metadata from the prepared statement so
+            // the result grid keeps its headers.
+            let columns = match sqlx::Executor::describe(&self.pool, sql).await {
+                Ok(d) => d
+                    .columns()
+                    .iter()
+                    .map(|col| ColumnInfo {
+                        name: col.name().to_string(),
+                        data_type: format!("{:?}", col.type_info()),
+                        nullable: true,
+                        is_primary_key: false,
+                        default_value: None,
+                        comment: None,
+                        character_maximum_length: None,
+                        numeric_precision: None,
+                        numeric_scale: None,
+                    })
+                    .collect(),
+                Err(_) => vec![],
+            };
             return Ok(QueryResult {
-                columns: vec![],
+                columns,
                 rows: vec![],
                 row_count: 0,
                 execution_time_ms: elapsed,
@@ -112,6 +132,19 @@ impl DatabaseConnection for SQLiteConnection {
             let mut map = serde_json::Map::new();
             for col in row.columns() {
                 let name = col.name().to_string();
+                // SQL NULL first: lenient decodes below (e.g. NULL -> "")
+                // must never turn a NULL into a typed zero value.
+                {
+                    use sqlx::ValueRef;
+                    if row
+                        .try_get_raw(col.name())
+                        .map(|v| v.is_null())
+                        .unwrap_or(false)
+                    {
+                        map.insert(name, serde_json::Value::Null);
+                        continue;
+                    }
+                }
                 let type_name = col.type_info().name();
                 let value = match type_name {
                     "INTEGER" | "INT" | "BIGINT" => {
@@ -196,16 +229,19 @@ impl DatabaseConnection for SQLiteConnection {
                         }
                     }
                     _ => {
-                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
-                            serde_json::Value::String(v)
-                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                        // Expression / aggregate columns (count(*), sums, CTE
+                        // outputs) have no decltype, so the declared type is
+                        // "NULL". Probe by value using Option decodes only:
+                        // Ok(None) means a genuine SQL NULL and must NOT be
+                        // rendered as an empty string.
+                        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
                             serde_json::Value::String(v)
                         } else if let Ok(Some(v)) = row.try_get::<Option<Vec<u8>>, _>(col.name())
                         {
-                            serde_json::Value::String(
-                                String::from_utf8_lossy(&v).to_string(),
-                            )
-                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(col.name()) {
                             serde_json::Value::String(
                                 String::from_utf8_lossy(&v).to_string(),
                             )

@@ -394,6 +394,15 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
           <Clock size={12} className="shrink-0" />
           <span className="truncate">{t('history.title')}</span>
         </button>
+        <div className="flex-1" />
+        <button
+          onClick={() => openConnectionDialog()}
+          data-testid="new-connection"
+          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+          title={t('sidebar.newConnection')}
+        >
+          <Plus size={14} />
+        </button>
       </div>
 
       {/* Content */}

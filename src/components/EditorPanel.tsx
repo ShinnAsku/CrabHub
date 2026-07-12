@@ -1065,6 +1065,7 @@ function QueryEditor() {
           <button
             onClick={() => handleExecute()}
             disabled={!!isExecuting[activeTabId!] || !effectiveConnectionId}
+            data-testid="run-sql"
             className="flex items-center gap-1 px-2.5 py-0.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-40"
             title={t('editor.executeQuery')}
           >
@@ -1970,7 +1971,7 @@ function ResultTable({ result, importPreview, hasMore, isLoadingMore, onLoadMore
   const virtualCount = rows.length + (hasMore ? 1 : 0);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="result-table">
       <VirtualTableBody
         rows={rows}
         columns={columns}
