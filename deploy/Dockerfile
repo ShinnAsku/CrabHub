@@ -28,8 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY src-tauri ./src-tauri
-# The Tauri desktop binary needs a webview toolchain; the server binary does
-# not. Build only crabhub-server so the image stays slim and CI stays fast.
+# build.rs runs tauri_build even for the server binary and validates
+# tauri.conf.json's frontendDist (../dist), so copy the frontend output before
+# cargo build.
+COPY --from=frontend /build/dist ./dist
+# Build only crabhub-server so the image stays slimmer and CI stays faster than
+# bundling the desktop app.
 RUN cd src-tauri && cargo build --release --bin crabhub-server
 
 # --- Stage 3: runtime ---
