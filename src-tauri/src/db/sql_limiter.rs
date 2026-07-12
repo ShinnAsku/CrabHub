@@ -173,13 +173,11 @@ pub fn has_user_limit(sql: &str) -> bool {
                     return true; // TOP N or TOP (N)
                 }
             }
-            Token::Word(w) if w.to_uppercase() == "FETCH" => {
-                if i + 1 < tokens.len() {
-                    if let Token::Word(w2) = &tokens[i + 1] {
-                        let u = w2.to_uppercase();
-                        if u == "FIRST" || u == "NEXT" {
-                            return true;
-                        }
+            Token::Word(w) if w.to_uppercase() == "FETCH" && i + 1 < tokens.len() => {
+                if let Token::Word(w2) = &tokens[i + 1] {
+                    let u = w2.to_uppercase();
+                    if u == "FIRST" || u == "NEXT" {
+                        return true;
                     }
                 }
             }

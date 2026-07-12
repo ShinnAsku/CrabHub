@@ -18,8 +18,14 @@ RUN npm run build
 
 # --- Stage 2: server binary ---
 FROM rust:1.83-slim AS backend
+# The lib crate links tauri (gtk/glib on Linux), so the gtk dev headers are
+# needed at BUILD time even though crabhub-server never opens a window.
+# The runtime stage stays slim: with `--as-needed` the unused gtk shared
+# libraries are not recorded in the final binary.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev perl make && rm -rf /var/lib/apt/lists/*
+    pkg-config libssl-dev perl make \
+    libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY src-tauri ./src-tauri
 # The Tauri desktop binary needs a webview toolchain; the server binary does
@@ -28,8 +34,11 @@ RUN cd src-tauri && cargo build --release --bin crabhub-server
 
 # --- Stage 3: runtime ---
 FROM debian:bookworm-slim
+# The binary carries gtk/webkit NEEDED entries via the shared tauri lib crate;
+# install the runtime (non-dev) libraries alongside CA certs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates && rm -rf /var/lib/apt/lists/* \
+    ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-2 \
+    && rm -rf /var/lib/apt/lists/* \
     && useradd -r -m -d /app crabhub
 WORKDIR /app
 COPY --from=backend /build/src-tauri/target/release/crabhub-server /usr/local/bin/crabhub-server

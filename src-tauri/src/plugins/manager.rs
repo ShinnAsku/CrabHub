@@ -130,10 +130,13 @@ impl PluginManager {
         let manifest_content = fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
 
+        // `mut` is only exercised by the Windows .exe-suffix probe below.
+        #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
         let mut plugin: PluginInfo = serde_json::from_str(&manifest_content)
             .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
 
         // Verify executable exists (try .exe suffix on Windows)
+        #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
         let mut executable_path = plugin_path.join(&plugin.executable);
         #[cfg(target_os = "windows")]
         if !executable_path.exists() {
