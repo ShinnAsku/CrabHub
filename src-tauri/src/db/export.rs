@@ -51,7 +51,7 @@ enum FormatWriter {
     Csv(BufWriter<File>),
     Json { w: BufWriter<File>, first: bool },
     Sql { w: BufWriter<File>, table: String },
-    Xlsx { workbook: rust_xlsxwriter::Workbook, path: String, row: u32 },
+    Xlsx { workbook: Box<rust_xlsxwriter::Workbook>, path: String, row: u32 },
 }
 
 fn csv_escape(s: &str) -> String {
@@ -103,7 +103,7 @@ impl FormatWriter {
                         .write_string(0, i as u16, &c.name)
                         .map_err(|e| DbError::Internal(e.to_string()))?;
                 }
-                Ok(FormatWriter::Xlsx { workbook, path: path.to_string(), row: 1 })
+                Ok(FormatWriter::Xlsx { workbook: Box::new(workbook), path: path.to_string(), row: 1 })
             }
             other => Err(DbError::ConfigError(format!("Unsupported export format: {}", other))),
         }
@@ -218,6 +218,7 @@ impl FormatWriter {
 
 /// Stream a query's full result set to a file, batch by batch.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // signature mirrors the IPC payload
 pub async fn export_query_to_file(
     state: State<'_, Arc<ConnectionManager>>,
     app: AppHandle,

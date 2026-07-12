@@ -3,11 +3,11 @@
 //! Maps Redis onto the generic `DatabaseConnection` surface so the existing
 //! UI (sidebar tree, object list, table view, query editor) works without a
 //! dedicated browser:
-//!   - schemas         → db0..db15 (logical databases)
-//!   - tables          → keys (SCAN-limited), table_type = redis value type
-//!   - table data      → the key's value rendered as rows (hash → field/value,
-//!                       list → index/value, zset → member/score, ...)
-//!   - query_sql       → raw Redis command line ("GET user:1", "SCAN 0", ...)
+//!   - schemas → db0..db15 (logical databases)
+//!   - tables → keys (SCAN-limited), table_type = redis value type
+//!   - table data → the key's value rendered as rows (hash → field/value,
+//!     list → index/value, zset → member/score, ...)
+//!   - query_sql → raw Redis command line ("GET user:1", "SCAN 0", ...)
 
 use async_trait::async_trait;
 use redis::aio::ConnectionManager as RedisConn;

@@ -1,14 +1,14 @@
 //! Native MongoDB driver (official `mongodb` crate).
 //!
 //! Mapping onto the generic `DatabaseConnection` surface:
-//!   - schemas       → databases
-//!   - tables        → collections (+ estimated document count)
-//!   - columns       → top-level fields sampled from one document
-//!   - table data    → find() with skip/limit; documents flattened so每个顶层
-//!                     字段一列，嵌套值渲染为 JSON
-//!   - query_sql     → mongo-shell 风格：`db.<coll>.find({...})`,
-//!                     `db.<coll>.aggregate([...])`, `db.<coll>.count({...})`,
-//!                     `show collections`
+//!   - schemas → databases
+//!   - tables → collections (+ estimated document count)
+//!   - columns → top-level fields sampled from one document
+//!   - table data → find() with skip/limit; documents flattened so每个顶层
+//!     字段一列，嵌套值渲染为 JSON
+//!   - query_sql → mongo-shell 风格：`db.<coll>.find({...})`,
+//!     `db.<coll>.aggregate([...])`, `db.<coll>.count({...})`,
+//!     `show collections`
 
 use async_trait::async_trait;
 use mongodb::bson::{doc, Bson, Document};

@@ -69,7 +69,7 @@ impl SqlServerConnection {
                             .or_else(|| row.try_get::<i64, _>(name.as_str()).ok().flatten()
                                 .map(|v| serde_json::Value::Number(serde_json::Number::from(v))))
                             .or_else(|| row.try_get::<f64, _>(name.as_str()).ok().flatten()
-                                .and_then(|v| serde_json::Number::from_f64(v))
+                                .and_then(serde_json::Number::from_f64)
                                 .map(serde_json::Value::Number))
                             .or_else(|| row.try_get::<bool, _>(name.as_str()).ok().flatten()
                                 .map(serde_json::Value::Bool))

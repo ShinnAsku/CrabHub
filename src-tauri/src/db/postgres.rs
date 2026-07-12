@@ -414,7 +414,7 @@ impl DatabaseConnection for PostgresConnection {
         Ok(rows
             .rows
             .into_iter()
-            .map(|m| serde_json::Value::Object(m))
+            .map(serde_json::Value::Object)
             .collect())
     }
 
@@ -446,7 +446,7 @@ impl DatabaseConnection for PostgresConnection {
         Ok(rows
             .rows
             .into_iter()
-            .map(|m| serde_json::Value::Object(m))
+            .map(serde_json::Value::Object)
             .collect())
     }
 

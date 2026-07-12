@@ -817,7 +817,7 @@ impl DatabaseConnection for MySqlConnection {
         Ok(rows
             .rows
             .into_iter()
-            .map(|m| serde_json::Value::Object(m))
+            .map(serde_json::Value::Object)
             .collect())
     }
 
@@ -849,7 +849,7 @@ impl DatabaseConnection for MySqlConnection {
         Ok(rows
             .rows
             .into_iter()
-            .map(|m| serde_json::Value::Object(m))
+            .map(serde_json::Value::Object)
             .collect())
     }
 

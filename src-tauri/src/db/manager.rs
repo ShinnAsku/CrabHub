@@ -299,7 +299,7 @@ impl ConnectionManager {
                     }
                     Err(e) => log::warn!("tiberius failed: {}, driver not available", e),
                 }
-                Err(DbError::ConfigError(format!("SQLServer driver not available: ensure tiberius is configured")))
+                Err(DbError::ConfigError("SQLServer driver not available: ensure tiberius is configured".to_string()))
             }
             DatabaseType::Oracle
             | DatabaseType::DaMeng
@@ -429,15 +429,14 @@ impl ConnectionManager {
     pub async fn execute(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
         let result = self.execute_inner(id, sql).await;
         if let Err(DbError::ConnectionError(_)) = &result {
-            if self.should_reconnect(id).await {
-                if self.reconnect(id).await.is_ok() {
+            if self.should_reconnect(id).await
+                && self.reconnect(id).await.is_ok() {
                     let retried = self.execute_inner(id, sql).await;
                     if retried.is_ok() && Self::is_ddl(sql) {
                         self.invalidate_metadata(id).await;
                     }
                     return retried;
                 }
-            }
         }
         if result.is_ok() && Self::is_ddl(sql) {
             self.invalidate_metadata(id).await;
@@ -449,11 +448,10 @@ impl ConnectionManager {
     pub async fn query(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let result = self.query_inner_cancellable(id, sql).await;
         if let Err(DbError::ConnectionError(_)) = &result {
-            if self.should_reconnect(id).await {
-                if self.reconnect(id).await.is_ok() {
+            if self.should_reconnect(id).await
+                && self.reconnect(id).await.is_ok() {
                     return self.query_inner_cancellable(id, sql).await;
                 }
-            }
         }
         result
     }
@@ -463,11 +461,10 @@ impl ConnectionManager {
     pub async fn query_metadata(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let result = self.query_inner(id, sql).await;
         if let Err(DbError::ConnectionError(_)) = &result {
-            if self.should_reconnect(id).await {
-                if self.reconnect(id).await.is_ok() {
+            if self.should_reconnect(id).await
+                && self.reconnect(id).await.is_ok() {
                     return self.query_inner(id, sql).await;
                 }
-            }
         }
         result
     }
@@ -487,11 +484,10 @@ impl ConnectionManager {
     ) -> Result<PagedQueryResult, DbError> {
         let result = self.query_paged_inner(id, sql, limit, offset).await;
         if let Err(DbError::ConnectionError(_)) = &result {
-            if self.should_reconnect(id).await {
-                if self.reconnect(id).await.is_ok() {
+            if self.should_reconnect(id).await
+                && self.reconnect(id).await.is_ok() {
                     return self.query_paged_inner(id, sql, limit, offset).await;
                 }
-            }
         }
         result
     }

@@ -335,6 +335,7 @@ impl RpcClient {
         })).await
     }
 
+    #[allow(clippy::too_many_arguments)] // mirrors the Tabularis update_record RPC shape
     pub async fn tabularis_update_record(&self, params: &Value, table: &str, pk_col: &str, pk_val: &Value, col_name: &str, new_val: &Value, schema: Option<&str>) -> Result<Value, String> {
         self.call("update_record", json!({
             "params": params, "table": table,

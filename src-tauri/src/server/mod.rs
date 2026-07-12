@@ -388,6 +388,7 @@ struct SessionArgs {
     session_id: String,
 }
 
+#[allow(clippy::result_large_err)] // Err is the ready-to-send 400 Response; built once per bad request
 fn parse<T: serde::de::DeserializeOwned>(body: &Value) -> Result<T, Response> {
     serde_json::from_value(body.clone()).map_err(|e| err(format!("invalid arguments: {}", e)))
 }

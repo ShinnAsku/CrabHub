@@ -303,7 +303,7 @@ impl ConnectionStore {
             .map_err(|e| e.to_string())?;
 
         let conn = stmt
-            .query_row(params![id], |row| Self::row_to_connection(row))
+            .query_row(params![id], Self::row_to_connection)
             .optional()
             .map_err(|e| e.to_string())?;
 

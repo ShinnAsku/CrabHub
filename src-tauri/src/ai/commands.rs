@@ -151,6 +151,7 @@ pub async fn delete_ai_api_key(provider: String) -> Result<(), String> {
 /// Run the AI agent asynchronously, emitting AgentEvents via Tauri events.
 /// The frontend listens for `agent-event` to receive streaming progress.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // signature mirrors the IPC payload
 pub async fn agent_chat(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, std::sync::Arc<crate::db::manager::ConnectionManager>>,
@@ -256,10 +257,10 @@ impl crate::ai::agent::ToolExecutor for AgentToolExecutor {
                     };
                     let explain_sql = format!("{} {}", explain_prefix, sql);
                     let result = mgr.query(&cid, &explain_sql).await.map_err(|e| e.to_string())?;
-                    Ok(format!("{}", result.rows.iter()
+                    Ok(result.rows.iter()
                         .map(|r| format!("{:?}", r))
                         .collect::<Vec<_>>()
-                        .join("\n")))
+                        .join("\n").to_string())
                 }
                 "execute_sql" => {
                     let sql = p["sql"].as_str().unwrap_or("");

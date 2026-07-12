@@ -89,33 +89,6 @@ impl PluginDriver {
 
         Self { client, plugin_id, params, is_tabularis }
     }
-
-    /// Try Tabularis protocol first, fall back to CrabHub native
-    async fn call_both<F, G, R>(
-        &self,
-        tabularis_fn: F,
-        native_fn: G,
-        label: &str,
-    ) -> Result<R, DbError>
-    where
-        F: std::future::Future<Output = Result<Value, String>>,
-        G: std::future::Future<Output = Result<Value, String>>,
-        R: serde::de::DeserializeOwned,
-    {
-        if self.is_tabularis {
-            match tabularis_fn.await {
-                Ok(v) => return serde_json::from_value(v)
-                    .map_err(|e| DbError::QueryError(format!("{} parse error: {}", label, e))),
-                Err(_) => { /* fall through to native */ }
-            }
-        }
-        // Fallback: CrabHub native protocol
-        match native_fn.await {
-            Ok(v) => serde_json::from_value(v)
-                .map_err(|e| DbError::QueryError(format!("{} parse error: {}", label, e))),
-            Err(e) => Err(DbError::QueryError(format!("{} failed: {}", label, e))),
-        }
-    }
 }
 
 #[async_trait]
@@ -125,7 +98,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_execute_query(&self.params, sql, None, None, None).await
         } else {
             self.client.execute_query("default", sql).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
 
         Ok(ExecuteResult {
             rows_affected: result.get("rows_affected").and_then(|v| v.as_u64())
@@ -140,7 +113,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_execute_query(&self.params, sql, None, None, None).await
         } else {
             self.client.execute_query("default", sql).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
 
         let rows = parse_rows(&result);
         Ok(QueryResult {
@@ -164,7 +137,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_tables(&self.params, None).await
         } else {
             self.client.list_tables("default").await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
         parse_tables(&result)
     }
 
@@ -173,7 +146,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_columns(&self.params, table, schema).await
         } else {
             self.client.get_columns("default", table, schema).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
         parse_columns(&result)
     }
 
@@ -182,7 +155,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_schemas(&self.params).await
         } else {
             self.client.list_schemas("default").await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
 
         Ok(result.get("schemas").and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
@@ -194,7 +167,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_create_table_sql(&self.params, table, schema).await
         } else {
             self.client.export_table_sql("default", table, schema).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
 
         Ok(result.get("sql").and_then(|v| v.as_str()).unwrap_or("-- No DDL returned").to_string())
     }
@@ -204,7 +177,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_views(&self.params, schema).await
         } else {
             self.client.get_views("default", schema).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
         parse_tables(&result)
     }
 
@@ -213,7 +186,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_indexes(&self.params, table, schema).await
         } else {
             self.client.get_indexes("default", table, schema).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
         Ok(result.get("indexes").and_then(|v| v.as_array()).cloned().unwrap_or_default())
     }
 
@@ -222,7 +195,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_get_foreign_keys(&self.params, table, schema).await
         } else {
             self.client.get_foreign_keys("default", table, schema).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
         Ok(result.get("foreign_keys").and_then(|v| v.as_array()).cloned().unwrap_or_default())
     }
 
@@ -262,7 +235,7 @@ impl DatabaseConnection for PluginDriver {
             self.client.tabularis_execute_query(&self.params, &sql, Some(page_size as u64), Some(page as u64), schema).await
         } else {
             self.client.get_table_data("default", table, schema, page, page_size, order_by).await
-        }.map_err(|e| DbError::QueryError(e))?;
+        }.map_err(DbError::QueryError)?;
 
         let rows = parse_rows(&result);
         Ok(QueryResult {
@@ -292,7 +265,7 @@ impl DatabaseConnection for PluginDriver {
                 values.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<serde_json::Map<String, Value>>()
             ).unwrap_or(json!({}));
             let result = self.client.tabularis_insert_record(&self.params, table, &data, schema).await
-                .map_err(|e| DbError::QueryError(e))?;
+                .map_err(DbError::QueryError)?;
             return Ok(ExecuteResult {
                 rows_affected: result.get("rows_affected").and_then(|v| v.as_u64()).unwrap_or(1),
                 execution_time_ms: 0,

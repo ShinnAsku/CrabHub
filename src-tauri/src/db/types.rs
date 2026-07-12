@@ -122,6 +122,7 @@ impl DatabaseType {
         }
     }
 
+    #[allow(clippy::should_implement_trait)] // inherent Option-returning API, widely used
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "postgresql" => Some(DatabaseType::PostgreSQL),

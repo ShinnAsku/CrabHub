@@ -63,6 +63,10 @@ jobs:
       - name: Frontend unit tests
         run: npm run test:unit
 
+      - name: Clippy (deny warnings)
+        working-directory: ./src-tauri
+        run: cargo clippy --lib -- -D warnings
+
       - name: Backend unit tests
         working-directory: ./src-tauri
         run: cargo test --lib --no-fail-fast
