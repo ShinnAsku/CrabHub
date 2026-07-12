@@ -374,48 +374,10 @@ impl DatabaseConnection for PgCompatibleConnection {
         table: &str,
         schema: Option<&str>,
     ) -> Result<String, DbError> {
-        let schema_name = schema.unwrap_or("public");
-        let sql = self.dialect.metadata_queries.list_columns;
-
-        let rows = sqlx::query(sql)
-            .bind(schema_name)
-            .bind(table)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| DbError::QueryError(e.to_string()))?;
-
-        let col_defs: Vec<String> = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.get("column_name");
-                let data_type: String = row.get("data_type");
-                let is_nullable: String = row.get("is_nullable");
-                let default: Option<String> = row.get("column_default");
-                let null_str = if is_nullable == "YES" {
-                    ""
-                } else {
-                    " NOT NULL"
-                };
-                let default_str = match default {
-                    Some(d) => format!(" DEFAULT {}", d),
-                    None => String::new(),
-                };
-                format!("    {} {}{}{}", name, data_type, null_str, default_str)
-            })
-            .collect();
-
-        let full_table = if schema_name == "public" {
-            table.to_string()
-        } else {
-            format!("{}.{}", schema_name, table)
-        };
-
-        Ok(format!(
-            "-- Table: {}\nCREATE TABLE IF NOT EXISTS {} (\n{}\n);\n",
-            full_table,
-            full_table,
-            col_defs.join(",\n")
-        ))
+        // pg_catalog is available on every PG wire-protocol engine we support
+        // (Kingbase / Vastbase / YashanDB / GaussDB-via-sqlx), so the shared
+        // native DDL path — comments, PK, indexes — works for all of them.
+        pg_utils::export_pg_table_ddl(&self.pool, table, schema).await
     }
 
     // ---------------------------------------------------------------------------

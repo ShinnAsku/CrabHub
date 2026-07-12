@@ -69,3 +69,5 @@ rust_xlsxwriter = "0.92.0"
 axum = { version = "0.8.4", default-features = false, features = ["http1", "json", "tokio"] }
 tower-http = { version = "0.7.0", features = ["fs", "cors"] }
 env_logger = "0.11.11"
+redis = { version = "0.32.2", features = ["tokio-comp", "connection-manager"] }
+mongodb = "3.2.5"

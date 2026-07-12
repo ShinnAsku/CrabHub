@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
-import { Play, Scissors, Copy, ClipboardPaste, AlignLeft, TextCursorInput, MousePointerClick } from "lucide-react";
+import { Play, Scissors, Copy, ClipboardPaste, AlignLeft, TextCursorInput, MousePointerClick, Repeat, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n";
+import { CONVERT_TARGETS } from "@/lib/sql-convert";
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? '⌘' : 'Ctrl+';
@@ -9,6 +10,8 @@ export interface EditorContextMenuProps {
   x: number;
   y: number;
   hasSelection: boolean;
+  /** Current connection's db type — the conversion source dialect. */
+  sourceDialect?: string;
   onClose: () => void;
   onRunAll: () => void;
   onRunSelected: () => void;
@@ -18,14 +21,17 @@ export interface EditorContextMenuProps {
   onPaste: () => void;
   onSelectAll: () => void;
   onSelectCurrentStatement: () => void;
+  onConvertDialect?: (target: string) => void;
 }
 
 export function EditorContextMenu({
-  x, y, hasSelection, onClose, onRunAll, onRunSelected,
+  x, y, hasSelection, sourceDialect, onClose, onRunAll, onRunSelected,
   onFormat, onCut, onCopy, onPaste, onSelectAll, onSelectCurrentStatement,
+  onConvertDialect,
 }: EditorContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
+  const [convertOpen, setConvertOpen] = useState(false);
 
   useEffect(() => {
     if (menuRef.current) {
@@ -61,6 +67,31 @@ export function EditorContextMenu({
         {item(t("contextMenu.paste"), onPaste, <ClipboardPaste size={12} />, `${modKey}V`)}
         <div className="border-t border-border my-1" />
         {item(t("contextMenu.formatSql"), onFormat, <AlignLeft size={12} />)}
+        {onConvertDialect && sourceDialect && (
+          <div className="relative">
+            <button
+              onClick={() => setConvertOpen(!convertOpen)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors hover:bg-muted"
+            >
+              <span className="w-4 flex items-center justify-center"><Repeat size={12} /></span>
+              <span className="flex-1 text-left">{t("contextMenu.convertDialect")}</span>
+              <ChevronRight size={11} className={`transition-transform ${convertOpen ? "rotate-90" : ""}`} />
+            </button>
+            {convertOpen && (
+              <div className="pl-6">
+                {CONVERT_TARGETS.filter((tgt) => tgt !== sourceDialect).map((tgt) => (
+                  <button
+                    key={tgt}
+                    onClick={() => onConvertDialect(tgt)}
+                    className="w-full px-3 py-1 text-xs text-left hover:bg-muted transition-colors"
+                  >
+                    → {tgt}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="border-t border-border my-1" />
         {item(t("contextMenu.selectCurrentStatement"), onSelectCurrentStatement, <TextCursorInput size={12} />)}
         {item(t("contextMenu.selectAll"), onSelectAll, <MousePointerClick size={12} />, `${modKey}A`)}

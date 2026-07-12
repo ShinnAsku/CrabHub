@@ -306,6 +306,12 @@ impl ConnectionManager {
             | DatabaseType::GBase => {
                 Ok(Box::new(OdbcConnection::new(config, config.db_type.clone()).await?))
             }
+            DatabaseType::Redis => {
+                Ok(Box::new(super::redis_native::RedisConnection::new(config).await?))
+            }
+            DatabaseType::MongoDB => {
+                Ok(Box::new(super::mongo_native::MongoConnection::new(config).await?))
+            }
         }
     }
 
@@ -752,6 +758,10 @@ impl ConnectionManager {
                 "SHOW DATABASES".to_string()
             }
             Some(DatabaseType::SQLite) => return Ok(vec!["main".to_string()]),
+            // NoSQL engines expose their database list via get_schemas
+            Some(DatabaseType::Redis | DatabaseType::MongoDB) => {
+                return self.get_schemas(id).await;
+            }
             Some(DatabaseType::ClickHouse) => {
                 "SELECT name FROM system.databases ORDER BY name".to_string()
             }

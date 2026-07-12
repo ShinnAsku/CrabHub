@@ -39,6 +39,9 @@ pub enum DatabaseType {
     GBase,          // 南大通用 GBase 8a/8t
 
     GaussDB,
+    // NoSQL — native built-in drivers (usable from desktop, web, MCP and CLI)
+    Redis,
+    MongoDB,
     Plugin(String),
 }
 
@@ -71,6 +74,8 @@ impl DatabaseType {
             DatabaseType::SQLServer => "sqlserver",
             DatabaseType::DaMeng => "dameng",
             DatabaseType::GBase => "gbase",
+            DatabaseType::Redis => "redis",
+            DatabaseType::MongoDB => "mongodb",
             DatabaseType::Plugin(_) => "plugin",
         }
     }
@@ -89,6 +94,7 @@ impl DatabaseType {
             | DatabaseType::DaMeng
             | DatabaseType::GBase => "国产数据库",
             DatabaseType::Oracle | DatabaseType::SQLServer => "商业数据库",
+            DatabaseType::Redis | DatabaseType::MongoDB => "NoSQL",
             DatabaseType::Plugin(_) => "插件",
         }
     }
@@ -110,6 +116,8 @@ impl DatabaseType {
             DatabaseType::SQLServer => 1433,
             DatabaseType::DaMeng => 5236,
             DatabaseType::GBase => 5258,
+            DatabaseType::Redis => 6379,
+            DatabaseType::MongoDB => 27017,
             DatabaseType::Plugin(_) => 0,
         }
     }
@@ -131,6 +139,8 @@ impl DatabaseType {
             "dameng" => Some(DatabaseType::DaMeng),
             "gbase" => Some(DatabaseType::GBase),
             "gaussdb" | "opengauss" => Some(DatabaseType::GaussDB),
+            "redis" => Some(DatabaseType::Redis),
+            "mongodb" | "mongo" => Some(DatabaseType::MongoDB),
             other if other.starts_with("plugin:") => {
                 Some(DatabaseType::Plugin(other[7..].to_string()))
             }
@@ -264,6 +274,23 @@ impl DatabaseType {
                 identifier_quote: "\"".to_string(), default_port: self.default_port(),
             },
             // Plugin: use defaults
+            // NoSQL — no SQL-style schema management; browsing + command console
+            DatabaseType::Redis => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: false,
+                supports_views: false, supports_procedures: false,
+                supports_triggers: false, is_file_based: false,
+                supports_indexes: false, supports_foreign_keys: false,
+                supports_partitions: false, supports_cancel: false,
+                identifier_quote: "".to_string(), default_port: self.default_port(),
+            },
+            DatabaseType::MongoDB => DriverCapabilities {
+                supports_schemas: true, supports_manage_tables: false,
+                supports_views: false, supports_procedures: false,
+                supports_triggers: false, is_file_based: false,
+                supports_indexes: true, supports_foreign_keys: false,
+                supports_partitions: false, supports_cancel: false,
+                identifier_quote: "".to_string(), default_port: self.default_port(),
+            },
             DatabaseType::Plugin(_) => DriverCapabilities::default(),
         }
     }
@@ -297,6 +324,8 @@ impl<'de> Deserialize<'de> for DatabaseType {
             "dameng" => DatabaseType::DaMeng,
             "gbase" => DatabaseType::GBase,
             "gaussdb" | "opengauss" => DatabaseType::GaussDB,
+            "redis" => DatabaseType::Redis,
+            "mongodb" | "mongo" => DatabaseType::MongoDB,
             other if other.starts_with("plugin:") => {
                 DatabaseType::Plugin(other[7..].to_string())
             }
@@ -591,6 +620,8 @@ impl std::fmt::Display for DatabaseType {
             DatabaseType::SQLServer => write!(f, "sqlserver"),
             DatabaseType::DaMeng => write!(f, "dameng"),
             DatabaseType::GBase => write!(f, "gbase"),
+            DatabaseType::Redis => write!(f, "redis"),
+            DatabaseType::MongoDB => write!(f, "mongodb"),
             DatabaseType::Plugin(id) => write!(f, "plugin:{}", id),
         }
     }

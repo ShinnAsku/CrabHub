@@ -420,6 +420,44 @@ body {
   backdrop-filter: blur(12px);
 }
 
+/* ===== Modal dialogs =====
+   Every dialog in the app renders `overlay (bg-black/50) + panel` siblings.
+   These selectors modernize all of them at once: blurred, fading backdrop
+   and a spring-like panel entrance — no per-component changes needed. */
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+div[class*="bg-black/50"],
+div[class*="bg-black/40"] {
+  backdrop-filter: blur(3px);
+  animation: overlay-in 150ms ease;
+}
+div[class*="bg-black/50"] + *,
+div[class*="bg-black/40"] + * {
+  animation: modal-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  div[class*="bg-black/50"], div[class*="bg-black/40"],
+  div[class*="bg-black/50"] + *, div[class*="bg-black/40"] + *,
+  .popover-panel {
+    animation: none;
+  }
+}
+
+/* Form controls inside dialogs — consistent modern inputs everywhere */
+input[type="text"], input[type="password"], input[type="number"], textarea, select {
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+input[type="text"]:focus, input[type="password"]:focus,
+input[type="number"]:focus, textarea:focus, select:focus {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15);
+}
+
 /* Keyboard-visible focus ring — consistent, modern, theme-aware */
 :focus-visible {
   outline: 2px solid hsl(var(--ring) / 0.6);

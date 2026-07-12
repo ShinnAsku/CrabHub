@@ -66,6 +66,8 @@ pub fn pool_config_for(db_type: &DatabaseType) -> PoolConfig {
         | DatabaseType::SQLServer
         | DatabaseType::DaMeng
         | DatabaseType::GBase
+        | DatabaseType::Redis
+        | DatabaseType::MongoDB
         | DatabaseType::Plugin(_) => PoolConfig {
             max_connections: 5,
             idle_timeout_secs: 600,

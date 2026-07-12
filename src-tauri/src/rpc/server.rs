@@ -52,7 +52,7 @@ impl PluginRpcServer for PluginRpcServerImpl {
         Ok(PluginInfo {
             name: "crabhub-core".into(), version: env!("CARGO_PKG_VERSION").into(),
             description: "CrabHub core".into(),
-            driver_types: vec!["postgres".into(),"mysql".into(),"sqlite".into(),"gaussdb".into(),"clickhouse".into(),"kingbase".into(),"vastbase".into(),"yashandb".into(),"oceanbase".into(),"tidb".into(),"tdsql".into()],
+            driver_types: vec!["postgres".into(),"mysql".into(),"sqlite".into(),"gaussdb".into(),"clickhouse".into(),"kingbase".into(),"vastbase".into(),"yashandb".into(),"oceanbase".into(),"tidb".into(),"tdsql".into(),"redis".into(),"mongodb".into()],
         })
     }
 

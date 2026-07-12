@@ -334,52 +334,9 @@ impl DatabaseConnection for PostgresConnection {
         table: &str,
         schema: Option<&str>,
     ) -> Result<String, DbError> {
-        let schema_name = schema.unwrap_or("public");
-        let sql = format!(
-            "SELECT column_name, data_type, is_nullable, column_default \
-             FROM information_schema.columns \
-             WHERE table_name = $1 AND table_schema = $2 \
-             ORDER BY ordinal_position"
-        );
-        let rows = sqlx::query(&sql)
-            .bind(table)
-            .bind(schema_name)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| DbError::QueryError(e.to_string()))?;
-
-        let col_defs: Vec<String> = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.get("column_name");
-                let data_type: String = row.get("data_type");
-                let is_nullable: String = row.get("is_nullable");
-                let default: Option<String> = row.get("column_default");
-                let null_str = if is_nullable == "YES" {
-                    ""
-                } else {
-                    " NOT NULL"
-                };
-                let default_str = match default {
-                    Some(d) => format!(" DEFAULT {}", d),
-                    None => String::new(),
-                };
-                format!("    {} {}{}{}", name, data_type, null_str, default_str)
-            })
-            .collect();
-
-        let full_table = if schema_name == "public" {
-            table.to_string()
-        } else {
-            format!("{}.{}", schema_name, table)
-        };
-
-        Ok(format!(
-            "-- Table: {}\nCREATE TABLE IF NOT EXISTS {} (\n{}\n);\n",
-            full_table,
-            full_table,
-            col_defs.join(",\n")
-        ))
+        // Native PG-dialect DDL from pg_catalog: precise types, defaults,
+        // primary key, COMMENT ON statements, and secondary indexes.
+        pg_utils::export_pg_table_ddl(&self.pool, table, schema).await
     }
 
     async fn close(&self) {

@@ -9,6 +9,8 @@ pub mod sqlite;
 pub mod gauss_rs;
 pub mod clickhouse;
 pub mod sqlserver;
+pub mod redis_native;
+pub mod mongo_native;
 pub mod odbc_bridge;
 pub mod manager;
 pub mod commands;

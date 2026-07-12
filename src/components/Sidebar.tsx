@@ -372,27 +372,27 @@ function Sidebar({ openConnectionDialog }: SidebarProps) {
       <div className="flex items-center gap-1 px-2 py-1 shrink-0">
         <button
           onClick={() => setView("connections")}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors whitespace-nowrap overflow-hidden ${
             view === "connections"
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
           title={t('sidebar.connections')}
         >
-          <Database size={12} />
-          <span>{t('sidebar.connections')}</span>
+          <Database size={12} className="shrink-0" />
+          <span className="truncate">{t('sidebar.connections')}</span>
         </button>
         <button
           onClick={() => setView("history")}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors whitespace-nowrap overflow-hidden ${
             view === "history"
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
           title={t('sidebar.history')}
         >
-          <Clock size={12} />
-          <span>{t('history.title')}</span>
+          <Clock size={12} className="shrink-0" />
+          <span className="truncate">{t('history.title')}</span>
         </button>
       </div>
 

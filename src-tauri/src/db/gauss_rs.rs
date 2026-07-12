@@ -254,38 +254,47 @@ impl DatabaseConnection for GaussAsyncConnection {
     }
 
     async fn export_table_sql(&self, table: &str, schema: Option<&str>) -> Result<String, DbError> {
+        use crate::db::pg_utils::{self, DdlColumn};
         let s = schema.unwrap_or("public");
-        let s_escaped = crate::db::trait_def::escape_sql_string(s);
-        let t_escaped = crate::db::trait_def::escape_sql_string(table);
-        let sql = format!(
-            "SELECT column_name, data_type, is_nullable, column_default \
-             FROM information_schema.columns \
-             WHERE table_schema='{}' AND table_name='{}' \
-             ORDER BY ordinal_position",
-            s_escaped, t_escaped
-        );
-        let result = self.query_sql(&sql).await?;
-        if result.rows.is_empty() {
-            return Err(DbError::NotFound(format!("Table {}.{} not found", s, table)));
-        }
-        let col_defs: Vec<String> = result.rows.iter().map(|row| {
-            let name = row.get("column_name").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let data_type = row.get("data_type").and_then(|v| v.as_str()).unwrap_or("text");
-            let nullable = row.get("is_nullable").and_then(|v| v.as_str()).unwrap_or("YES") == "YES";
-            let default = row.get("column_default").and_then(|v| v.as_str());
-            let null_str = if nullable { "" } else { " NOT NULL" };
-            let default_str = default.map(|d| format!(" DEFAULT {}", d)).unwrap_or_default();
-            format!("    \"{}\" {}{}{}", name, data_type, null_str, default_str)
-        }).collect();
-        let full_table = if s == "public" {
-            format!("\"{}\"", table)
-        } else {
-            format!("\"{}\".\"{}\"", s, table)
-        };
-        Ok(format!(
-            "-- Table: {}\nCREATE TABLE IF NOT EXISTS {} (\n{}\n);\n",
-            full_table, full_table, col_defs.join(",\n")
-        ))
+        let t_lit = format!("'{}'", table.replace('\'', "''"));
+        let s_lit = format!("'{}'", s.replace('\'', "''"));
+        // simple_query has no bind parameters — inline escaped literals into
+        // the shared catalog queries ($1 = table, $2 = schema).
+        let fill = |sql: &str| sql.replace("$1", &t_lit).replace("$2", &s_lit);
+
+        let col_result = self.query_sql(&fill(pg_utils::DDL_COLUMNS_SQL)).await?;
+        let columns: Vec<DdlColumn> = col_result
+            .rows
+            .iter()
+            .map(|row| DdlColumn {
+                name: row.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                data_type: row.get("data_type").and_then(|v| v.as_str()).unwrap_or("text").to_string(),
+                // simple_query returns booleans as "t"/"f" text
+                not_null: matches!(row.get("not_null").and_then(|v| v.as_str()), Some("t") | Some("true")),
+                default_expr: row.get("default_expr").and_then(|v| v.as_str()).map(String::from),
+                comment: row.get("comment").and_then(|v| v.as_str()).map(String::from),
+                is_pk: matches!(row.get("is_pk").and_then(|v| v.as_str()), Some("t") | Some("true")),
+            })
+            .collect();
+
+        let table_comment = self
+            .query_sql(&fill(pg_utils::DDL_TABLE_COMMENT_SQL))
+            .await
+            .ok()
+            .and_then(|r| r.rows.first().and_then(|row| row.get("comment").and_then(|v| v.as_str()).map(String::from)));
+
+        let index_defs: Vec<String> = self
+            .query_sql(&fill(pg_utils::DDL_INDEXES_SQL))
+            .await
+            .map(|r| {
+                r.rows
+                    .iter()
+                    .filter_map(|row| row.get("indexdef").and_then(|v| v.as_str()).map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        pg_utils::build_pg_ddl(s, table, table_comment.as_deref(), &columns, &index_defs)
     }
 }
 

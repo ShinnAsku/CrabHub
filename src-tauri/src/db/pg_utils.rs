@@ -1,11 +1,185 @@
 use rust_decimal::Decimal;
 use sqlx::{Column, Row, TypeInfo};
 
-use super::types::ColumnInfo;
+use super::types::{ColumnInfo, DbError};
 
 // ============================================================================
 // Shared parsing utilities for PostgreSQL wire-protocol databases
 // ============================================================================
+
+// ============================================================================
+// Native DDL generation (shared by postgres / pg_compatible / gauss_rs)
+// ============================================================================
+
+/// One column's metadata for DDL generation, sourced from pg_catalog.
+pub struct DdlColumn {
+    pub name: String,
+    /// Full type from format_type() — includes precision/length, e.g. `character varying(500)`.
+    pub data_type: String,
+    pub not_null: bool,
+    pub default_expr: Option<String>,
+    pub comment: Option<String>,
+    pub is_pk: bool,
+}
+
+/// Catalog query returning everything needed for faithful column DDL.
+/// Parameters: $1 = table name, $2 = schema name.
+pub const DDL_COLUMNS_SQL: &str = "\
+SELECT a.attname AS name, \
+       pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type, \
+       a.attnotnull AS not_null, \
+       pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS default_expr, \
+       pg_catalog.col_description(a.attrelid, a.attnum) AS comment, \
+       COALESCE((SELECT true FROM pg_catalog.pg_index i \
+                 WHERE i.indrelid = a.attrelid AND i.indisprimary \
+                   AND a.attnum = ANY(i.indkey)), false) AS is_pk \
+FROM pg_catalog.pg_attribute a \
+JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
+WHERE c.relname = $1 AND n.nspname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+ORDER BY a.attnum";
+
+/// Table comment query. Parameters: $1 = table name, $2 = schema name.
+pub const DDL_TABLE_COMMENT_SQL: &str = "\
+SELECT pg_catalog.obj_description(c.oid, 'pg_class') AS comment \
+FROM pg_catalog.pg_class c \
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+WHERE c.relname = $1 AND n.nspname = $2";
+
+/// Non-PK index definitions (indexdef is already valid PG DDL).
+/// Parameters: $1 = table name, $2 = schema name.
+pub const DDL_INDEXES_SQL: &str = "\
+SELECT i.indexdef FROM pg_catalog.pg_indexes i \
+WHERE i.tablename = $1 AND i.schemaname = $2 \
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint con \
+                  JOIN pg_catalog.pg_class ic ON ic.oid = con.conindid \
+                  WHERE ic.relname = i.indexname AND con.contype IN ('p','u'))";
+
+fn quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
+fn quote_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// Assemble a faithful PostgreSQL-dialect CREATE TABLE script:
+/// columns with types/defaults/NOT NULL, PRIMARY KEY constraint,
+/// COMMENT ON statements for table and columns, and secondary indexes.
+pub fn build_pg_ddl(
+    schema: &str,
+    table: &str,
+    table_comment: Option<&str>,
+    columns: &[DdlColumn],
+    index_defs: &[String],
+) -> Result<String, DbError> {
+    if columns.is_empty() {
+        return Err(DbError::NotFound(format!("Table '{}' has no columns", table)));
+    }
+    let full_table = format!("{}.{}", quote_ident(schema), quote_ident(table));
+
+    let mut col_lines: Vec<String> = columns
+        .iter()
+        .map(|c| {
+            let mut line = format!("    {} {}", quote_ident(&c.name), c.data_type);
+            if let Some(def) = &c.default_expr {
+                line.push_str(&format!(" DEFAULT {}", def));
+            }
+            if c.not_null {
+                line.push_str(" NOT NULL");
+            }
+            line
+        })
+        .collect();
+
+    let pk_cols: Vec<String> = columns.iter().filter(|c| c.is_pk).map(|c| quote_ident(&c.name)).collect();
+    if !pk_cols.is_empty() {
+        col_lines.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
+    }
+
+    let mut out = format!(
+        "-- Table: {}\nCREATE TABLE {} (\n{}\n);\n",
+        full_table,
+        full_table,
+        col_lines.join(",\n")
+    );
+
+    if let Some(tc) = table_comment.filter(|s| !s.is_empty()) {
+        out.push_str(&format!("\nCOMMENT ON TABLE {} IS {};\n", full_table, quote_literal(tc)));
+    }
+    for c in columns {
+        if let Some(cc) = c.comment.as_deref().filter(|s| !s.is_empty()) {
+            out.push_str(&format!(
+                "COMMENT ON COLUMN {}.{} IS {};\n",
+                full_table,
+                quote_ident(&c.name),
+                quote_literal(cc)
+            ));
+        }
+    }
+
+    if !index_defs.is_empty() {
+        out.push('\n');
+        for def in index_defs {
+            out.push_str(def);
+            if !def.trim_end().ends_with(';') {
+                out.push(';');
+            }
+            out.push('\n');
+        }
+    }
+
+    Ok(out)
+}
+
+/// Full pipeline for sqlx-based PG drivers: query catalog + assemble DDL.
+pub async fn export_pg_table_ddl(
+    pool: &sqlx::PgPool,
+    table: &str,
+    schema: Option<&str>,
+) -> Result<String, DbError> {
+    let schema = schema.unwrap_or("public");
+
+    let col_rows = sqlx::query(DDL_COLUMNS_SQL)
+        .bind(table)
+        .bind(schema)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DbError::QueryError(e.to_string()))?;
+
+    let columns: Vec<DdlColumn> = col_rows
+        .iter()
+        .map(|r| DdlColumn {
+            name: r.get("name"),
+            data_type: r.get("data_type"),
+            not_null: r.get("not_null"),
+            default_expr: r.get("default_expr"),
+            comment: r.get("comment"),
+            is_pk: r.get("is_pk"),
+        })
+        .collect();
+
+    let table_comment: Option<String> = sqlx::query(DDL_TABLE_COMMENT_SQL)
+        .bind(table)
+        .bind(schema)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DbError::QueryError(e.to_string()))?
+        .and_then(|r| r.get("comment"));
+
+    let index_defs: Vec<String> = sqlx::query(DDL_INDEXES_SQL)
+        .bind(table)
+        .bind(schema)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DbError::QueryError(e.to_string()))?
+        .iter()
+        .map(|r| r.get::<String, _>("indexdef"))
+        .collect();
+
+    build_pg_ddl(schema, table, table_comment.as_deref(), &columns, &index_defs)
+}
 
 /// Best-effort server-side cancel for PG-protocol databases.
 ///

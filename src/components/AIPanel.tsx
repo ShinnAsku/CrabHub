@@ -23,6 +23,7 @@ import {
 import { useAppStore, useUIStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 import { setAiApiKey, getAiApiKey, testAiConnection } from "@/lib/ai-commands";
+import { transportInvoke } from "@/lib/tauri-commands";
 import { AgentToolCard } from "@/components/AgentToolCard";
 import { AgentConfirmBar } from "@/components/AgentConfirmBar";
 // Reserved for agent event rendering in chat messages
@@ -264,13 +265,12 @@ function AIPanel() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const sessionIdRef = useRef(`session-${Date.now()}`);
 
-  // Load chat history from SQLite on mount
+  // Load chat history from SQLite on mount (works on desktop AND web — the
+  // transport layer routes to Tauri IPC or the HTTP API automatically)
   useEffect(() => {
-    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (!isTauri) { setHistoryLoaded(true); return; }
-    import("@tauri-apps/api/core").then(async ({ invoke }) => {
+    (async () => {
       try {
-        const rows = await invoke("load_chat_history", { sessionId: sessionIdRef.current }) as [string, string, string][];
+        const rows = await transportInvoke("load_chat_history", { sessionId: sessionIdRef.current }) as [string, string, string][];
         if (rows.length > 0) {
           setMessages(rows.map((r, i) => ({
             id: String(i + 1),
@@ -280,23 +280,21 @@ function AIPanel() {
         }
       } catch { /* ignore */ }
       setHistoryLoaded(true);
-    });
+    })();
   }, []);
 
   // Save new messages to SQLite
   useEffect(() => {
     if (!historyLoaded) return;
-    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (!isTauri) return;
-    import("@tauri-apps/api/core").then(async ({ invoke }) => {
+    (async () => {
       try {
-        const existing = await invoke("load_chat_history", { sessionId: sessionIdRef.current }) as [string, string, string][];
+        const existing = await transportInvoke("load_chat_history", { sessionId: sessionIdRef.current }) as [string, string, string][];
         const existingCount = existing.length;
         if (messages.length > existingCount) {
           for (let i = existingCount; i < messages.length; i++) {
             const msg = messages[i]!;
             if (!msg.streaming) {
-              await invoke("save_chat_message", {
+              await transportInvoke("save_chat_message", {
                 sessionId: sessionIdRef.current,
                 role: msg.role,
                 content: msg.content,
@@ -305,7 +303,7 @@ function AIPanel() {
           }
         }
       } catch { /* ignore */ }
-    });
+    })();
   }, [messages, historyLoaded]);
 
   const [input, setInput] = useState("");
@@ -328,20 +326,16 @@ function AIPanel() {
     let cancelled = false;
     (async () => {
       try {
-        const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-        if (isTauri) {
-          const { invoke } = await import("@tauri-apps/api/core");
-          const json = await invoke("load_ai_settings") as string | null;
-          if (!cancelled && json) {
-            const saved = JSON.parse(json) as Partial<AISettings>;
-            setSettings(prev => ({
-              ...prev,
-              provider: saved.provider ?? prev.provider,
-              endpoint: saved.endpoint ?? prev.endpoint,
-              model: saved.model ?? prev.model,
-              temperature: saved.temperature ?? prev.temperature,
-            }));
-          }
+        const json = await transportInvoke("load_ai_settings") as string | null;
+        if (!cancelled && json) {
+          const saved = JSON.parse(json) as Partial<AISettings>;
+          setSettings(prev => ({
+            ...prev,
+            provider: saved.provider ?? prev.provider,
+            endpoint: saved.endpoint ?? prev.endpoint,
+            model: saved.model ?? prev.model,
+            temperature: saved.temperature ?? prev.temperature,
+          }));
         }
       } catch { /* ignore */ }
       try {
@@ -359,14 +353,7 @@ function AIPanel() {
     if (!settingsLoaded) return;
     const { apiKey: _omit, ...safe } = settings;
     void _omit;
-    try {
-      const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-      if (isTauri) {
-        import("@tauri-apps/api/core").then(({ invoke }) =>
-          invoke("save_ai_settings", { settingsJson: JSON.stringify(safe) })
-        ).catch(() => {});
-      }
-    } catch { /* ignore */ }
+    transportInvoke("save_ai_settings", { settingsJson: JSON.stringify(safe) }).catch(() => {});
   }, [settings, settingsLoaded]);
 
   // Auto-scroll to bottom

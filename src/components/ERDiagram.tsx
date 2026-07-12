@@ -326,12 +326,6 @@ function ERDiagram({ isOpen = true, onClose, connectionId, schemaName, embedded 
       setLoading(true);
       setError(null);
       try {
-        const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-        if (!isTauri) {
-          setLoading(false);
-          return;
-        }
-
         // 1. Get all tables, optionally filter by schema
         let tableInfos = await getTables(connectionId);
         if (schemaName) {

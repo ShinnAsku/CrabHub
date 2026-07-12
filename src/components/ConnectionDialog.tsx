@@ -46,6 +46,8 @@ const BUILTIN_DB_TYPES: { value: string; label: string; port: number; color: str
   { value: "sqlserver", label: "SQL Server", port: 1433, color: "#CC2927" },
   { value: "dameng", label: "DaMeng", port: 5236, color: "#BA0C2F" },
   { value: "gbase", label: "GBase", port: 5258, color: "#1E6C93" },
+  { value: "redis", label: "Redis", port: 6379, color: "#DC382D" },
+  { value: "mongodb", label: "MongoDB", port: 27017, color: "#47A248" },
 ];
 
 // 插件数据库类型接口
@@ -1050,18 +1052,20 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
       />
 
       {/* Dialog */}
-      <div className="relative w-[600px] max-h-[85vh] bg-background border border-border rounded-lg shadow-xl flex flex-col">
+      <div className="relative w-[600px] max-h-[85vh] bg-background border border-border/70 rounded-xl shadow-[0_0_0_1px_hsl(var(--border)/0.5),0_24px_60px_-16px_hsl(var(--foreground)/0.25)] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Plug size={15} className="text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 bg-muted/30">
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10 text-primary">
+              <Plug size={14} />
+            </span>
+            <span className="text-sm font-semibold text-foreground">
               {editConnection ? t('connection.editTitle') : t('connection.title')}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <X size={14} />
           </button>
@@ -1108,11 +1112,11 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border shrink-0">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border shrink-0 bg-muted/20">
           <button
             onClick={handleTest}
             disabled={testing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-muted transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
           >
             {testing ? (
               <Loader2 size={12} className="animate-spin" />
@@ -1123,14 +1127,16 @@ function ConnectionDialog({ isOpen, onClose, editConnection }: ConnectionDialogP
           </button>
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+            className="px-3.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
           >
             {t('common.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-primary text-primary-foreground rounded-lg
+                       shadow-[0_2px_10px_-2px_hsl(var(--primary)/0.5)] hover:brightness-110 active:scale-[0.98]
+                       transition-all duration-150 disabled:opacity-40"
           >
             {saving ? (
               <Loader2 size={12} className="animate-spin" />

@@ -33,6 +33,7 @@ import VisualQueryBuilder from "./query-builder/VisualQueryBuilder";
 import QuickChartPanel from "./QuickChartPanel";
 import WelcomeScreen from "./WelcomeScreen";
 import { EditorContextMenu } from "./EditorContextMenu";
+import { convertSql, conversionHeader } from "@/lib/sql-convert";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 // SQL keywords for autocompletion
@@ -760,6 +761,27 @@ function QueryEditor() {
     } catch {}
   }, [activeTabId, updateTabContent]);
 
+  /** Convert the selection (or whole script) to another SQL dialect and open
+   *  the result in a new query tab, with warnings as a comment header. */
+  const handleConvertDialect = useCallback((target: string) => {
+    const editor = editorRef.current;
+    if (!editor || !activeConnection) return;
+    const selection = editor.getSelection();
+    const selectedText = selection && !selection.isEmpty()
+      ? editor.getModel()?.getValueInRange(selection) ?? ""
+      : "";
+    const source = selectedText || editor.getValue();
+    if (!source.trim()) return;
+
+    const { sql: converted, warnings } = convertSql(source, activeConnection.type, target);
+    const content = conversionHeader(activeConnection.type, target, warnings) + converted;
+    useTabStore.getState().addTab({
+      title: `${t("convert.tabTitle")} → ${target}`,
+      type: "query",
+      content,
+    });
+  }, [activeConnection]);
+
   const handleGenerateChart = useCallback(() => {
     const selectedResult = multiResults[activeResultIdx];
     if (!selectedResult || selectedResult.columns.length === 0) return;
@@ -1102,6 +1124,7 @@ function QueryEditor() {
               x={contextMenu.x}
               y={contextMenu.y}
               hasSelection={hasSelection()}
+              sourceDialect={activeConnection?.type}
               onClose={() => setContextMenu(null)}
               onRunAll={() => { setContextMenu(null); handleExecute(false); }}
               onRunSelected={() => { setContextMenu(null); handleExecute(true); }}
@@ -1111,6 +1134,7 @@ function QueryEditor() {
               onPaste={() => { setContextMenu(null); handlePaste(); }}
               onSelectAll={() => { setContextMenu(null); handleSelectAll(); }}
               onSelectCurrentStatement={() => { setContextMenu(null); handleSelectCurrentStatement(); }}
+              onConvertDialect={(target) => { setContextMenu(null); handleConvertDialect(target); }}
             />
           )}
         </Panel>
