@@ -50,7 +50,7 @@ export function EditorContextMenu({
   return (
     <>
       <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div ref={menuRef} className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[220px]"
+      <div ref={menuRef} className="popover-panel fixed z-50 border border-border rounded-lg py-1 min-w-[220px]"
         style={{ left: pos.x, top: pos.y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}>
         {hasSelection
           ? item(t("contextMenu.runSelected"), onRunSelected, <Play size={12} />, undefined, false, true)

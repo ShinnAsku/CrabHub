@@ -1,0 +1,18 @@
+services:
+  crabhub:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "4224:4224"
+    environment:
+      # REQUIRED: login password for the web UI (non-loopback bind refuses to start without it)
+      - CRABHUB_WEB_PASSWORD=${CRABHUB_WEB_PASSWORD:?set CRABHUB_WEB_PASSWORD}
+      # REQUIRED: >=16 chars; encrypts stored connection credentials (no OS keyring in containers)
+      - CRABHUB_MASTER_KEY=${CRABHUB_MASTER_KEY:?set CRABHUB_MASTER_KEY (>=16 chars)}
+    volumes:
+      - crabhub-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  crabhub-data:

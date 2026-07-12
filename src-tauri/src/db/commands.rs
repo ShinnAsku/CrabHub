@@ -72,34 +72,7 @@ pub async fn execute_batch(
     id: String,
     statements: Vec<String>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let mut results = Vec::with_capacity(statements.len());
-    for sql in &statements {
-        let trimmed = sql.trim();
-        if trimmed.is_empty() {
-            results.push(serde_json::json!({"type": "empty"}));
-            continue;
-        }
-        let upper = trimmed.to_uppercase();
-        let is_query = upper.starts_with("SELECT")
-            || upper.starts_with("WITH")
-            || upper.starts_with("SHOW")
-            || upper.starts_with("DESCRIBE")
-            || upper.starts_with("EXPLAIN");
-        if is_query {
-            match state.query_paged(&id, trimmed, 500, 0).await {
-                Ok(r) => results.push(
-                    serde_json::to_value(WirePagedQueryResult::from(r)).map_err(|e| e.to_string())?,
-                ),
-                Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
-            }
-        } else {
-            match state.execute(&id, trimmed).await {
-                Ok(r) => results.push(serde_json::to_value(r).map_err(|e| e.to_string())?),
-                Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
-            }
-        }
-    }
-    Ok(results)
+    state.execute_batch_json(&id, &statements).await
 }
 
 /// Execute a SQL statement (INSERT, UPDATE, DELETE, DDL)
@@ -172,26 +145,7 @@ pub async fn get_databases(
     state: State<'_, Arc<ConnectionManager>>,
     id: String,
 ) -> Result<Vec<String>, String> {
-    let sql = match state.get_db_type(&id).await {
-        Some(DatabaseType::MySQL) => "SHOW DATABASES".to_string(),
-        Some(DatabaseType::SQLite) => return Ok(vec!["main".to_string()]),
-        Some(DatabaseType::ClickHouse) => "SELECT name FROM system.databases ORDER BY name".to_string(),
-        Some(DatabaseType::PostgreSQL | DatabaseType::GaussDB | DatabaseType::Plugin(_)) =>
-            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
-        Some(DatabaseType::OceanBase | DatabaseType::TiDB | DatabaseType::TDSQL) =>
-            "SHOW DATABASES".to_string(),
-        Some(DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::YashanDB) =>
-            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
-        Some(DatabaseType::Oracle | DatabaseType::DaMeng | DatabaseType::GBase) =>
-            "SELECT name FROM v$database".to_string(),
-        Some(DatabaseType::SQLServer) =>
-            "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name".to_string(),
-        None => "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname".to_string(),
-    };
-    let result = state.query_metadata(&id, &sql).await.map_err(|e| e.to_string())?;
-    Ok(result.rows.iter()
-        .filter_map(|row| row.values().next().and_then(|v| v.as_str().map(|s| s.to_string())))
-        .collect())
+    state.get_databases(&id).await.map_err(|e| e.to_string())
 }
 
 /// Test a database connection

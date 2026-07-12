@@ -3,9 +3,10 @@ import {
   Sparkles, MoreHorizontal,
   Network, Upload, Download, Code2, GitCompare,
   ArrowLeftRight,
-  Package, NotebookText,
+  Package, NotebookText, Palette, Check,
 } from 'lucide-react';
 import { useAppStore, useTabStore } from "@/stores/app-store";
+import { THEMES } from "@/stores/modules/ui";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 
@@ -22,15 +23,17 @@ function ToolbarActions({
   onOpenImport: () => void;
   onOpenExport: () => void;
 }) {
-  const { aiPanelOpen, toggleAIPanel } = useAppStore();
+  const { aiPanelOpen, toggleAIPanel, theme, setTheme } = useAppStore();
   const { addTab } = useTabStore();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setMoreOpen(false);
+        setThemeOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -63,7 +66,7 @@ function ToolbarActions({
         </Button>
         {moreOpen && (
           <div
-            className="absolute right-0 top-full mt-1 w-52 bg-background border border-border rounded-md shadow-lg z-50 py-1 max-h-[70vh] overflow-y-auto"
+            className="popover-panel absolute right-0 top-full mt-1 w-52 bg-background/95 border border-border rounded-lg z-50 py-1 max-h-[70vh] overflow-y-auto"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <DropdownItem onClick={(e) => { e.stopPropagation(); onOpenConnectionDialog(); setMoreOpen(false); }}>
@@ -92,6 +95,34 @@ function ToolbarActions({
             <DropdownItem onClick={(e) => { e.stopPropagation(); handleNewNotebook(); }}>
               <NotebookText size={14} className="mr-2" />{t('notebook.title')}
             </DropdownItem>
+            <div className="h-px bg-border mx-2 my-1" />
+            {/* Theme picker: header toggles an inline swatch list */}
+            <DropdownItem onClick={(e) => { e.stopPropagation(); setThemeOpen(!themeOpen); }}>
+              <Palette size={14} className="mr-2" />{t('theme.title')}
+              <span className="ml-auto flex items-center gap-1">
+                <span
+                  className="w-3 h-3 rounded-full border border-border"
+                  style={{ backgroundColor: THEMES.find((th) => th.id === theme)?.swatch }}
+                />
+              </span>
+            </DropdownItem>
+            {themeOpen && (
+              <div className="pl-4">
+                {THEMES.map((th) => (
+                  <DropdownItem
+                    key={th.id}
+                    onClick={(e) => { e.stopPropagation(); setTheme(th.id); }}
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full border border-border mr-2 shrink-0"
+                      style={{ backgroundColor: th.swatch }}
+                    />
+                    {t(th.labelKey)}
+                    {theme === th.id && <Check size={13} className="ml-auto text-[hsl(var(--tab-active))]" />}
+                  </DropdownItem>
+                ))}
+              </div>
+            )}
             <div className="h-px bg-border mx-2 my-1" />
             <DropdownItem onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('openPluginManager')); setMoreOpen(false); }}>
               <Package size={14} className="mr-2" />{t('plugin.title')}

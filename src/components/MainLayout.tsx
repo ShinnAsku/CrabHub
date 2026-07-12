@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Plug } from "lucide-react";
 import { useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
@@ -113,12 +113,18 @@ function MainLayout() {
     }
   }, [tabs.length, viewModeType, setViewModeType]);
 
-  // Clear persisted tabs on startup when no connection exists
+  // Clear persisted tabs ONCE after rehydration when no connection exists.
+  // The previous version depended on tabs.length, so with no active
+  // connection it wiped every freshly created tab immediately — "New Query"
+  // appeared dead until you connected to a database first.
+  const orphanCleanupDone = useRef(false);
   useEffect(() => {
-    if (rehydrated && !activeConnectionId && tabs.length > 0) {
+    if (!rehydrated || orphanCleanupDone.current) return;
+    orphanCleanupDone.current = true;
+    if (!activeConnectionId && useTabStore.getState().tabs.length > 0) {
       useTabStore.setState({ tabs: [], activeTabId: null, queryResults: {}, isExecuting: {} });
     }
-  }, [rehydrated, activeConnectionId, tabs.length]);
+  }, [rehydrated, activeConnectionId]);
 
   // Clear test connection data on startup
   useEffect(() => {

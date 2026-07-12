@@ -3,17 +3,38 @@ import { setLanguage as setI18nLanguage, initLanguage as initI18nLanguage, type 
 import type { SchemaNode, QueryResult, TableInfo, SelectedContext } from '@/types';
 import { log } from "@/lib/log";
 
+// ===== Theme system =====
+// Themes are CSS variable sets selected via the `data-theme` attribute
+// (see src/styles/index.css). Each theme declares whether it is dark so
+// Monaco and Tailwind `dark:` utilities follow along.
+
+export type ThemeId = "light" | "dark" | "solarized-light" | "nord" | "dracula" | "one-dark" | "midnight";
+
+export const THEMES: { id: ThemeId; labelKey: string; dark: boolean; swatch: string }[] = [
+  { id: "light", labelKey: "theme.light", dark: false, swatch: "#f5f8fc" },
+  { id: "dark", labelKey: "theme.dark", dark: true, swatch: "#0b1220" },
+  { id: "solarized-light", labelKey: "theme.solarizedLight", dark: false, swatch: "#fdf6e3" },
+  { id: "nord", labelKey: "theme.nord", dark: true, swatch: "#2e3440" },
+  { id: "dracula", labelKey: "theme.dracula", dark: true, swatch: "#282a36" },
+  { id: "one-dark", labelKey: "theme.oneDark", dark: true, swatch: "#282c34" },
+  { id: "midnight", labelKey: "theme.midnight", dark: true, swatch: "#000000" },
+];
+
+export function isDarkTheme(theme: ThemeId): boolean {
+  return THEMES.find((t) => t.id === theme)?.dark ?? false;
+}
+
 // Load theme from localStorage
-function loadTheme(): "light" | "dark" {
+function loadTheme(): ThemeId {
   try {
     const saved = localStorage.getItem("crabhub-theme");
-    if (saved === "light" || saved === "dark") return saved;
+    if (saved && THEMES.some((t) => t.id === saved)) return saved as ThemeId;
   } catch {}
   return "light";
 }
 
-// Apply theme class to document
-function applyThemeClass(theme: "light" | "dark") {
+// Apply theme attribute to document
+function applyThemeClass(theme: ThemeId) {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", theme);
   }
@@ -30,7 +51,7 @@ export type NavicatTab = "tables" | "views" | "materialized_views" | "functions"
 
 interface UIState {
   aiPanelOpen: boolean;
-  theme: "light" | "dark";
+  theme: ThemeId;
   language: Language;
   sidebarOpen: boolean;
   resultPanelOpen: boolean;
@@ -49,6 +70,7 @@ interface UIState {
   // Actions
   toggleAIPanel: () => void;
   toggleTheme: () => void;
+  setTheme: (theme: ThemeId) => void;
   setLanguage: (lang: Language) => void;
   toggleSidebar: () => void;
   toggleResultPanel: () => void;
@@ -90,10 +112,19 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleTheme: () =>
     set((state) => {
-      const newTheme = state.theme === "dark" ? "light" : "dark";
+      // Title-bar sun/moon button: flip between the base light/dark pair.
+      // Custom themes count as their dark/light family for the flip.
+      const newTheme: ThemeId = isDarkTheme(state.theme) ? "light" : "dark";
       applyThemeClass(newTheme);
       try { localStorage.setItem("crabhub-theme", newTheme); } catch {}
       return { theme: newTheme };
+    }),
+
+  setTheme: (theme) =>
+    set(() => {
+      applyThemeClass(theme);
+      try { localStorage.setItem("crabhub-theme", theme); } catch {}
+      return { theme };
     }),
 
   setLanguage: (lang) =>

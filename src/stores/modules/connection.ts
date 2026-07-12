@@ -1,22 +1,7 @@
 import { create } from "zustand";
 import type { Connection } from '@/types';
-import { isMockMode, mockInvoke } from "@/lib/tauri-commands-mock";
+import { transportInvoke as safeInvoke } from "@/lib/tauri-commands";
 import { log } from "@/lib/log";
-
-// Check if we're running in Tauri environment
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
-// Wrapper for invoke that checks Tauri environment first
-async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (isMockMode()) {
-    return mockInvoke<T>(cmd, args);
-  }
-  if (!isTauri) {
-    throw new Error("This app must be run in a Tauri environment. Please use the desktop app instead of the browser.");
-  }
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(cmd, args);
-}
 
 interface ConnectionState {
   connections: Connection[];

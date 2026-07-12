@@ -7,6 +7,7 @@ license = "MIT"
 repository = ""
 edition = "2021"
 rust-version = "1.77.2"
+default-run = "crabhub"
 
 [lib]
 name = "crabhub_lib"
@@ -65,3 +66,6 @@ zip = "0.6"
 
 anyhow = "1.0"
 rust_xlsxwriter = "0.92.0"
+axum = { version = "0.8.4", default-features = false, features = ["http1", "json", "tokio"] }
+tower-http = { version = "0.7.0", features = ["fs", "cors"] }
+env_logger = "0.11.11"

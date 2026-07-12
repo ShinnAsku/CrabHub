@@ -1,10 +1,13 @@
 import MainLayout from "./components/MainLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
+import WebAuthGate from "./components/WebAuthGate";
 
 function App() {
   return (
     <ErrorBoundary>
-      <MainLayout />
+      <WebAuthGate>
+        <MainLayout />
+      </WebAuthGate>
     </ErrorBoundary>
   );
 }

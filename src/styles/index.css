@@ -1,8 +1,15 @@
 @import "tailwindcss";
 @import "./globals.css";
 
-/* Tell Tailwind 4 to use data-theme attribute for dark mode */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* Tell Tailwind 4 to use data-theme attribute for dark mode.
+   Every dark-family theme must be listed so `dark:` utilities follow. */
+@custom-variant dark (&:where(
+  [data-theme="dark"], [data-theme="dark"] *,
+  [data-theme="nord"], [data-theme="nord"] *,
+  [data-theme="dracula"], [data-theme="dracula"] *,
+  [data-theme="one-dark"], [data-theme="one-dark"] *,
+  [data-theme="midnight"], [data-theme="midnight"] *
+));
 
 /* ===== Tailwind 4 @theme inline — generates .bg-primary, .text-foreground, etc. natively ===== */
 @theme inline {
@@ -135,6 +142,246 @@
   --tree-schema: 199 70% 55%;
 }
 
+/* ===== Solarized Light (Ethan Schoonover palette) ===== */
+[data-theme="solarized-light"] {
+  --background: 44 87% 94%;         /* base3 #fdf6e3 */
+  --foreground: 192 81% 14%;        /* base02 */
+  --card: 46 42% 88%;               /* base2 #eee8d5 */
+  --card-foreground: 192 81% 14%;
+  --popover: 44 87% 94%;
+  --popover-foreground: 192 81% 14%;
+  --muted: 46 42% 88%;
+  --muted-foreground: 194 14% 40%;  /* base00 */
+  --border: 45 30% 78%;
+  --input: 45 30% 78%;
+  --table-border: 45 25% 70%;
+  --primary: 205 69% 49%;           /* blue #268bd2 */
+  --primary-glow: 205 69% 58%;
+  --primary-foreground: 44 87% 94%;
+  --secondary: 46 42% 88%;
+  --secondary-foreground: 192 81% 14%;
+  --accent: 175 59% 40%;            /* cyan #2aa198 */
+  --accent-foreground: 44 87% 94%;
+  --destructive: 1 71% 52%;         /* red #dc322f */
+  --destructive-foreground: 44 87% 94%;
+  --ring: 205 69% 40%;
+  --radius: 0.5rem;
+  --success: 68 100% 30%;           /* green #859900 */
+  --success-foreground: 44 87% 94%;
+  --warning: 45 100% 35%;           /* yellow #b58900 */
+  --warning-foreground: 44 87% 94%;
+  --info: 205 69% 49%;
+  --info-foreground: 44 87% 94%;
+  --sidebar-bg: 46 42% 90%;
+  --sidebar-foreground: 192 81% 14%;
+  --sidebar-border: 45 30% 78%;
+  --sidebar-item-hover: 45 35% 84%;
+  --sidebar-item-active: 205 69% 49%;
+  --tab-active: 205 69% 49%;
+  --toolbar-bg: 44 60% 92%;
+  --editor-bg: 44 87% 94%;
+  --editor-line-number: 194 14% 55%;
+  --editor-selection: 205 69% 85%;
+  --tree-table: 68 100% 30%;
+  --tree-view: 237 45% 60%;         /* violet #6c71c4 */
+  --tree-function: 45 100% 35%;
+  --tree-procedure: 1 71% 52%;
+  --tree-trigger: 18 89% 55%;       /* orange #cb4b16 */
+  --tree-schema: 175 59% 40%;
+}
+
+/* ===== Nord (arctic bluish palette) ===== */
+[data-theme="nord"] {
+  --background: 220 16% 22%;        /* nord0 #2e3440 */
+  --foreground: 218 27% 92%;        /* nord6 #eceff4 */
+  --card: 222 16% 28%;              /* nord1 #3b4252 */
+  --card-foreground: 218 27% 92%;
+  --popover: 222 16% 28%;
+  --popover-foreground: 218 27% 92%;
+  --muted: 220 17% 32%;             /* nord2 #434c5e */
+  --muted-foreground: 219 28% 76%;  /* nord4 */
+  --border: 220 17% 32%;
+  --input: 220 17% 32%;
+  --table-border: 220 16% 40%;
+  --primary: 210 34% 63%;           /* nord9 #81a1c1 */
+  --primary-glow: 210 34% 70%;
+  --primary-foreground: 220 16% 16%;
+  --secondary: 220 17% 32%;
+  --secondary-foreground: 218 27% 92%;
+  --accent: 179 25% 65%;            /* nord7 #8fbcbb */
+  --accent-foreground: 220 16% 16%;
+  --destructive: 354 42% 56%;       /* nord11 #bf616a */
+  --destructive-foreground: 218 27% 92%;
+  --ring: 210 34% 50%;
+  --radius: 0.5rem;
+  --success: 92 28% 65%;            /* nord14 #a3be8c */
+  --success-foreground: 220 16% 16%;
+  --warning: 40 71% 73%;            /* nord13 #ebcb8b */
+  --warning-foreground: 220 16% 16%;
+  --info: 193 43% 67%;              /* nord8 #88c0d0 */
+  --info-foreground: 220 16% 16%;
+  --sidebar-bg: 220 16% 19%;
+  --sidebar-foreground: 218 27% 92%;
+  --sidebar-border: 220 17% 28%;
+  --sidebar-item-hover: 220 17% 28%;
+  --sidebar-item-active: 210 34% 63%;
+  --tab-active: 210 34% 63%;
+  --toolbar-bg: 220 16% 24%;
+  --editor-bg: 220 16% 22%;
+  --editor-line-number: 219 15% 55%;
+  --editor-selection: 210 34% 35%;
+  --tree-table: 92 28% 65%;
+  --tree-view: 311 20% 63%;         /* nord15 #b48ead */
+  --tree-function: 40 71% 73%;
+  --tree-procedure: 354 42% 56%;
+  --tree-trigger: 14 51% 63%;       /* nord12 #d08770 */
+  --tree-schema: 193 43% 67%;
+}
+
+/* ===== Dracula ===== */
+[data-theme="dracula"] {
+  --background: 231 15% 18%;        /* #282a36 */
+  --foreground: 60 30% 96%;         /* #f8f8f2 */
+  --card: 232 14% 24%;              /* #343746 */
+  --card-foreground: 60 30% 96%;
+  --popover: 232 14% 24%;
+  --popover-foreground: 60 30% 96%;
+  --muted: 231 15% 27%;             /* #44475a */
+  --muted-foreground: 226 14% 68%;  /* #6272a4-ish lighter */
+  --border: 231 15% 27%;
+  --input: 231 15% 27%;
+  --table-border: 231 14% 36%;
+  --primary: 265 89% 78%;           /* purple #bd93f9 */
+  --primary-glow: 265 89% 84%;
+  --primary-foreground: 231 15% 14%;
+  --secondary: 231 15% 27%;
+  --secondary-foreground: 60 30% 96%;
+  --accent: 326 100% 74%;           /* pink #ff79c6 */
+  --accent-foreground: 231 15% 14%;
+  --destructive: 0 100% 67%;        /* red #ff5555 */
+  --destructive-foreground: 60 30% 96%;
+  --ring: 265 89% 66%;
+  --radius: 0.5rem;
+  --success: 135 94% 65%;           /* green #50fa7b */
+  --success-foreground: 231 15% 14%;
+  --warning: 65 92% 76%;            /* yellow #f1fa8c */
+  --warning-foreground: 231 15% 14%;
+  --info: 191 97% 77%;              /* cyan #8be9fd */
+  --info-foreground: 231 15% 14%;
+  --sidebar-bg: 231 15% 15%;
+  --sidebar-foreground: 60 30% 96%;
+  --sidebar-border: 231 15% 24%;
+  --sidebar-item-hover: 231 15% 24%;
+  --sidebar-item-active: 265 89% 78%;
+  --tab-active: 265 89% 78%;
+  --toolbar-bg: 231 15% 20%;
+  --editor-bg: 231 15% 18%;
+  --editor-line-number: 226 14% 50%;
+  --editor-selection: 265 60% 35%;
+  --tree-table: 135 94% 65%;
+  --tree-view: 265 89% 78%;
+  --tree-function: 31 100% 71%;     /* orange #ffb86c */
+  --tree-procedure: 0 100% 67%;
+  --tree-trigger: 65 92% 76%;
+  --tree-schema: 191 97% 77%;
+}
+
+/* ===== One Dark (Atom) ===== */
+[data-theme="one-dark"] {
+  --background: 220 13% 18%;        /* #282c34 */
+  --foreground: 219 14% 76%;        /* #abb2bf */
+  --card: 222 13% 23%;              /* #32363e */
+  --card-foreground: 219 14% 80%;
+  --popover: 222 13% 23%;
+  --popover-foreground: 219 14% 80%;
+  --muted: 220 13% 26%;
+  --muted-foreground: 220 9% 55%;   /* #5c6370 lighter */
+  --border: 220 13% 26%;
+  --input: 220 13% 26%;
+  --table-border: 220 12% 34%;
+  --primary: 207 82% 66%;           /* blue #61afef */
+  --primary-glow: 207 82% 74%;
+  --primary-foreground: 220 13% 12%;
+  --secondary: 220 13% 26%;
+  --secondary-foreground: 219 14% 80%;
+  --accent: 187 47% 55%;            /* cyan #56b6c2 */
+  --accent-foreground: 220 13% 12%;
+  --destructive: 355 65% 65%;       /* red #e06c75 */
+  --destructive-foreground: 219 14% 90%;
+  --ring: 207 82% 55%;
+  --radius: 0.5rem;
+  --success: 95 38% 62%;            /* green #98c379 */
+  --success-foreground: 220 13% 12%;
+  --warning: 39 67% 69%;            /* yellow #e5c07b */
+  --warning-foreground: 220 13% 12%;
+  --info: 207 82% 66%;
+  --info-foreground: 220 13% 12%;
+  --sidebar-bg: 220 13% 15%;
+  --sidebar-foreground: 219 14% 76%;
+  --sidebar-border: 220 13% 23%;
+  --sidebar-item-hover: 220 13% 23%;
+  --sidebar-item-active: 207 82% 66%;
+  --tab-active: 207 82% 66%;
+  --toolbar-bg: 220 13% 20%;
+  --editor-bg: 220 13% 18%;
+  --editor-line-number: 220 9% 45%;
+  --editor-selection: 207 60% 30%;
+  --tree-table: 95 38% 62%;
+  --tree-view: 286 60% 67%;         /* purple #c678dd */
+  --tree-function: 39 67% 69%;
+  --tree-procedure: 355 65% 65%;
+  --tree-trigger: 29 54% 61%;       /* orange #d19a66 */
+  --tree-schema: 187 47% 55%;
+}
+
+/* ===== Midnight (pure-black OLED) ===== */
+[data-theme="midnight"] {
+  --background: 0 0% 0%;
+  --foreground: 210 20% 92%;
+  --card: 220 15% 7%;
+  --card-foreground: 210 20% 92%;
+  --popover: 220 15% 7%;
+  --popover-foreground: 210 20% 92%;
+  --muted: 220 12% 11%;
+  --muted-foreground: 215 12% 60%;
+  --border: 220 12% 14%;
+  --input: 220 12% 14%;
+  --table-border: 220 10% 22%;
+  --primary: 217 91% 60%;
+  --primary-glow: 217 91% 68%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 12% 11%;
+  --secondary-foreground: 210 20% 92%;
+  --accent: 187 85% 53%;
+  --accent-foreground: 0 0% 0%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 20% 92%;
+  --ring: 217 91% 45%;
+  --radius: 0.5rem;
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 0%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 0%;
+  --info: 187 85% 53%;
+  --info-foreground: 0 0% 0%;
+  --sidebar-bg: 0 0% 2%;
+  --sidebar-foreground: 210 20% 92%;
+  --sidebar-border: 220 12% 12%;
+  --sidebar-item-hover: 220 12% 10%;
+  --sidebar-item-active: 217 91% 60%;
+  --tab-active: 217 91% 60%;
+  --toolbar-bg: 220 15% 4%;
+  --editor-bg: 0 0% 0%;
+  --editor-line-number: 215 12% 40%;
+  --editor-selection: 217 91% 22%;
+  --tree-table: 142 71% 45%;
+  --tree-view: 262 83% 68%;
+  --tree-function: 38 92% 55%;
+  --tree-procedure: 0 72% 60%;
+  --tree-trigger: 25 95% 55%;
+  --tree-schema: 187 85% 53%;
+}
+
 /* ===== Base Styles ===== */
 * { border-color: hsl(var(--border)); }
 table { border-color: hsl(var(--table-border)); }
@@ -149,6 +396,41 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 #root { width: 100vw; height: 100vh; }
+
+/* Smooth color shift when switching themes (skipped for reduced-motion users) */
+@media (prefers-reduced-motion: no-preference) {
+  body, .bg-background, .bg-card, .bg-muted, .bg-popover {
+    transition: background-color 200ms ease, border-color 200ms ease;
+  }
+}
+
+/* ===== Modern popover / dropdown treatment =====
+   Layered shadow + hairline border + entrance animation. Components opt in
+   via the `popover-panel` class. */
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.popover-panel {
+  animation: popover-in 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow:
+    0 0 0 1px hsl(var(--border) / 0.7),
+    0 4px 6px -2px hsl(var(--foreground) / 0.06),
+    0 12px 32px -8px hsl(var(--foreground) / 0.18);
+  backdrop-filter: blur(12px);
+}
+
+/* Keyboard-visible focus ring — consistent, modern, theme-aware */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.6);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* kbd chips */
+kbd {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
 
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

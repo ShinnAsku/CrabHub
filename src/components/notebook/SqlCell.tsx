@@ -30,6 +30,7 @@ import {
   Line
 } from "recharts";
 import { t } from "@/lib/i18n";
+import { useUIStore, isDarkTheme } from "@/stores/modules/ui";
 
 interface Cell {
   id: string;
@@ -87,6 +88,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [xAxisColumn, setXAxisColumn] = useState<string>("");
   const [yAxisColumns, setYAxisColumns] = useState<string[]>([]);
+  const appTheme = useUIStore((s) => s.theme);
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,7 +227,7 @@ const SqlCell: React.FC<SqlCellProps> = ({
               language="sql"
               value={cell.content}
               onChange={(val) => onContentChange(val || "")}
-              theme="vs-dark"
+              theme={isDarkTheme(appTheme) ? "vs-dark" : "vs"}
               options={{
                 minimap: { enabled: false },
                 fontSize: 13,

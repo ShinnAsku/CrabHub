@@ -24,9 +24,21 @@ const E_AUTH_FAIL: &str = "[CRYPTO-E004] Authentication failure (data tampered o
 const E_INVALID_UTF8: &str = "[CRYPTO-E005] Decrypted plaintext is not valid UTF-8";
 const E_KEY_INIT: &str = "[CRYPTO-E006] Failed to set up master key";
 
-/// Initialize master key from system keyring
+/// Initialize master key from `CRABHUB_MASTER_KEY` (headless / Docker) or the
+/// system keyring (desktop). The env var takes precedence so containers —
+/// which have no OS keyring — can supply key material explicitly.
 pub fn init_master_key() -> Result<(), String> {
     if MASTER_KEY.get().is_some() {
+        return Ok(());
+    }
+
+    // Headless mode: derive from environment variable
+    if let Ok(env_key) = std::env::var("CRABHUB_MASTER_KEY") {
+        if env_key.len() < 16 {
+            return Err(format!("{}: CRABHUB_MASTER_KEY must be at least 16 characters", E_KEY_INIT));
+        }
+        let _ = MASTER_KEY.set(derive_key(&env_key, b"crabhub-salt-v1"));
+        log::info!("[encryption] master key derived from CRABHUB_MASTER_KEY");
         return Ok(());
     }
 

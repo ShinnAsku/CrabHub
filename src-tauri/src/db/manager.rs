@@ -707,6 +707,70 @@ impl ConnectionManager {
             .collect()
     }
 
+    /// Execute a batch of SQL statements sequentially on one connection.
+    /// Shared by the Tauri command layer and the web server. Queries return
+    /// wire-format paged results; DML returns ExecuteResult; per-statement
+    /// errors are embedded so one failure doesn't abort the batch.
+    pub async fn execute_batch_json(&self, id: &str, statements: &[String]) -> Result<Vec<serde_json::Value>, String> {
+        use super::types::WirePagedQueryResult;
+        let mut results = Vec::with_capacity(statements.len());
+        for sql in statements {
+            let trimmed = sql.trim();
+            if trimmed.is_empty() {
+                results.push(serde_json::json!({"type": "empty"}));
+                continue;
+            }
+            let upper = trimmed.to_uppercase();
+            let is_query = upper.starts_with("SELECT")
+                || upper.starts_with("WITH")
+                || upper.starts_with("SHOW")
+                || upper.starts_with("DESCRIBE")
+                || upper.starts_with("EXPLAIN");
+            if is_query {
+                match self.query_paged(id, trimmed, 500, 0).await {
+                    Ok(r) => results.push(
+                        serde_json::to_value(WirePagedQueryResult::from(r)).map_err(|e| e.to_string())?,
+                    ),
+                    Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
+                }
+            } else {
+                match self.execute(id, trimmed).await {
+                    Ok(r) => results.push(serde_json::to_value(r).map_err(|e| e.to_string())?),
+                    Err(e) => results.push(serde_json::json!({"type": "error", "message": e.to_string()})),
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    /// List databases visible on a connection, using per-dialect catalog SQL.
+    pub async fn get_databases(&self, id: &str) -> Result<Vec<String>, DbError> {
+        const PG_SQL: &str = "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname";
+        let sql = match self.get_db_type(id).await {
+            Some(DatabaseType::MySQL)
+            | Some(DatabaseType::OceanBase | DatabaseType::TiDB | DatabaseType::TDSQL) => {
+                "SHOW DATABASES".to_string()
+            }
+            Some(DatabaseType::SQLite) => return Ok(vec!["main".to_string()]),
+            Some(DatabaseType::ClickHouse) => {
+                "SELECT name FROM system.databases ORDER BY name".to_string()
+            }
+            Some(DatabaseType::Oracle | DatabaseType::DaMeng | DatabaseType::GBase) => {
+                "SELECT name FROM v$database".to_string()
+            }
+            Some(DatabaseType::SQLServer) => {
+                "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name".to_string()
+            }
+            _ => PG_SQL.to_string(),
+        };
+        let result = self.query_metadata(id, &sql).await?;
+        Ok(result
+            .rows
+            .iter()
+            .filter_map(|row| row.values().next().and_then(|v| v.as_str().map(|s| s.to_string())))
+            .collect())
+    }
+
     /// Get connection health status
     pub async fn get_connection_status(&self, id: &str) -> Result<ConnectionStatus, DbError> {
         let entry = self.entry(id).await?;

@@ -1,4 +1,4 @@
-// Context menus for the sidebar: connection-level (right-click on a connection)
+﻿// Context menus for the sidebar: connection-level (right-click on a connection)
 // and tree-node-level (right-click on a database / table / view / etc.).
 import {
   Plug,
@@ -63,7 +63,7 @@ export function ContextMenu({
 
   const handleConnect = async () => {
     if (connection.connected) {
-      // Update frontend immediately — don't wait for backend disconnect.
+      // Update frontend immediately 鈥?don't wait for backend disconnect.
       useConnectionStore.getState().updateConnection(connection.id, { connected: false });
       const newExpanded = new Set(expandedConnections);
       newExpanded.delete(connection.id);
@@ -109,7 +109,7 @@ export function ContextMenu({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
+        className="popover-panel fixed z-50 border border-border rounded-lg py-1 min-w-[160px]"
         style={{
           left: x,
           top: y,
@@ -276,7 +276,7 @@ export function TreeNodeContextMenu({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
+        className="popover-panel fixed z-50 border border-border rounded-lg py-1 min-w-[160px]"
         style={{
           left: x,
           top: y,
@@ -363,7 +363,7 @@ export function TreeNodeContextMenu({
               </div>
               <div className="absolute left-full top-0 ml-0 hidden group-hover/dup:block z-[60]">
                 <div
-                  className="border border-border rounded-md shadow-lg py-1 min-w-[150px]"
+                  className="popover-panel border border-border rounded-lg py-1 min-w-[150px]"
                   style={{
                     backgroundColor: "hsl(var(--popover))",
                     color: "hsl(var(--popover-foreground))",

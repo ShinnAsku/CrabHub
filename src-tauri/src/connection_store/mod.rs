@@ -133,6 +133,19 @@ impl ConnectionStore {
         )
         .map_err(|e: rusqlite::Error| e.to_string())?;
 
+        // Migration for databases created before query_timeout_secs existed.
+        // "duplicate column name" on re-run is expected and ignored; any other
+        // error is logged so silent migration failures can't recur.
+        if let Err(e) = conn.execute(
+            "ALTER TABLE connections ADD COLUMN query_timeout_secs INTEGER DEFAULT 300",
+            [],
+        ) {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                log::warn!("[ConnectionStore] query_timeout_secs migration failed: {}", msg);
+            }
+        }
+
         Ok(())
     }
 

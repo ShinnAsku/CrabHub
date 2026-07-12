@@ -19,6 +19,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
+import { isDarkTheme } from "@/stores/modules/ui";
 import type { QueryResult, PagedQueryResult, ColumnInfo, TableRow, Connection } from "@/types";
 import { t } from "@/lib/i18n";
 import { executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
@@ -1064,7 +1065,7 @@ function QueryEditor() {
               key={activeTab.id}
               height="100%"
               language="sql"
-              theme={theme === "dark" ? "vs-dark" : "vs"}
+              theme={isDarkTheme(theme) ? "vs-dark" : "vs"}
               value={activeTab.content || ""}
               onChange={handleEditorChange}
               onMount={handleEditorMount}
@@ -1413,7 +1414,7 @@ function TableContextMenu({
       <div className="fixed inset-0 z-50" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
       <div
         ref={menuRef}
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[200px]"
+        className="popover-panel fixed z-50 border border-border rounded-lg py-1 min-w-[200px]"
         style={{ left: pos.x, top: pos.y, backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
       >
         {item(t('table.copyRows'), onCopyRows, <Copy size={12} />, !hasSelection)}

@@ -197,7 +197,7 @@ export default function TableDataView({
             <Download size={14} />
           </button>
           {showImportMenu && (
-            <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px]">
+            <div className="popover-panel absolute top-full left-0 mt-1 bg-popover border border-border rounded-lg z-50 min-w-[120px]">
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("csv")}>{t("data.importCsv")}</button>
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("json")}>{t("data.importJson")}</button>
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("sql")}>{t("data.importSql")}</button>
@@ -215,7 +215,7 @@ export default function TableDataView({
             <Upload size={14} />
           </button>
           {showExportMenu && (
-            <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px]">
+            <div className="popover-panel absolute top-full left-0 mt-1 bg-popover border border-border rounded-lg z-50 min-w-[120px]">
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("csv")}>{t("data.exportCsv")}</button>
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("json")}>{t("data.exportJson")}</button>
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("sql")}>{t("data.exportSql")}</button>

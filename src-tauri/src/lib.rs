@@ -1,9 +1,10 @@
-mod ai;
-mod connection_store;
-mod db;
-mod plugins;
-mod rpc;
-mod ssh;
+pub mod ai;
+pub mod connection_store;
+pub mod db;
+pub mod plugins;
+pub mod rpc;
+pub mod server;
+pub mod ssh;
 #[cfg(any(test, feature = "stress-testing"))]
 mod testing;
 
@@ -14,7 +15,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 
-fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // Use Tabularis-compatible plugin directory
     #[cfg(target_os = "macos")]
     {

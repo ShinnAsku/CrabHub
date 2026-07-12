@@ -42,7 +42,7 @@ export default function TableContextMenu({
     <>
       <div className="fixed inset-0 z-50" onClick={onClose} />
       <div
-        className="fixed z-50 border border-border rounded-md shadow-lg py-1 min-w-[180px]"
+        className="popover-panel fixed z-50 border border-border rounded-lg py-1 min-w-[180px]"
         style={{
           left: menu.x,
           top: menu.y,

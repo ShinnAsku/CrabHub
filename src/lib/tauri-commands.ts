@@ -26,16 +26,55 @@ export interface UpdateStatus {
 // Check if we're running in Tauri environment
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-// Wrapper for invoke that checks Tauri environment first
+// ---------------------------------------------------------------------------
+// Web transport — used when the app is served by crabhub-server (self-hosted
+// / Docker). Same command names and argument shapes as Tauri invoke; the
+// backend dispatches at POST /api/invoke/{cmd}.
+// ---------------------------------------------------------------------------
+
+function getWebToken(): string | null {
+  try { return sessionStorage.getItem("crabhub-web-token"); } catch { return null; }
+}
+
+async function webInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const token = getWebToken();
+  const res = await fetch(`/api/invoke/${cmd}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(args ?? {}),
+  });
+  if (res.status === 401) {
+    // Session expired or missing — drop the stale token and reload so the
+    // WebAuthGate login screen takes over. No prompt(): embedded browsers
+    // block it and it's a poor experience anyway.
+    try { sessionStorage.removeItem("crabhub-web-token"); } catch { /* ignore */ }
+    window.location.reload();
+    throw new Error("Unauthorized: login required");
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(body?.error ?? `HTTP ${res.status}`);
+  }
+  return body as T;
+}
+
+// Wrapper for invoke that picks the right transport:
+// Tauri IPC (desktop) → mock (dev) → HTTP (web/self-hosted).
 async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (isMockMode()) {
     return mockInvoke<T>(cmd, args);
   }
   if (!isTauri) {
-    throw new Error("This app must be run in a Tauri environment. Please use the desktop app instead of the browser.");
+    return webInvoke<T>(cmd, args);
   }
   return invoke<T>(cmd, args);
 }
+
+/** Shared transport for modules outside this file (stores, panels). */
+export const transportInvoke = safeInvoke;
 
 export interface ConnectResult {
   connectionId: string;

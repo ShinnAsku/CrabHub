@@ -71,6 +71,7 @@ export function useAppStore() {
       selectedContext: s.selectedContext,
       toggleAIPanel: s.toggleAIPanel,
       toggleTheme: s.toggleTheme,
+      setTheme: s.setTheme,
       setLanguage: s.setLanguage,
       toggleSidebar: s.toggleSidebar,
       toggleResultPanel: s.toggleResultPanel,
