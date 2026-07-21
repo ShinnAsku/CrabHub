@@ -500,8 +500,11 @@ impl ConnectionManager {
     async fn query_inner_cancellable(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let cancel = self.cancel_token(id).await;
         let entry = self.active_entry(id).await?;
-        self.ensure_use_db(&entry).await;
+        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
+        if let Some(ref use_stmt) = use_sql {
+            let _ = connection.execute_sql(use_stmt).await;
+        }
         // Configurable hard timeout (default 300s, 0 = unlimited) prevents
         // queries from hanging indefinitely
         let timeout_dur = user_query_timeout(&entry.config);
@@ -530,8 +533,11 @@ impl ConnectionManager {
     /// indicates a stuck connection.
     async fn query_inner(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let entry = self.active_entry(id).await?;
-        self.ensure_use_db(&entry).await;
+        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
+        if let Some(ref use_stmt) = use_sql {
+            let _ = connection.execute_sql(use_stmt).await;
+        }
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             connection.query_sql(&sql),
@@ -544,27 +550,23 @@ impl ConnectionManager {
         result
     }
 
-    /// If the connection has a current database set (via switch_database), execute USE first.
-    /// Returns None if USE was already handled, so the caller just executes the original SQL.
-    async fn ensure_use_db(&self, entry: &ConnectionEntry) -> bool {
+    /// If the connection has a current database set (via switch_database),
+    /// returns the USE sql that should be executed before the actual query.
+    async fn get_use_db_sql(&self, entry: &ConnectionEntry) -> Option<String> {
         let current = entry.current_database.read().await;
-        if let Some(ref db) = *current {
-            let sql = format!("USE `{}`", db.replace('`', "``"));
-            drop(current);
-            let connection = entry.connection.read().await;
-            // Execute USE and ignore errors (connection might already be on this db)
-            let _ = connection.execute_sql(&sql).await;
-            true
-        } else {
-            false
-        }
+        current.as_ref().map(|db| {
+            format!("USE `{}`", db.replace('`', "``"))
+        })
     }
 
     /// Non-cancellable execute (for metadata/internal use). 60s timeout.
     async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
         let entry = self.active_entry(id).await?;
-        self.ensure_use_db(&entry).await;
+        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
+        if let Some(ref use_stmt) = use_sql {
+            let _ = connection.execute_sql(use_stmt).await;
+        }
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             connection.execute_sql(sql),
@@ -585,8 +587,11 @@ impl ConnectionManager {
         offset: u64,
     ) -> Result<PagedQueryResult, DbError> {
         let entry = self.active_entry(id).await?;
-        self.ensure_use_db(&entry).await;
+        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
+        if let Some(ref use_stmt) = use_sql {
+            let _ = connection.execute_sql(use_stmt).await;
+        }
 
         // Configurable hard timeout matching the cancellable path; prevents
         // runaway queries from holding a pool connection indefinitely.
