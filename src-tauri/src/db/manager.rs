@@ -54,8 +54,6 @@ struct ConnectionEntry {
     ssh_tunnel: std::sync::Mutex<Option<crate::ssh::tunnel::SshTunnel>>,
     /// True when the user manually disconnected — triggers auto-reconnect on next SQL
     disconnected: AtomicBool,
-    /// Current database context for MySQL-like connections (set via switch_database / USE)
-    current_database: RwLock<Option<String>>,
 }
 
 /// Cached metadata payload. Cheap to clone (all Vec-of-value types).
@@ -362,7 +360,6 @@ impl ConnectionManager {
             reconnect_count: AtomicU32::new(0),
             ssh_tunnel: std::sync::Mutex::new(ssh_tunnel),
             disconnected: AtomicBool::new(false),
-            current_database: RwLock::new(None),
         });
 
         let old = {
@@ -500,11 +497,7 @@ impl ConnectionManager {
     async fn query_inner_cancellable(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let cancel = self.cancel_token(id).await;
         let entry = self.active_entry(id).await?;
-        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
-        if let Some(ref use_stmt) = use_sql {
-            let _ = connection.execute_sql(use_stmt).await;
-        }
         // Configurable hard timeout (default 300s, 0 = unlimited) prevents
         // queries from hanging indefinitely
         let timeout_dur = user_query_timeout(&entry.config);
@@ -533,11 +526,7 @@ impl ConnectionManager {
     /// indicates a stuck connection.
     async fn query_inner(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let entry = self.active_entry(id).await?;
-        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
-        if let Some(ref use_stmt) = use_sql {
-            let _ = connection.execute_sql(use_stmt).await;
-        }
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             connection.query_sql(&sql),
@@ -550,23 +539,10 @@ impl ConnectionManager {
         result
     }
 
-    /// If the connection has a current database set (via switch_database),
-    /// returns the USE sql that should be executed before the actual query.
-    async fn get_use_db_sql(&self, entry: &ConnectionEntry) -> Option<String> {
-        let current = entry.current_database.read().await;
-        current.as_ref().map(|db| {
-            format!("USE `{}`", db.replace('`', "``"))
-        })
-    }
-
     /// Non-cancellable execute (for metadata/internal use). 60s timeout.
     async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
         let entry = self.active_entry(id).await?;
-        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
-        if let Some(ref use_stmt) = use_sql {
-            let _ = connection.execute_sql(use_stmt).await;
-        }
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             connection.execute_sql(sql),
@@ -587,11 +563,7 @@ impl ConnectionManager {
         offset: u64,
     ) -> Result<PagedQueryResult, DbError> {
         let entry = self.active_entry(id).await?;
-        let use_sql = self.get_use_db_sql(&entry).await;
         let connection = entry.connection.read().await;
-        if let Some(ref use_stmt) = use_sql {
-            let _ = connection.execute_sql(use_stmt).await;
-        }
 
         // Configurable hard timeout matching the cancellable path; prevents
         // runaway queries from holding a pool connection indefinitely.
@@ -858,38 +830,48 @@ impl ConnectionManager {
     // Thin pass-through methods delegating to DatabaseConnection trait
     // ========================================================================
 
-    /// Switch the active database for a connection (executes USE <db>).
-    /// Also invalidates metadata cache since schema context changed.
+    /// Switch the active database by reconnecting with the new database name
+    /// in the connection config. This is the most reliable approach as it
+    /// avoids connection-pool session-state issues with USE.
     pub async fn switch_database(&self, id: &str, database: &str) -> Result<(), DbError> {
         let entry = self.entry(id).await?;
-        let connection = entry.connection.read().await;
-        let db_type = connection.db_type();
-        let sql = match db_type {
-            DatabaseType::MySQL | DatabaseType::TiDB | DatabaseType::TDSQL | DatabaseType::OceanBase => {
-                format!("USE `{}`", database.replace('`', "``"))
-            }
-            DatabaseType::ClickHouse => {
-                format!("USE `{}`", database.replace('`', "``"))
-            }
-            _ => {
-                return Err(DbError::ConfigError(format!(
-                    "switch_database not supported for {:?}", db_type
-                )));
-            }
+        let db_type = {
+            let connection = entry.connection.read().await;
+            connection.db_type()
         };
-        log::info!("Switching database on connection '{}' to '{}'", id, database);
-        // Execute without auto-reconnect — if the connection is dead, we'll notice here
-        let result = connection.execute_sql(&sql).await;
-        drop(connection);
-        if result.is_ok() {
-            // Store the database context so all subsequent queries include USE db
-            let mut current = entry.current_database.write().await;
-            *current = Some(database.to_string());
-            drop(current);
-            self.invalidate_metadata(id).await;
-            log::info!("Switched database for '{}' to '{}'", id, database);
+        let supports_switch = matches!(
+            db_type,
+            DatabaseType::MySQL | DatabaseType::TiDB | DatabaseType::TDSQL
+                | DatabaseType::OceanBase | DatabaseType::ClickHouse
+        );
+        if !supports_switch {
+            return Err(DbError::ConfigError(format!(
+                "switch_database not supported for {:?}", db_type
+            )));
         }
-        result.map(|_| ())
+
+        log::info!("Switching database on connection '{}' to '{}'", id, database);
+
+        // Build new config with the target database
+        let mut new_config = entry.config.clone();
+        new_config.database = Some(database.to_string());
+
+        // Create a new connection with the updated config
+        let new_connection = Self::create_connection_async(&new_config, self.plugin_manager.lock().await.as_deref()).await?;
+
+        // Replace the connection atomically
+        {
+            let mut conn = entry.connection.write().await;
+            let old = std::mem::replace(&mut *conn, new_connection);
+            tokio::spawn(async move { old.close().await });
+        }
+
+        // Update config and clear cached metadata
+        *entry.last_heartbeat.lock().unwrap() = Instant::now();
+        entry.is_healthy.store(true, Ordering::Relaxed);
+        self.invalidate_metadata(id).await;
+        log::info!("Switched database for '{}' to '{}'", id, database);
+        Ok(())
     }
 
     pub async fn get_tables(&self, id: &str) -> Result<Vec<TableInfo>, DbError> {
@@ -973,7 +955,6 @@ impl ConnectionManager {
             reconnect_count: AtomicU32::new(0),
             ssh_tunnel: std::sync::Mutex::new(None),
             disconnected: AtomicBool::new(false),
-            current_database: RwLock::new(None),
         });
 
         self.connections.write().await.insert(sub_id.clone(), sub_entry);
