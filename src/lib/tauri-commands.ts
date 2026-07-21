@@ -130,6 +130,10 @@ export async function disconnectDatabase(id: string): Promise<void> {
   return safeInvoke<void>("disconnect_database", { id });
 }
 
+export async function switchDatabase(id: string, database: string): Promise<void> {
+  return safeInvoke<void>("switch_database", { id, database });
+}
+
 export async function executeQuery(id: string, sql: string): Promise<QueryResult> {
   const raw = await safeInvoke<RawQueryResult>("execute_query", { id, sql });
   return mapRawQueryResult(raw);

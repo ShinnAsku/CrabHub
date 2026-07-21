@@ -34,6 +34,19 @@ pub async fn disconnect_database(
         .map_err(|e| e.to_string())
 }
 
+/// Switch the active database for a MySQL/ClickHouse connection
+#[tauri::command]
+pub async fn switch_database(
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+    database: String,
+) -> Result<(), String> {
+    state
+        .switch_database(&id, &database)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Execute a SQL query (SELECT) and return results
 #[tauri::command]
 pub async fn execute_query(

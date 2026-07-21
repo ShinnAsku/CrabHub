@@ -82,6 +82,7 @@ pub async fn run() {
             // Database commands
             db::commands::connect_to_database,
             db::commands::disconnect_database,
+            db::commands::switch_database,
             db::commands::execute_query,
             db::commands::execute_query_paged,
             db::commands::execute_batch,

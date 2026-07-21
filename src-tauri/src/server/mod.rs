@@ -260,6 +260,13 @@ struct IdArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SwitchDbArgs {
+    id: String,
+    database: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SqlArgs {
     id: String,
     sql: String,
@@ -425,6 +432,13 @@ async fn invoke(
         "disconnect_database" => {
             let a: IdArgs = args!(body);
             match m.disconnect(&a.id).await {
+                Ok(()) => ok(Value::Null),
+                Err(e) => err(e.to_string()),
+            }
+        }
+        "switch_database" => {
+            let a: SwitchDbArgs = args!(body);
+            match m.switch_database(&a.id, &a.database).await {
                 Ok(()) => ok(Value::Null),
                 Err(e) => err(e.to_string()),
             }

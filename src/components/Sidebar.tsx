@@ -860,6 +860,14 @@ function DatabaseTree({
         connectionId,
         schemaName: node.name,
       });
+      // Switch database on the backend for MySQL-like connections
+      const mysqlTypes = ['mysql', 'mariadb', 'tidb', 'tdsql', 'oceanbase', 'clickhouse'];
+      if (mysqlTypes.includes(connection.type)) {
+        const { switchDatabase } = await import("@/lib/tauri-commands");
+        switchDatabase(connectionId, node.name).catch(err =>
+          console.error('[DatabaseTree] Failed to switch database:', err)
+        );
+      }
       log.debug('[DatabaseTree] Selected database (as schema):', node.name);
     } else if (['tables', 'views', 'functions', 'procedures', 'events', 'triggers'].includes(node.type)) {
       useConnectionStore.getState().setActiveConnection(connectionId);

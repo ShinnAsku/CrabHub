@@ -830,6 +830,37 @@ impl ConnectionManager {
     // Thin pass-through methods delegating to DatabaseConnection trait
     // ========================================================================
 
+    /// Switch the active database for a connection (executes USE <db>).
+    /// Also invalidates metadata cache since schema context changed.
+    pub async fn switch_database(&self, id: &str, database: &str) -> Result<(), DbError> {
+        let entry = self.entry(id).await?;
+        let connection = entry.connection.read().await;
+        let db_type = connection.db_type();
+        let sql = match db_type {
+            DatabaseType::MySQL | DatabaseType::TiDB | DatabaseType::TDSQL | DatabaseType::OceanBase => {
+                format!("USE `{}`", database.replace('`', "``"))
+            }
+            DatabaseType::ClickHouse => {
+                format!("USE `{}`", database.replace('`', "``"))
+            }
+            _ => {
+                return Err(DbError::ConfigError(format!(
+                    "switch_database not supported for {:?}", db_type
+                )));
+            }
+        };
+        log::info!("Switching database on connection '{}' to '{}'", id, database);
+        // Execute without auto-reconnect — if the connection is dead, we'll notice here
+        let result = connection.execute_sql(&sql).await;
+        drop(connection);
+        if result.is_ok() {
+            // Also store the database context on the entry so queries can use it
+            self.invalidate_metadata(id).await;
+            log::info!("Switched database for '{}' to '{}'", id, database);
+        }
+        result.map(|_| ())
+    }
+
     pub async fn get_tables(&self, id: &str) -> Result<Vec<TableInfo>, DbError> {
         let key = format!("{}\x00tables", id);
         if let Some(CachedMeta::Tables(t)) = self.meta_get(&key).await {
