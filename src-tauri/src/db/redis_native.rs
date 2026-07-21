@@ -165,6 +165,23 @@ impl RedisConnection {
             .await
             .map_err(|e| DbError::QueryError(format!("Redis: {}", e)))
     }
+
+    async fn key_type(&self, key: &str) -> Result<String, DbError> {
+        match Self::value_to_json(&self.run(&["TYPE".into(), key.into()]).await?) {
+            Value::String(s) => Ok(s),
+            _ => Ok("string".into()),
+        }
+    }
+}
+
+fn val_to_redis_string(val: &Value) -> String {
+    match val {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
 }
 
 #[async_trait]
@@ -328,26 +345,186 @@ impl DatabaseConnection for RedisConnection {
     }
 
     async fn update_table_rows(
-        &self, _t: &str, _s: Option<&str>,
-        _u: &[(String, Value)],
-        _w: &[crate::db::types::WhereCondition],
+        &self, table: &str, _s: Option<&str>,
+        updates: &[(String, Value)],
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
-        Err(DbError::QueryError("Redis 请使用命令行操作（HSET / LSET / SET ...）".into()))
+        let start = std::time::Instant::now();
+        let key_type = self.key_type(table).await?;
+        let mut affected: u64 = 0;
+
+        match key_type.as_str() {
+            "hash" => {
+                let field_name = where_conditions.iter()
+                    .find(|w| w.column == "field")
+                    .and_then(|w| w.value.as_str().map(String::from))
+                    .ok_or_else(|| DbError::QueryError("No field column in where conditions".into()))?;
+                for (col, val) in updates {
+                    if col == "value" {
+                        let val_str = val_to_redis_string(val);
+                        self.run(&["HSET".into(), table.into(), field_name.clone(), val_str]).await?;
+                        affected += 1;
+                    }
+                }
+            }
+            "list" => {
+                let idx = where_conditions.iter()
+                    .find(|w| w.column == "index")
+                    .and_then(|w| w.value.as_u64().or_else(|| w.value.as_str().and_then(|s| s.parse().ok())))
+                    .ok_or_else(|| DbError::QueryError("No index in where conditions".into()))?;
+                for (col, val) in updates {
+                    if col == "value" {
+                        let val_str = val_to_redis_string(val);
+                        self.run(&["LSET".into(), table.into(), idx.to_string(), val_str]).await?;
+                        affected += 1;
+                    }
+                }
+            }
+            "set" => {
+                let old_member = where_conditions.iter()
+                    .find(|w| w.column == "member")
+                    .and_then(|w| w.value.as_str().map(String::from))
+                    .ok_or_else(|| DbError::QueryError("No member in where conditions".into()))?;
+                let new_member = updates.iter()
+                    .find(|(c, _)| c == "member")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_else(|| old_member.clone());
+                self.run(&["SREM".into(), table.into(), old_member]).await?;
+                self.run(&["SADD".into(), table.into(), new_member]).await?;
+                affected += 1;
+            }
+            "zset" => {
+                let member = where_conditions.iter()
+                    .find(|w| w.column == "member")
+                    .and_then(|w| w.value.as_str().map(String::from))
+                    .ok_or_else(|| DbError::QueryError("No member in where conditions".into()))?;
+                let new_member = updates.iter()
+                    .find(|(c, _)| c == "member")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_else(|| member.clone());
+                let score = updates.iter()
+                    .find(|(c, _)| c == "score")
+                    .and_then(|(_, v)| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .unwrap_or(0.0);
+                if new_member != member {
+                    self.run(&["ZREM".into(), table.into(), member]).await?;
+                }
+                self.run(&["ZADD".into(), table.into(), score.to_string(), new_member]).await?;
+                affected += 1;
+            }
+            _ => {
+                let new_val = updates.iter()
+                    .find(|(c, _)| c == "value")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                self.run(&["SET".into(), table.into(), new_val]).await?;
+                affected += 1;
+            }
+        }
+        Ok(ExecuteResult { rows_affected: affected, execution_time_ms: start.elapsed().as_millis() as u64 })
     }
 
     async fn insert_table_row(
-        &self, _t: &str, _s: Option<&str>, _v: &[(String, Value)],
+        &self, table: &str, _s: Option<&str>, values: &[(String, Value)],
     ) -> Result<ExecuteResult, DbError> {
-        Err(DbError::QueryError("Redis 请使用命令行操作（SET / HSET / RPUSH ...）".into()))
+        let start = std::time::Instant::now();
+        let key_type = self.key_type(table).await?;
+
+        match key_type.as_str() {
+            "hash" => {
+                let field = values.iter().find(|(c, _)| c == "field")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                let value = values.iter().find(|(c, _)| c == "value")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                self.run(&["HSET".into(), table.into(), field, value]).await?;
+            }
+            "list" => {
+                let value = values.iter().find(|(c, _)| c == "value")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                self.run(&["RPUSH".into(), table.into(), value]).await?;
+            }
+            "set" => {
+                let member = values.iter().find(|(c, _)| c == "member")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                self.run(&["SADD".into(), table.into(), member]).await?;
+            }
+            "zset" => {
+                let member = values.iter().find(|(c, _)| c == "member")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                let score = values.iter().find(|(c, _)| c == "score")
+                    .and_then(|(_, v)| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .unwrap_or(0.0);
+                self.run(&["ZADD".into(), table.into(), score.to_string(), member]).await?;
+            }
+            _ => {
+                let value = values.iter().find(|(c, _)| c == "value")
+                    .map(|(_, v)| val_to_redis_string(v))
+                    .unwrap_or_default();
+                self.run(&["SET".into(), table.into(), value]).await?;
+            }
+        }
+        Ok(ExecuteResult { rows_affected: 1, execution_time_ms: start.elapsed().as_millis() as u64 })
     }
 
     async fn delete_table_rows(
         &self, table: &str, _s: Option<&str>,
-        _w: &[crate::db::types::WhereCondition],
+        where_conditions: &[crate::db::types::WhereCondition],
     ) -> Result<ExecuteResult, DbError> {
         let start = std::time::Instant::now();
-        self.run(&["DEL".into(), table.into()]).await?;
-        Ok(ExecuteResult { rows_affected: 1, execution_time_ms: start.elapsed().as_millis() as u64 })
+        let key_type = self.key_type(table).await?;
+        let mut affected: u64 = 0;
+
+        match key_type.as_str() {
+            "hash" => {
+                for w in where_conditions {
+                    if w.column == "field" {
+                        if let Some(field) = w.value.as_str() {
+                            self.run(&["HDEL".into(), table.into(), field.into()]).await?;
+                            affected += 1;
+                        }
+                    }
+                }
+            }
+            "list" => {
+                for w in where_conditions {
+                    if w.column == "value" {
+                        let val_str = val_to_redis_string(&w.value);
+                        let result = self.run(&["LREM".into(), table.into(), "0".into(), val_str]).await?;
+                        if let redis::Value::Int(n) = result { affected += n as u64; }
+                    }
+                }
+            }
+            "set" => {
+                for w in where_conditions {
+                    if w.column == "member" {
+                        if let Some(member) = w.value.as_str() {
+                            self.run(&["SREM".into(), table.into(), member.into()]).await?;
+                            affected += 1;
+                        }
+                    }
+                }
+            }
+            "zset" => {
+                for w in where_conditions {
+                    if w.column == "member" {
+                        if let Some(member) = w.value.as_str() {
+                            self.run(&["ZREM".into(), table.into(), member.into()]).await?;
+                            affected += 1;
+                        }
+                    }
+                }
+            }
+            _ => {
+                self.run(&["DEL".into(), table.into()]).await?;
+                affected += 1;
+            }
+        }
+        Ok(ExecuteResult { rows_affected: affected, execution_time_ms: start.elapsed().as_millis() as u64 })
     }
 }
 

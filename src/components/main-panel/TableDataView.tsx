@@ -152,7 +152,6 @@ export default function TableDataView({
       {/* Data Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
         {!isNoSQLType && (
-          <>
             <button
               aria-label={t("data.addRow")}
               className="p-1 rounded hover:bg-muted text-success"
@@ -162,34 +161,35 @@ export default function TableDataView({
             >
               <Plus size={14} />
             </button>
-            <button
-              aria-label={t("data.saveChanges")}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-              title={t("data.saveChanges")}
-              onClick={onSave}
-              disabled={!hasPendingChanges || isSaving}
-            >
-              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            </button>
-            <button
-              aria-label={t("data.cancelChanges")}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-              title={t("data.cancelChanges")}
-              onClick={onCancelChanges}
-              disabled={!hasPendingChanges}
-            >
-              <X size={14} />
-            </button>
-            <button
-              aria-label={t("data.deleteSelected")}
-              className="p-1 rounded hover:bg-muted text-destructive disabled:opacity-30"
-              title={t("data.deleteSelected")}
-              onClick={onDeleteRows}
-              disabled={selectedRowIndices.size === 0 || isSaving}
-            >
-              <Trash2 size={14} />
-            </button>
-          </>
+        )}
+        <button
+          aria-label={t("data.saveChanges")}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
+          title={t("data.saveChanges")}
+          onClick={onSave}
+          disabled={!hasPendingChanges || isSaving}
+        >
+          {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+        </button>
+        <button
+          aria-label={t("data.cancelChanges")}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
+          title={t("data.cancelChanges")}
+          onClick={onCancelChanges}
+          disabled={!hasPendingChanges}
+        >
+          <X size={14} />
+        </button>
+        {!isNoSQLType && (
+          <button
+            aria-label={t("data.deleteSelected")}
+            className="p-1 rounded hover:bg-muted text-destructive disabled:opacity-30"
+            title={t("data.deleteSelected")}
+            onClick={onDeleteRows}
+            disabled={selectedRowIndices.size === 0 || isSaving}
+          >
+            <Trash2 size={14} />
+          </button>
         )}
 
         <div className="w-px h-4 bg-border mx-1" />
