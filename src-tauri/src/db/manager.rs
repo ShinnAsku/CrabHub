@@ -504,7 +504,7 @@ impl ConnectionManager {
         let timeout = tokio::time::sleep(timeout_dur);
         tokio::pin!(timeout);
         let result = tokio::select! {
-            r = connection.query_sql(&sql) => r,
+            r = connection.query_sql(sql) => r,
             _ = cancel.cancelled() => {
                 log::info!("Query cancelled by user for connection '{}'", id);
                 Err(DbError::QueryError("Query cancelled".to_string()))
@@ -529,7 +529,7 @@ impl ConnectionManager {
         let connection = entry.connection.read().await;
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            connection.query_sql(&sql),
+            connection.query_sql(sql),
         )
         .await
         .map_err(|_| DbError::Timeout("Metadata query exceeded 60s limit".to_string()))?;
