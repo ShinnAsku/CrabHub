@@ -54,6 +54,8 @@ struct ConnectionEntry {
     ssh_tunnel: std::sync::Mutex<Option<crate::ssh::tunnel::SshTunnel>>,
     /// True when the user manually disconnected — triggers auto-reconnect on next SQL
     disconnected: AtomicBool,
+    /// Current database context for MySQL-like connections (set via switch_database / USE)
+    current_database: RwLock<Option<String>>,
 }
 
 /// Cached metadata payload. Cheap to clone (all Vec-of-value types).
@@ -360,6 +362,7 @@ impl ConnectionManager {
             reconnect_count: AtomicU32::new(0),
             ssh_tunnel: std::sync::Mutex::new(ssh_tunnel),
             disconnected: AtomicBool::new(false),
+            current_database: RwLock::new(None),
         });
 
         let old = {
@@ -497,6 +500,7 @@ impl ConnectionManager {
     async fn query_inner_cancellable(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let cancel = self.cancel_token(id).await;
         let entry = self.active_entry(id).await?;
+        let sql = self.inject_use_db(&entry, sql).await;
         let connection = entry.connection.read().await;
         // Configurable hard timeout (default 300s, 0 = unlimited) prevents
         // queries from hanging indefinitely
@@ -504,7 +508,7 @@ impl ConnectionManager {
         let timeout = tokio::time::sleep(timeout_dur);
         tokio::pin!(timeout);
         let result = tokio::select! {
-            r = connection.query_sql(sql) => r,
+            r = connection.query_sql(&sql) => r,
             _ = cancel.cancelled() => {
                 log::info!("Query cancelled by user for connection '{}'", id);
                 Err(DbError::QueryError("Query cancelled".to_string()))
@@ -526,10 +530,11 @@ impl ConnectionManager {
     /// indicates a stuck connection.
     async fn query_inner(&self, id: &str, sql: &str) -> Result<QueryResult, DbError> {
         let entry = self.active_entry(id).await?;
+        let sql = self.inject_use_db(&entry, sql).await;
         let connection = entry.connection.read().await;
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            connection.query_sql(sql),
+            connection.query_sql(&sql),
         )
         .await
         .map_err(|_| DbError::Timeout("Metadata query exceeded 60s limit".to_string()))?;
@@ -539,13 +544,31 @@ impl ConnectionManager {
         result
     }
 
+    /// Inject USE database prefix for MySQL-like connections that have a current_database set.
+    async fn inject_use_db(&self, entry: &ConnectionEntry, sql: &str) -> String {
+        let current = entry.current_database.read().await;
+        if let Some(ref db) = *current {
+            let connection = entry.connection.read().await;
+            let db_type = connection.db_type();
+            let needs_use = matches!(
+                db_type,
+                DatabaseType::MySQL | DatabaseType::TiDB | DatabaseType::TDSQL | DatabaseType::OceanBase | DatabaseType::ClickHouse
+            );
+            if needs_use {
+                return format!("USE `{}`; {}", db.replace('`', "``"), sql);
+            }
+        }
+        sql.to_string()
+    }
+
     /// Non-cancellable execute (for metadata/internal use). 60s timeout.
     async fn execute_inner(&self, id: &str, sql: &str) -> Result<ExecuteResult, DbError> {
         let entry = self.active_entry(id).await?;
+        let sql = self.inject_use_db(&entry, sql).await;
         let connection = entry.connection.read().await;
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            connection.execute_sql(sql),
+            connection.execute_sql(&sql),
         )
         .await
         .map_err(|_| DbError::Timeout("Execute exceeded 60s limit".to_string()))?;
@@ -563,6 +586,7 @@ impl ConnectionManager {
         offset: u64,
     ) -> Result<PagedQueryResult, DbError> {
         let entry = self.active_entry(id).await?;
+        let wrapped_sql = self.inject_use_db(&entry, sql).await;
         let connection = entry.connection.read().await;
 
         // Configurable hard timeout matching the cancellable path; prevents
@@ -570,8 +594,8 @@ impl ConnectionManager {
         let timeout = user_query_timeout(&entry.config);
 
         // If the user already specified a LIMIT / TOP / FETCH, execute as-is
-        if sql_limiter::has_user_limit(sql) {
-            let result = tokio::time::timeout(timeout, connection.query_sql(sql))
+        if sql_limiter::has_user_limit(&wrapped_sql) {
+            let result = tokio::time::timeout(timeout, connection.query_sql(&wrapped_sql))
                 .await
                 .map_err(|_| DbError::Timeout(format!("Query exceeded {}s limit", timeout.as_secs())))??;
             return Ok(PagedQueryResult {
@@ -586,7 +610,7 @@ impl ConnectionManager {
         // Use streaming paged query that fetches at most limit+1 rows
         let db_type = connection.db_type();
         let modified_sql =
-            sql_limiter::inject_limit_offset(sql, &db_type, limit + 1, offset);
+            sql_limiter::inject_limit_offset(&wrapped_sql, &db_type, limit + 1, offset);
         let (result, has_more) = tokio::time::timeout(
             timeout,
             connection.query_sql_paged(&modified_sql, limit, offset),
@@ -854,7 +878,10 @@ impl ConnectionManager {
         let result = connection.execute_sql(&sql).await;
         drop(connection);
         if result.is_ok() {
-            // Also store the database context on the entry so queries can use it
+            // Store the database context so all subsequent queries include USE db
+            if let Ok(mut current) = entry.current_database.try_write() {
+                *current = Some(database.to_string());
+            }
             self.invalidate_metadata(id).await;
             log::info!("Switched database for '{}' to '{}'", id, database);
         }
@@ -942,6 +969,7 @@ impl ConnectionManager {
             reconnect_count: AtomicU32::new(0),
             ssh_tunnel: std::sync::Mutex::new(None),
             disconnected: AtomicBool::new(false),
+            current_database: RwLock::new(None),
         });
 
         self.connections.write().await.insert(sub_id.clone(), sub_entry);
