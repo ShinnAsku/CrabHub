@@ -250,7 +250,7 @@ impl ConnectionManager {
                     .map_err(|e| DbError::ConfigError(format!("Failed to start plugin '{}': {}", plugin_id, e)))?;
                 let config_json = serde_json::to_value(config)
                     .map_err(|e| DbError::ConfigError(e.to_string()))?;
-                Ok(Box::new(PluginDriver::new(client, plugin_id.clone(), config_json).await))
+                Ok(Box::new(PluginDriver::new(client, plugin_id.clone(), config_json).await?))
             }
             DatabaseType::PostgreSQL => {
                 Ok(Box::new(PostgresConnection::new(config).await?))

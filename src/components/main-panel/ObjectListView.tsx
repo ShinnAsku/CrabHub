@@ -32,6 +32,8 @@ interface ObjectListViewProps {
   onTableContextMenu: (e: React.MouseEvent, table: SchemaNode) => void;
 }
 
+const isNoSQL = (type: string) => type === 'redis' || type === 'mongodb' || type.startsWith('plugin:');
+
 export default memo(function ObjectListView({
   activeConnection,
   tables,
@@ -54,27 +56,31 @@ export default memo(function ObjectListView({
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
-        <button
-          aria-label={t("designer.editTable")}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-          title={t("designer.editTable")}
-          disabled={!selectedTableId}
-          onClick={onEditTable}
-        >
-          <Edit size={14} />
-        </button>
-        <button
-          aria-label={t("designer.createTable")}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-          title={t("designer.createTable")}
-          onClick={onCreateTable}
-        >
-          <Plus size={14} />
-        </button>
+        {!isNoSQL(activeConnection?.type || '') && (
+          <>
+            <button
+              aria-label={t("designer.editTable")}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
+              title={t("designer.editTable")}
+              disabled={!selectedTableId}
+              onClick={onEditTable}
+            >
+              <Edit size={14} />
+            </button>
+            <button
+              aria-label={t("designer.createTable")}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              title={t("designer.createTable")}
+              onClick={onCreateTable}
+            >
+              <Plus size={14} />
+            </button>
+          </>
+        )}
         <button
           aria-label={t("sidebar.deleteTable")}
           className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-          title={t("sidebar.deleteTable")}
+          title={isNoSQL(activeConnection?.type || '') ? 'Delete Key' : t("sidebar.deleteTable")}
           disabled={!selectedTableId}
           onClick={onDeleteSelectedTable}
         >
@@ -96,7 +102,14 @@ export default memo(function ObjectListView({
       <div className="flex-1 min-h-0 overflow-y-auto">
         <table className="w-full text-xs border-collapse border" style={{ tableLayout: "fixed" }}>
             <colgroup>
-              {activeConnection?.type === "mysql" ? (
+              {isNoSQL(activeConnection?.type || '') ? (
+                <>
+                  <col style={{ width: "45%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "15%" }} />
+                </>
+              ) : activeConnection?.type === "mysql" ? (
                 <>
                   <col style={{ width: "22%" }} />
                   <col style={{ width: "8%" }} />
@@ -121,7 +134,14 @@ export default memo(function ObjectListView({
               )}
             </colgroup>
             <thead className="sticky top-0" style={{ backgroundColor: "hsl(var(--tab-active))" }}>
-              {activeConnection?.type === "mysql" ? (
+              {isNoSQL(activeConnection?.type || '') ? (
+                <tr>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">{t("common.name")}</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">Type</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">Size</th>
+                  <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30">TTL</th>
+                </tr>
+              ) : activeConnection?.type === "mysql" ? (
                 <tr>
                   <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("common.name")}>{t("common.name")}</th>
                   <th className="text-left px-2 py-1 font-medium text-white truncate border border-white/30" title={t("tableHeader.rows")}>{t("tableHeader.rows")}</th>
@@ -148,6 +168,42 @@ export default memo(function ObjectListView({
             <tbody>
               {tables.map((table) => {
                 const meta = tableMetadataMap[table.id];
+                if (isNoSQL(activeConnection?.type || '')) {
+                  const typeLabel = meta?.tableType || '—';
+                  const typeColors: Record<string, string> = {
+                    STRING: 'text-green-400',
+                    HASH: 'text-blue-400',
+                    LIST: 'text-yellow-400',
+                    SET: 'text-purple-400',
+                    ZSET: 'text-orange-400',
+                    STREAM: 'text-cyan-400',
+                  };
+                  return (
+                    <tr
+                      key={table.id}
+                      onClick={() => onTableSelect(table)}
+                      onDoubleClick={() => onOpenTableTab(table)}
+                      onContextMenu={(e) => onTableContextMenu(e, table)}
+                      className={`cursor-pointer hover:bg-muted/50 border-l-2 ${
+                        selectedTableId === table.id
+                          ? "border-l-[hsl(var(--tab-active))] bg-[hsl(var(--tab-active))]/20"
+                          : "border-l-transparent"
+                      }`}
+                    >
+                      <td className="px-2 py-1 truncate border">
+                        <span className="inline-flex items-center gap-1">
+                          <Key size={12} className="shrink-0 text-muted-foreground" />
+                          <span className="truncate">{table.name}</span>
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 truncate border">
+                        <span className={typeColors[typeLabel] || 'text-muted-foreground'}>{typeLabel}</span>
+                      </td>
+                      <td className="px-2 py-1 text-muted-foreground truncate border">{meta?.rowCount != null ? meta.rowCount : '—'}</td>
+                      <td className="px-2 py-1 text-muted-foreground truncate border">—</td>
+                    </tr>
+                  );
+                }
                 if (activeConnection?.type === "mysql") {
                   const formatDataLength = (bytes: number | null | undefined) => {
                     if (bytes == null) return "—";
@@ -220,11 +276,11 @@ export default memo(function ObjectListView({
           </table>
       </div>
 
-      {/* Columns Section */}
+      {/* Columns / Info Section */}
       <div className="border-t border-border flex flex-col" style={{ height: "200px" }}>
         <div className="flex items-center justify-between px-2 py-1 border-b border-border bg-muted/20">
           <span className="text-xs font-medium text-foreground">
-            {t('columnHeader.columns')} {previewTableName && <span className="text-muted-foreground">- {previewTableName}</span>}
+            {isNoSQL(activeConnection?.type || '') ? 'Value Structure' : t('columnHeader.columns')}{previewTableName && <span className="text-muted-foreground"> - {previewTableName}</span>}
           </span>
         </div>
         <div className="flex-1 overflow-auto">
@@ -273,7 +329,9 @@ export default memo(function ObjectListView({
           {displayDDL && (
             <div className="border-t border-border mt-2">
               <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t("navicat.ddl")}</span>
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {isNoSQL(activeConnection?.type || '') ? 'Key Info' : t("navicat.ddl")}
+                </span>
               </div>
               <pre className="text-xs font-mono whitespace-pre-wrap text-blue-500 p-3 max-h-[200px] overflow-auto">
                 {displayDDL}

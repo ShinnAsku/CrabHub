@@ -81,13 +81,17 @@ impl PluginDriver {
         client: Arc<RpcClient>,
         plugin_id: String,
         params: Value,
-    ) -> Self {
-        // Try Tabularis protocol first (initialize)
+    ) -> Result<Self, DbError> {
         let is_tabularis = client.tabularis_initialize(json!({}))
             .await
             .is_ok();
 
-        Self { client, plugin_id, params, is_tabularis }
+        if !is_tabularis {
+            client.connect(params.clone()).await
+                .map_err(|e| DbError::ConfigError(format!("Plugin connect failed: {}", e)))?;
+        }
+
+        Ok(Self { client, plugin_id, params, is_tabularis })
     }
 }
 

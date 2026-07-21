@@ -790,7 +790,13 @@ function getSupportedCategories(dbType: string): TreeNodeType[] {
       return ['tables', 'views', 'triggers'];
     case 'clickhouse':
       return ['tables', 'views'];
+    case 'redis':
+    case 'mongodb':
+      return ['tables'];
     default:
+      if (dbType.startsWith('plugin:')) {
+        return ['tables'];
+      }
       return ['tables', 'views'];
   }
 }
@@ -804,6 +810,13 @@ const categoryNames: Record<string, string> = {
   procedures: '存储过程',
   triggers: '触发器',
 };
+
+function getCategoryName(cat: string, dbType: string): string {
+  if (cat === 'tables' && (dbType === 'redis' || dbType === 'mongodb' || dbType.startsWith('plugin:'))) {
+    return 'Keys';
+  }
+  return categoryNames[cat] || cat;
+}
 
 function DatabaseTree({
   connectionId,
@@ -1071,7 +1084,7 @@ function DatabaseTree({
           children = cats.map(cat => ({
             id: `${node.id}-${cat}`,
             type: cat,
-            name: categoryNames[cat] || cat,
+            name: getCategoryName(cat, connection.type),
             connectionId: node.connectionId,
             databaseName: node.name,
             schemaName: node.name,
@@ -1086,7 +1099,7 @@ function DatabaseTree({
         children = supportedCategories.map(cat => ({
           id: `${node.id}-${cat}`,
           type: cat,
-          name: categoryNames[cat] || cat,
+          name: getCategoryName(cat, connection.type),
           connectionId: node.connectionId,
           databaseName: node.databaseName,
           schemaName: node.name,

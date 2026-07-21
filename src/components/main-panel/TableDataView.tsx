@@ -80,6 +80,7 @@ interface TableDataViewProps {
   showExportMenu: boolean;
   paginationState: Record<string, { currentPage: number; pageSize: number }>;
   totalRowCountCache: Record<string, number>;
+  dbType?: string;
   setEditingCell: (cell: { rowIdx: number; colName: string } | null) => void;
   setEditedRows: React.Dispatch<React.SetStateAction<Map<number, Record<string, any>>>>;
   setNewRows: React.Dispatch<React.SetStateAction<Record<string, any>[]>>;
@@ -114,6 +115,7 @@ export default function TableDataView({
   showExportMenu,
   paginationState,
   totalRowCountCache,
+  dbType,
   setEditingCell,
   setEditedRows,
   setNewRows,
@@ -131,6 +133,7 @@ export default function TableDataView({
   onPageChange,
   onPageSizeChange,
 }: TableDataViewProps) {
+  const isNoSQLType = dbType === 'redis' || dbType === 'mongodb' || (dbType || '').startsWith('plugin:');
   const colCount = selectedTableData?.columns.length ?? 0;
   const { widths, onMouseDown } = useColumnResize(colCount);
 
@@ -148,42 +151,46 @@ export default function TableDataView({
     <div className="h-full flex flex-col">
       {/* Data Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border">
-        <button
-          aria-label={t("data.addRow")}
-          className="p-1 rounded hover:bg-muted text-success"
-          title={t("data.addRow")}
-          onClick={onAddRow}
-          disabled={!selectedTableData}
-        >
-          <Plus size={14} />
-        </button>
-        <button
-          aria-label={t("data.saveChanges")}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-          title={t("data.saveChanges")}
-          onClick={onSave}
-          disabled={!hasPendingChanges || isSaving}
-        >
-          {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-        </button>
-        <button
-          aria-label={t("data.cancelChanges")}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
-          title={t("data.cancelChanges")}
-          onClick={onCancelChanges}
-          disabled={!hasPendingChanges}
-        >
-          <X size={14} />
-        </button>
-        <button
-          aria-label={t("data.deleteSelected")}
-          className="p-1 rounded hover:bg-muted text-destructive disabled:opacity-30"
-          title={t("data.deleteSelected")}
-          onClick={onDeleteRows}
-          disabled={selectedRowIndices.size === 0 || isSaving}
-        >
-          <Trash2 size={14} />
-        </button>
+        {!isNoSQLType && (
+          <>
+            <button
+              aria-label={t("data.addRow")}
+              className="p-1 rounded hover:bg-muted text-success"
+              title={t("data.addRow")}
+              onClick={onAddRow}
+              disabled={!selectedTableData}
+            >
+              <Plus size={14} />
+            </button>
+            <button
+              aria-label={t("data.saveChanges")}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
+              title={t("data.saveChanges")}
+              onClick={onSave}
+              disabled={!hasPendingChanges || isSaving}
+            >
+              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            </button>
+            <button
+              aria-label={t("data.cancelChanges")}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
+              title={t("data.cancelChanges")}
+              onClick={onCancelChanges}
+              disabled={!hasPendingChanges}
+            >
+              <X size={14} />
+            </button>
+            <button
+              aria-label={t("data.deleteSelected")}
+              className="p-1 rounded hover:bg-muted text-destructive disabled:opacity-30"
+              title={t("data.deleteSelected")}
+              onClick={onDeleteRows}
+              disabled={selectedRowIndices.size === 0 || isSaving}
+            >
+              <Trash2 size={14} />
+            </button>
+          </>
+        )}
 
         <div className="w-px h-4 bg-border mx-1" />
 
@@ -200,7 +207,7 @@ export default function TableDataView({
             <div className="popover-panel absolute top-full left-0 mt-1 bg-popover border border-border rounded-lg z-50 min-w-[120px]">
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("csv")}>{t("data.importCsv")}</button>
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("json")}>{t("data.importJson")}</button>
-              <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("sql")}>{t("data.importSql")}</button>
+              {!isNoSQLType && <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onImport("sql")}>{t("data.importSql")}</button>}
             </div>
           )}
         </div>
@@ -218,7 +225,7 @@ export default function TableDataView({
             <div className="popover-panel absolute top-full left-0 mt-1 bg-popover border border-border rounded-lg z-50 min-w-[120px]">
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("csv")}>{t("data.exportCsv")}</button>
               <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("json")}>{t("data.exportJson")}</button>
-              <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("sql")}>{t("data.exportSql")}</button>
+              {!isNoSQLType && <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-muted" onClick={() => onExport("sql")}>{t("data.exportSql")}</button>}
             </div>
           )}
         </div>

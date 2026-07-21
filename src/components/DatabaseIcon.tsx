@@ -35,6 +35,8 @@ function getColor(type: string, connected: boolean, _isActive: boolean): string 
     case "tidb": return "#E6005A";
     case "dameng": return "#D6000F";
     case "gbase": return "#0068B7";
+    case "redis": return "#DC382D";
+    case "mongodb": return "#47A248";
     default: return "#6b7280";
   }
 }
@@ -54,6 +56,8 @@ function renderMark(type: string, connected: boolean, isActive: boolean) {
     case "tidb": return <TiDBMark color={c} />;
     case "dameng": return <DmMark color={c} />;
     case "gbase": return <GbMark color={c} />;
+    case "redis": return <RedisMark color={c} />;
+    case "mongodb": return <MongoMark color={c} />;
     default: return <DefaultMark color={c} />;
   }
 }
@@ -183,6 +187,26 @@ function GbMark({ color }: { color: string }) {
     <g transform="translate(3,3) scale(0.78)">
       <path d="M12 1l9.5 5.5v11L12 23l-9.5-5.5v-11L12 1z" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round"/>
       <text x="12" y="15.5" textAnchor="middle" fontSize="10" fontWeight="800" fill={color} fontFamily="system-ui, sans-serif">G</text>
+    </g>
+  );
+}
+
+// Redis — Key/value square
+function RedisMark({ color }: { color: string }) {
+  return (
+    <g transform="translate(4,4) scale(0.72)">
+      <rect x="1" y="1" width="20" height="20" rx="2.5" fill="none" stroke={color} strokeWidth="2.2" />
+      <circle cx="9" cy="10" r="2.5" fill={color} opacity="0.7" />
+      <path d="M12.5 8l6 4-6 4z" fill={color} opacity="0.55" />
+    </g>
+  );
+}
+
+// MongoDB — Leaf shape
+function MongoMark({ color }: { color: string }) {
+  return (
+    <g transform="translate(4,2) scale(0.72)">
+      <path d="M10 1C7 6 4 12 5 18c.1 1 .3 2 .5 2.5.2.3.3 0 .4-.5.2-1 .6-4 .6-5.5 0 0 1.5 3 2.5 5s3 3 4 1.5c.5-.8.5-1.5.3-3-.2-2.2-1.5-5.5-3.3-8-1.5-2-3-3.5-5-4C11 6 10 5 10 1z" fill={color} opacity="0.85" />
     </g>
   );
 }

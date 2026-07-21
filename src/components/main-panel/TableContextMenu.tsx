@@ -25,6 +25,7 @@ interface TableContextMenuProps {
   onDuplicateTable: (table: SchemaNode, includeData: boolean) => void;
   onTruncate: (table: SchemaNode) => void;
   onDeleteTable: (table: SchemaNode) => void;
+  dbType?: string;
 }
 
 export default function TableContextMenu({
@@ -36,7 +37,9 @@ export default function TableContextMenu({
   onDuplicateTable,
   onTruncate,
   onDeleteTable,
+  dbType,
 }: TableContextMenuProps) {
+  const isNoSQLType = dbType === 'redis' || dbType === 'mongodb' || (dbType || '').startsWith('plugin:');
   const isTable = menu.table.type === "table";
   return (
     <>
@@ -55,9 +58,9 @@ export default function TableContextMenu({
           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
         >
           <Table size={12} />
-          <span>{t("sidebar.openTable")}</span>
+          <span>{isNoSQLType ? 'Open Key' : t("sidebar.openTable")}</span>
         </button>
-        {isTable && (
+        {isTable && !isNoSQLType && (
           <button
             onClick={() => { onDesignTable(menu.table); onClose(); }}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
@@ -78,7 +81,7 @@ export default function TableContextMenu({
             </button>
           </>
         )}
-        {isTable && (
+        {isTable && !isNoSQLType && (
           <>
             <div className="border-t border-border my-1" />
             <div className="relative group/dup">
@@ -117,19 +120,21 @@ export default function TableContextMenu({
         {isTable && (
           <>
             <div className="border-t border-border my-1" />
-            <button
-              onClick={() => { onTruncate(menu.table); onClose(); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-warning"
-            >
-              <Eraser size={12} />
-              <span>{t("sidebar.truncateTable")}</span>
-            </button>
+            {!isNoSQLType && (
+              <button
+                onClick={() => { onTruncate(menu.table); onClose(); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-warning"
+              >
+                <Eraser size={12} />
+                <span>{t("sidebar.truncateTable")}</span>
+              </button>
+            )}
             <button
               onClick={() => { onDeleteTable(menu.table); onClose(); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
             >
               <Trash2 size={12} />
-              <span>{t("sidebar.deleteTable")}</span>
+              <span>{isNoSQLType ? 'Delete Key' : t("sidebar.deleteTable")}</span>
             </button>
           </>
         )}

@@ -711,26 +711,31 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
 
   const handleDeleteTableAction = useCallback((table: SchemaNode) => {
     if (!activeConnection) return;
+    const isNoSQL = activeConnection.type === 'redis' || activeConnection.type === 'mongodb' || activeConnection.type.startsWith('plugin:');
     setConfirmDialog({
       title: t('common.confirm'),
-      message: t('sidebar.confirmDeleteTable', { name: table.name }),
+      message: isNoSQL ? `Delete key "${table.name}"?` : t('sidebar.confirmDeleteTable', { name: table.name }),
       variant: "destructive",
       onConfirm: async () => {
         setConfirmDialog(null);
         try {
           const dbType = activeConnection.type;
-          const schema = table.schemaName || currentSchemaName;
-          let fullName = table.name;
-          if (schema && !['mysql', 'sqlite'].includes(dbType)) {
-            fullName = `"${schema}"."${table.name}"`;
-          } else if (dbType === 'mysql') {
-            fullName = `\`${table.name}\``;
-          } else if (dbType === 'mssql') {
-            fullName = schema ? `[${schema}].[${table.name}]` : `[${table.name}]`;
+          if (isNoSQL) {
+            await executeSql(activeConnection.id, `UNLINK ${table.name}`);
           } else {
-            fullName = `"${table.name}"`;
+            const schema = table.schemaName || currentSchemaName;
+            let fullName = table.name;
+            if (schema && !['mysql', 'sqlite'].includes(dbType)) {
+              fullName = `"${schema}"."${table.name}"`;
+            } else if (dbType === 'mysql') {
+              fullName = `\`${table.name}\``;
+            } else if (dbType === 'mssql') {
+              fullName = schema ? `[${schema}].[${table.name}]` : `[${table.name}]`;
+            } else {
+              fullName = `"${table.name}"`;
+            }
+            await executeSql(activeConnection.id, `DROP TABLE ${fullName}`);
           }
-          await executeSql(activeConnection.id, `DROP TABLE ${fullName}`);
           getTables(activeConnection.id).then((result) => {
             const metaMap: Record<string, TableInfo> = {};
             const tableNodes: SchemaNode[] = result
@@ -913,6 +918,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
               showExportMenu={showExportMenu}
               paginationState={paginationState}
               totalRowCountCache={totalRowCountCache}
+              dbType={activeConnection?.type}
               setEditingCell={setEditingCell}
               setEditedRows={setEditedRows}
               setNewRows={setNewRows}
@@ -946,6 +952,7 @@ function CrabHubMainPanel({ activeConnection, selectedSchemaName: propsSelectedS
           onDuplicateTable={handleDuplicateTable}
           onTruncate={handleTruncateTableAction}
           onDeleteTable={handleDeleteTableAction}
+          dbType={activeConnection?.type}
         />
       )}
       {confirmDialog && (
