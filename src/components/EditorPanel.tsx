@@ -22,7 +22,7 @@ import { useAppStore, useConnectionStore, useTabStore, useUIStore } from "@/stor
 import { isDarkTheme } from "@/stores/modules/ui";
 import type { QueryResult, PagedQueryResult, ColumnInfo, TableRow, Connection } from "@/types";
 import { t } from "@/lib/i18n";
-import { executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery } from "@/lib/tauri-commands";
+import { executeQueryPaged, executeSql, executeBatch, getTables, getSchemas, getColumns, updateTableRows, deleteTableRows, cancelQuery, getDatabases, switchDatabase } from "@/lib/tauri-commands";
 import { exportToCSV, exportToJSON, exportToSQL, downloadFile, importFromCSV, importFromJSON, buildWhereClause, buildWhereConditions } from "@/lib/export";
 import { SQL_KEYWORDS, splitSqlStatements, rowsToMarkdown } from "@/lib/sql-utils";
 import { format as formatSQL } from "sql-formatter";
@@ -214,6 +214,54 @@ function QueryEditor() {
   }, []);
 
   // Handle database change
+  const [selectedDatabase, setSelectedDatabase] = useState<string>("");
+  const [databaseList, setDatabaseList] = useState<string[]>([]);
+
+  const { selectedSchemaName } = useUIStore();
+
+  // Load databases when connection changes
+  useEffect(() => {
+    if (!effectiveConnectionId) {
+      setDatabaseList([]);
+      setSelectedDatabase("");
+      return;
+    }
+    const conn = connections.find((c: Connection) => c.id === effectiveConnectionId);
+    if (!conn || conn.type === 'sqlite') {
+      setDatabaseList([]);
+      setSelectedDatabase("");
+      return;
+    }
+    getDatabases(effectiveConnectionId).then((dbs) => {
+      const schemaName = selectedSchemaName;
+      setDatabaseList(dbs);
+      const firstDb = dbs[0];
+      if (dbs.length === 1 && firstDb) {
+        setSelectedDatabase(firstDb);
+        if (effectiveConnectionId) switchDatabase(effectiveConnectionId, firstDb);
+      } else if (schemaName && dbs.includes(schemaName)) {
+        setSelectedDatabase(schemaName);
+      }
+    }).catch(() => setDatabaseList([]));
+  }, [effectiveConnectionId]);
+
+  // Sync database from sidebar context
+  useEffect(() => {
+    const schemaName = selectedSchemaName;
+    if (schemaName && databaseList.includes(schemaName) && schemaName !== selectedDatabase) {
+      setSelectedDatabase(schemaName);
+      if (effectiveConnectionId) {
+        switchDatabase(effectiveConnectionId, schemaName);
+      }
+    }
+  }, [selectedSchemaName, databaseList, effectiveConnectionId, selectedDatabase]);
+
+  const handleDatabaseChange = useCallback((dbName: string) => {
+    setSelectedDatabase(dbName);
+    if (effectiveConnectionId && dbName) {
+      switchDatabase(effectiveConnectionId, dbName);
+    }
+  }, [effectiveConnectionId]);
 
   // Load schemas and table NAMES for autocomplete when connection changes.
   // Table names are cheap (one metadata query); column lists are fetched
@@ -961,6 +1009,20 @@ function QueryEditor() {
               </option>
             ))}
           </select>
+          {/* Database selector */}
+          {databaseList.length > 1 && (
+            <select
+              value={selectedDatabase}
+              onChange={(e) => handleDatabaseChange(e.target.value)}
+              className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground max-w-[150px] truncate focus:outline-none focus:ring-1 focus:ring-[hsl(var(--tab-active))]"
+              title="Database"
+            >
+              <option value="" disabled>Database</option>
+              {databaseList.map((db) => (
+                <option key={db} value={db}>{db}</option>
+              ))}
+            </select>
+          )}
           {isTxActive && (
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-warning/20 text-warning animate-pulse">
               {t('common.transactionActive')}
