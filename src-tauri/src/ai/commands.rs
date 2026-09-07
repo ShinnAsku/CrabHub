@@ -236,12 +236,7 @@ impl crate::ai::agent::ToolExecutor for AgentToolExecutor {
                 }
                 "execute_select" => {
                     let sql = p["sql"].as_str().unwrap_or("");
-                    let safe_sql = if crate::db::sql_limiter::has_user_limit(sql) {
-                        sql.to_string()
-                    } else {
-                        format!("{} LIMIT 500", sql)
-                    };
-                    let result = mgr.query(&cid, &safe_sql).await.map_err(|e| e.to_string())?;
+                    let result = mgr.query_read_only(&cid, sql, false).await.map_err(|e| e.to_string())?;
                     Ok(format!("{} rows returned\nColumns: {:?}\nFirst rows: {:?}",
                         result.row_count,
                         result.columns.iter().map(|c| &c.name).collect::<Vec<_>>(),
@@ -249,14 +244,7 @@ impl crate::ai::agent::ToolExecutor for AgentToolExecutor {
                 }
                 "explain_query" => {
                     let sql = p["sql"].as_str().unwrap_or("");
-                    // GaussDB with explain_perf_mode=on requires FORMAT TEXT.
-                    // PostgreSQL and PG-compatible databases accept it universally.
-                    let explain_prefix = match mgr.get_db_type(&cid).await {
-                        Some(crate::db::types::DatabaseType::GaussDB) => "EXPLAIN (FORMAT TEXT)",
-                        _ => "EXPLAIN",
-                    };
-                    let explain_sql = format!("{} {}", explain_prefix, sql);
-                    let result = mgr.query(&cid, &explain_sql).await.map_err(|e| e.to_string())?;
+                    let result = mgr.query_read_only(&cid, sql, true).await.map_err(|e| e.to_string())?;
                     Ok(result.rows.iter()
                         .map(|r| format!("{:?}", r))
                         .collect::<Vec<_>>()
@@ -264,8 +252,8 @@ impl crate::ai::agent::ToolExecutor for AgentToolExecutor {
                 }
                 "execute_sql" => {
                     let sql = p["sql"].as_str().unwrap_or("");
-                    let result = mgr.execute(&cid, sql).await.map_err(|e| e.to_string())?;
-                    Ok(format!("{} rows affected", result.rows_affected))
+                    let result = mgr.query_read_only(&cid, sql, false).await.map_err(|e| e.to_string())?;
+                    Ok(format!("{} preview rows returned; no writes approved", result.row_count))
                 }
                 _ => Err(format!("Unknown tool: {}", name)),
             }

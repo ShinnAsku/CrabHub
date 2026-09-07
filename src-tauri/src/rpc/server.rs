@@ -3,8 +3,20 @@ use serde_json;
 use std::sync::Arc;
 
 use crate::db::manager::ConnectionManager;
-use crate::db::types::ConnectionConfig;
+use crate::db::types::{ConnectionConfig, DatabaseType, DbError};
 use crate::rpc::types::{PluginInfo, ConnectionResult};
+
+fn rpc_error(error: DbError) -> jsonrpsee::types::ErrorObjectOwned {
+    jsonrpsee::types::ErrorObjectOwned::owned(-32000, error.to_string(), Some(serde_json::json!({ "code": error.code() })))
+}
+
+fn rpc_value(value: impl serde::Serialize) -> RpcResult<serde_json::Value> {
+    serde_json::to_value(value).map_err(|_| jsonrpsee::types::ErrorObjectOwned::owned(-32603, "Result serialization failed", None::<()>))
+}
+
+fn rpc_values(values: Vec<impl serde::Serialize>) -> RpcResult<Vec<serde_json::Value>> {
+    values.into_iter().map(rpc_value).collect()
+}
 
 #[rpc(server)]
 pub trait PluginRpc {
@@ -52,7 +64,7 @@ impl PluginRpcServer for PluginRpcServerImpl {
         Ok(PluginInfo {
             name: "crabhub-core".into(), version: env!("CARGO_PKG_VERSION").into(),
             description: "CrabHub core".into(),
-            driver_types: vec!["postgres".into(),"mysql".into(),"sqlite".into(),"gaussdb".into(),"clickhouse".into(),"kingbase".into(),"vastbase".into(),"yashandb".into(),"oceanbase".into(),"tidb".into(),"tdsql".into(),"redis".into(),"mongodb".into()],
+            driver_types: DatabaseType::BUILTIN.iter().map(|database| database.as_str().to_string()).collect(),
         })
     }
 
@@ -60,7 +72,7 @@ impl PluginRpcServer for PluginRpcServerImpl {
         let cfg: ConnectionConfig = serde_json::from_value(config).map_err(|e| jsonrpsee::types::error::ErrorObject::owned(-1, "Invalid config", Some(e.to_string())))?;
         match self.db_manager.connect(cfg).await {
             Ok(r) => Ok(ConnectionResult { success: true, connection_id: r.connection_id, message: None }),
-            Err(e) => Ok(ConnectionResult { success: false, connection_id: String::new(), message: Some(e.to_string()) }),
+            Err(error) => Err(rpc_error(error)),
         }
     }
 
@@ -69,77 +81,47 @@ impl PluginRpcServer for PluginRpcServerImpl {
     }
 
     async fn disconnect(&self, id: String) -> RpcResult<bool> {
-        Ok(self.db_manager.disconnect(&id).await.is_ok())
+        self.db_manager.disconnect(&id).await.map(|()| true).map_err(rpc_error)
     }
 
     async fn execute_query(&self, cid: String, query: String) -> RpcResult<serde_json::Value> {
-        match self.db_manager.query(&cid, &query).await {
-            Ok(r) => Ok(serde_json::to_value(r).unwrap_or(serde_json::json!({"error":"serialization"}))),
-            Err(e) => Ok(serde_json::json!({"success":false,"error":e.to_string()})),
-        }
+        rpc_value(self.db_manager.query(&cid, &query).await.map_err(rpc_error)?)
     }
 
     async fn execute_sql(&self, cid: String, sql: String) -> RpcResult<serde_json::Value> {
-        match self.db_manager.execute(&cid, &sql).await {
-            Ok(r) => Ok(serde_json::to_value(r).unwrap_or_default()),
-            Err(e) => Ok(serde_json::json!({"success":false,"error":e.to_string()})),
-        }
+        rpc_value(self.db_manager.execute(&cid, &sql).await.map_err(rpc_error)?)
     }
 
     async fn list_tables(&self, cid: String) -> RpcResult<Vec<serde_json::Value>> {
-        match self.db_manager.get_tables(&cid).await {
-            Ok(t) => Ok(t.into_iter().map(|v| serde_json::to_value(v).unwrap_or_default()).collect()),
-            Err(e) => Ok(vec![serde_json::json!({"error":e.to_string()})]),
-        }
+        rpc_values(self.db_manager.get_tables(&cid).await.map_err(rpc_error)?)
     }
 
     async fn list_schemas(&self, cid: String) -> RpcResult<Vec<String>> {
-        match self.db_manager.get_schemas(&cid).await {
-            Ok(s) => Ok(s),
-            Err(e) => Ok(vec![format!("error:{}",e)]),
-        }
+        self.db_manager.get_schemas(&cid).await.map_err(rpc_error)
     }
 
     async fn get_columns(&self, cid: String, table: String, schema: Option<String>) -> RpcResult<Vec<serde_json::Value>> {
-        match self.db_manager.get_columns(&cid, &table, schema.as_deref()).await {
-            Ok(c) => Ok(c.into_iter().map(|v| serde_json::to_value(v).unwrap_or_default()).collect()),
-            Err(e) => Ok(vec![serde_json::json!({"error":e.to_string()})]),
-        }
+        rpc_values(self.db_manager.get_columns(&cid, &table, schema.as_deref()).await.map_err(rpc_error)?)
     }
 
     async fn get_views(&self, cid: String, schema: Option<String>) -> RpcResult<Vec<serde_json::Value>> {
-        match self.db_manager.get_views(&cid, schema.as_deref()).await {
-            Ok(v) => Ok(v.into_iter().map(|x| serde_json::to_value(x).unwrap_or_default()).collect()),
-            Err(e) => Ok(vec![serde_json::json!({"error":e.to_string()})]),
-        }
+        rpc_values(self.db_manager.get_views(&cid, schema.as_deref()).await.map_err(rpc_error)?)
     }
 
     async fn get_indexes(&self, cid: String, table: String, schema: Option<String>) -> RpcResult<Vec<serde_json::Value>> {
-        match self.db_manager.get_indexes(&cid, &table, schema.as_deref()).await {
-            Ok(i) => Ok(i),
-            Err(e) => Ok(vec![serde_json::json!({"error":e.to_string()})]),
-        }
+        self.db_manager.get_indexes(&cid, &table, schema.as_deref()).await.map_err(rpc_error)
     }
 
     async fn get_foreign_keys(&self, cid: String, table: String, schema: Option<String>) -> RpcResult<Vec<serde_json::Value>> {
-        match self.db_manager.get_foreign_keys(&cid, &table, schema.as_deref()).await {
-            Ok(f) => Ok(f),
-            Err(e) => Ok(vec![serde_json::json!({"error":e.to_string()})]),
-        }
+        self.db_manager.get_foreign_keys(&cid, &table, schema.as_deref()).await.map_err(rpc_error)
     }
 
     async fn get_table_data(&self, cid: String, table: String, schema: Option<String>, page: u32, page_size: u32) -> RpcResult<serde_json::Value> {
-        match self.db_manager.get_table_data(&cid, &table, schema.as_deref(), page, page_size, None).await {
-            Ok(d) => Ok(serde_json::to_value(d).unwrap_or_default()),
-            Err(e) => Ok(serde_json::json!({"error":e.to_string()})),
-        }
+        rpc_value(self.db_manager.get_table_data(&cid, &table, schema.as_deref(), page, page_size, None).await.map_err(rpc_error)?)
     }
 
     async fn export_table_sql(&self, cid: String, table: String, schema: Option<String>) -> RpcResult<String> {
-        match self.db_manager.export_table_sql(&cid, &table, schema.as_deref()).await {
-            Ok(sql) => Ok(sql),
-            Err(e) => Ok(format!("-- error: {}", e)),
-        }
+        self.db_manager.export_table_sql(&cid, &table, schema.as_deref()).await.map_err(rpc_error)
     }
 }
 
@@ -154,4 +136,25 @@ pub async fn start_rpc_server(db_manager: Arc<ConnectionManager>) -> anyhow::Res
     log::info!("RPC server started on {}", addr);
     handle.stopped().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn rpc_failures_are_protocol_errors_instead_of_success_payloads() {
+        let server = PluginRpcServerImpl::new(Arc::new(ConnectionManager::new()));
+        let error = server.execute_query("missing".into(), "SELECT 1".into()).await.unwrap_err();
+        assert_eq!(error.code(), -32000);
+        assert!(server.list_schemas("missing".into()).await.is_err());
+        assert!(server.list_tables("missing".into()).await.is_err());
+        assert!(server.export_table_sql("missing".into(), "records".into(), None).await.is_err());
+        assert!(server.disconnect("missing".into()).await.is_err());
+        let info = server.plugin_info().await.unwrap();
+        assert_eq!(info.driver_types.len(), 17);
+        for database in ["oracle", "sqlserver", "dameng", "gbase"] {
+            assert!(info.driver_types.iter().any(|driver| driver == database));
+        }
+    }
 }

@@ -1,18 +1,23 @@
 pub mod ai;
 pub mod connection_store;
 pub mod db;
+#[cfg(feature = "desktop")]
+pub mod docker;
 pub mod plugins;
 pub mod rpc;
 pub mod server;
-pub mod ssh;
-#[cfg(any(test, feature = "stress-testing"))]
-mod testing;
+pub use crabhub_core::ssh;
 
+#[cfg(feature = "desktop")]
 use connection_store::ConnectionStore;
+#[cfg(feature = "desktop")]
 use db::manager::ConnectionManager;
+#[cfg(feature = "desktop")]
 use std::sync::Arc;
 use std::path::PathBuf;
+#[cfg(feature = "desktop")]
 use tauri::Manager;
+#[cfg(feature = "desktop")]
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 
 pub fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -57,6 +62,7 @@ pub fn get_tabularis_plugins_dir() -> Result<PathBuf, Box<dyn std::error::Error>
     }
 }
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub async fn run() {
     let manager = Arc::new(ConnectionManager::new());
@@ -69,6 +75,9 @@ pub async fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(manager.clone())
         .invoke_handler(tauri::generate_handler![
+            docker::docker_plan,
+            docker::docker_execute,
+            docker::docker_load,
             // Connection store commands (SQLite persistence)
             connection_store::get_connections,
             connection_store::add_connection,
@@ -86,6 +95,13 @@ pub async fn run() {
             db::commands::execute_query,
             db::commands::execute_query_paged,
             db::commands::execute_batch,
+            db::commands::execute_script,
+            db::commands::supports_script_sessions,
+            db::commands::transaction_request,
+            db::commands::insert_rows_bulk,
+            db::commands::execute_script_stream,
+            db::commands::acknowledge_execution,
+            db::commands::cancel_execution,
             db::commands::cancel_query,
             db::commands::invalidate_metadata_cache,
             db::commands::get_driver_capabilities,

@@ -1,4 +1,4 @@
-use super::models::Connection;
+use super::Connection;
 use super::ConnectionStore;
 use std::sync::Arc;
 use tauri::State;

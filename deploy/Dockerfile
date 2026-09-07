@@ -17,31 +17,19 @@ COPY src ./src
 RUN npm run build
 
 # --- Stage 2: server binary ---
-FROM rust:1-slim-bookworm AS backend
-# The lib crate links tauri (gtk/glib on Linux), so the gtk dev headers are
-# needed at BUILD time even though crabhub-server never opens a window.
-# The runtime stage stays slim: with `--as-needed` the unused gtk shared
-# libraries are not recorded in the final binary.
+FROM rust:1.95-slim-bookworm AS backend
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev perl make build-essential \
-    libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf \
+    pkg-config libssl-dev unixodbc-dev perl make build-essential \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY src-tauri ./src-tauri
-# build.rs runs tauri_build even for the server binary and validates
-# tauri.conf.json's frontendDist (../dist), so copy the frontend output before
-# cargo build.
-COPY --from=frontend /build/dist ./dist
-# Build only crabhub-server so the image stays slimmer and CI stays faster than
-# bundling the desktop app.
-RUN cd src-tauri && cargo build --release --bin crabhub-server
+COPY packages/jdbc-bridge ./packages/jdbc-bridge
+RUN cd src-tauri && cargo build --release --no-default-features --bin crabhub-server
 
 # --- Stage 3: runtime ---
 FROM debian:bookworm-slim
-# The binary carries gtk/webkit NEEDED entries via the shared tauri lib crate;
-# install the runtime (non-dev) libraries alongside CA certs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-2 \
+    ca-certificates libodbc2 libssl3 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -m -d /app crabhub
 WORKDIR /app

@@ -141,6 +141,7 @@ pub fn build_router(state: AppState, static_dir: Option<std::path::PathBuf>) -> 
         .route("/api/auth/setup", post(auth_setup))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
+        .route("/api/execution/stream", post(execute_stream))
         .route("/api/invoke/{cmd}", post(invoke))
         .with_state(state);
 
@@ -288,6 +289,14 @@ struct BatchArgs {
     statements: Vec<String>,
 }
 
+type ScriptArgs = crate::db::execution::ScriptRequest;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ExecutionIdArgs {
+    execution_id: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TableArgs {
@@ -409,6 +418,65 @@ macro_rules! args {
     };
 }
 
+struct StreamLifetime {
+    manager: Arc<ConnectionManager>,
+    owner: String,
+    execution_id: String,
+    task: tokio::task::JoinHandle<Result<crate::db::execution::ScriptOutcome, crate::db::types::DbError>>,
+    receiver: tokio::sync::mpsc::Receiver<crate::db::execution::ExecutionDelivery>,
+    finished: bool,
+}
+
+impl Drop for StreamLifetime {
+    fn drop(&mut self) {
+        self.receiver.close();
+        if !self.finished {
+            self.manager.cancel_execution(&self.owner, &self.execution_id);
+        }
+    }
+}
+
+async fn execute_stream(State(state): State<AppState>, headers: HeaderMap, Json(request): Json<ScriptArgs>) -> Response {
+    use crate::db::execution::ExecutionUpdate;
+    if !check_auth(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "unauthorized" }))).into_response();
+    }
+    if let Err(error) = crate::db::execution::validate_request(&request) {
+        return err(error.to_string());
+    }
+    let manager = state.manager.clone();
+    let owner = format!("web:{}", bearer_token(&headers).unwrap_or("anonymous"));
+    let execution_id = request.execution_id.clone();
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    let task_manager = manager.clone();
+    let task_owner = owner.clone();
+    let task = tokio::spawn(async move {
+        task_manager.execute_script_progress(&task_owner, &request, Some(&sender)).await
+    });
+    let stream = futures_util::stream::unfold(StreamLifetime { manager, owner, execution_id, task, receiver, finished: false }, |mut lifetime| async move {
+        if lifetime.finished { return None; }
+        let update = if let Some(delivery) = lifetime.receiver.recv().await {
+            let _ = delivery.acknowledged.send(());
+            delivery.update
+        } else {
+            let outcome = (&mut lifetime.task).await;
+            lifetime.finished = true;
+            match outcome {
+                Ok(Ok(outcome)) => ExecutionUpdate::Finished { outcome },
+                Ok(Err(error)) => ExecutionUpdate::Error { execution_id: lifetime.execution_id.clone(), error: error.to_string() },
+                Err(_) => ExecutionUpdate::Error { execution_id: lifetime.execution_id.clone(), error: "Execution task failed; do not automatically retry writes".into() },
+            }
+        };
+        let mut bytes = serde_json::to_vec(&update).expect("execution events serialize as JSON");
+        bytes.push(b'\n');
+        Some((Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(bytes)), lifetime))
+    });
+    (
+        [("content-type", "application/x-ndjson"), ("cache-control", "no-store"), ("x-accel-buffering", "no")],
+        axum::body::Body::from_stream(stream),
+    ).into_response()
+}
+
 async fn invoke(
     State(state): State<AppState>,
     Path(cmd): Path<String>,
@@ -468,6 +536,53 @@ async fn invoke(
         }
 
         // --- Query execution ---
+        "get_driver_capabilities" => {
+            let args: IdArgs = args!(body);
+            match m.connection_capabilities(&args.id).await {
+                Ok(result) => ok(result),
+                Err(error) => err(error.to_string()),
+            }
+        }
+        "transaction_request" => {
+            #[derive(Deserialize)]
+            struct TransactionArgs { request: crate::db::transactions::TransactionRequest }
+            let args: TransactionArgs = args!(body);
+            let owner = format!("web:{}", bearer_token(&headers).unwrap_or("anonymous"));
+            match m.transaction(&owner, args.request).await {
+                Ok(result) => ok(result),
+                Err(error) => err(error.to_string()),
+            }
+        }
+        "insert_rows_bulk" => {
+            #[derive(Deserialize)]
+            struct BulkArgs { request: crate::db::bulk::BulkRequest }
+            let a: BulkArgs = args!(body);
+            let owner = format!("web:{}", bearer_token(&headers).unwrap_or("anonymous"));
+            match m.insert_rows_bulk(&owner, &a.request).await {
+                Ok(result) => ok(result),
+                Err(error) => err(error.to_string()),
+            }
+        }
+        "supports_script_sessions" => {
+            let a: IdArgs = args!(body);
+            match m.supports_script_sessions(&a.id).await {
+                Ok(supported) => ok(supported),
+                Err(error) => err(error.to_string()),
+            }
+        }
+        "execute_script" => {
+            let a: ScriptArgs = args!(body);
+            let owner = format!("web:{}", bearer_token(&headers).unwrap_or("anonymous"));
+            match m.execute_script_progress(&owner, &a, None).await {
+                Ok(result) => ok(result),
+                Err(error) => err(error.to_string()),
+            }
+        }
+        "cancel_execution" => {
+            let a: ExecutionIdArgs = args!(body);
+            let owner = format!("web:{}", bearer_token(&headers).unwrap_or("anonymous"));
+            ok(m.cancel_execution(&owner, &a.execution_id))
+        }
         "execute_query" => {
             let a: SqlArgs = args!(body);
             match m.query(&a.id, &a.sql).await {

@@ -3,7 +3,7 @@ use tauri::State;
 
 use super::manager::ConnectionManager;
 use super::types::{
-    ColumnInfo, ConnectResult, ConnectionConfig, ConnectionStatus, DatabaseType, DriverCapabilities,
+    ColumnInfo, ConnectResult, ConnectionCapabilities, ConnectionConfig, ConnectionStatus,
     ExecuteResult, TableInfo, WirePagedQueryResult, WireQueryResult,
 };
 
@@ -89,6 +89,83 @@ pub async fn execute_batch(
 }
 
 /// Execute a SQL statement (INSERT, UPDATE, DELETE, DDL)
+#[tauri::command]
+pub async fn execute_script(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<ConnectionManager>>,
+    id: String,
+    execution_id: String,
+    statements: Vec<String>,
+    options: super::execution::ScriptOptions,
+) -> Result<super::execution::ScriptOutcome, String> {
+    state.execute_script(&format!("desktop:{}", window.label()), &execution_id, &id, &statements, &options)
+        .await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn supports_script_sessions(state: State<'_, Arc<ConnectionManager>>, id: String) -> Result<bool, String> {
+    state.supports_script_sessions(&id).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn transaction_request(window: tauri::WebviewWindow, state: State<'_, Arc<ConnectionManager>>, request: super::transactions::TransactionRequest) -> Result<super::transactions::TransactionResult, String> {
+    state.transaction(&format!("desktop:{}", window.label()), request).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn insert_rows_bulk(window: tauri::WebviewWindow, state: State<'_, Arc<ConnectionManager>>, request: super::bulk::BulkRequest) -> Result<super::bulk::BulkOutcome, String> {
+    state.insert_rows_bulk(&format!("desktop:{}", window.label()), &request).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn cancel_execution(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<ConnectionManager>>,
+    execution_id: String,
+) -> bool {
+    state.cancel_execution(&format!("desktop:{}", window.label()), &execution_id)
+}
+
+#[tauri::command]
+pub fn acknowledge_execution(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<ConnectionManager>>,
+    execution_id: String,
+    sequence: usize,
+) -> bool {
+    state.acknowledge_execution(&format!("desktop:{}", window.label()), &execution_id, sequence)
+}
+
+#[tauri::command]
+pub async fn execute_script_stream(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<ConnectionManager>>,
+    request: super::execution::ScriptRequest,
+    on_event: tauri::ipc::Channel<super::execution::ExecutionUpdate>,
+) -> Result<super::execution::ScriptOutcome, String> {
+    let owner = format!("desktop:{}", window.label());
+    let (sender, mut receiver) = tokio::sync::mpsc::channel::<super::execution::ExecutionDelivery>(1);
+    let manager = state.inner();
+    let execute = async {
+        let outcome = manager.execute_script_progress(&owner, &request, Some(&sender)).await;
+        drop(sender);
+        outcome
+    };
+    let forward = async {
+        let mut sequence = 0;
+        while let Some(delivery) = receiver.recv().await {
+            if !manager.expect_execution_ack(&owner, &request.execution_id, sequence, delivery.acknowledged)
+                || on_event.send(delivery.update).is_err() {
+                manager.cancel_execution(&owner, &request.execution_id);
+                break;
+            }
+            sequence += 1;
+        }
+    };
+    let (outcome, ()) = tokio::join!(execute, forward);
+    outcome.map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn execute_sql(
     state: State<'_, Arc<ConnectionManager>>,
@@ -355,7 +432,6 @@ pub async fn invalidate_metadata_cache(
 pub async fn get_driver_capabilities(
     state: State<'_, Arc<ConnectionManager>>,
     id: String,
-) -> Result<DriverCapabilities, String> {
-    let db_type = state.get_db_type(&id).await.unwrap_or(DatabaseType::Plugin("unknown".to_string()));
-    Ok(db_type.capabilities())
+) -> Result<ConnectionCapabilities, String> {
+    state.connection_capabilities(&id).await.map_err(|error| error.to_string())
 }

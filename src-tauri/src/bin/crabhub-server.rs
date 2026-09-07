@@ -109,7 +109,6 @@ async fn main() {
     let app = build_router(state, static_dir);
 
     let addr = format!("{bind}:{port}");
-    log::info!("CrabHub web server listening on http://{addr}");
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -117,6 +116,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    log::info!("CrabHub web server listening on http://{addr}");
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("server error: {e}");
         std::process::exit(1);
