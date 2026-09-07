@@ -1,0 +1,677 @@
+use async_trait::async_trait;
+use sqlx::{Column, ConnectOptions, Row, TypeInfo};
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
+use super::trait_def::{json_value_to_sql, DatabaseConnection};
+use super::types::{
+    ColumnInfo, ConnectionConfig, DatabaseType, DbError, ExecuteResult, QueryResult, TableInfo,
+};
+
+// ============================================================================
+// SQLite Connection
+// ============================================================================
+
+pub struct SQLiteConnection {
+    pool: sqlx::SqlitePool,
+    in_memory: bool,
+}
+
+impl SQLiteConnection {
+    pub async fn new(config: &ConnectionConfig) -> Result<Self, DbError> {
+        let db_path = config
+            .host
+            .as_deref()
+            .unwrap_or_else(|| config.database.as_deref().unwrap_or(""));
+
+        let connection_string = if db_path.starts_with("sqlite:") {
+            db_path.to_string()
+        } else if db_path.is_empty() {
+            "sqlite::memory:".to_string()
+        } else {
+            format!("sqlite:{}", db_path)
+        };
+
+        log::info!("Connecting to SQLite at {}", db_path);
+
+        let in_memory = connection_string.contains(":memory:") || connection_string.contains("mode=memory");
+        let options = sqlx::sqlite::SqliteConnectOptions::from_str(&connection_string)
+            .map_err(|e| DbError::ConnectionError(format!("Invalid SQLite path: {}", e)))?
+            .create_if_missing(true)
+            .disable_statement_logging();
+
+        let pc = crate::db::pool_config::PoolConfig::with_overrides(&config.db_type, config.pool_options.as_ref());
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(if in_memory { 1 } else { pc.max_connections })
+            .test_before_acquire(!in_memory)
+            .idle_timeout(if in_memory { None } else { Some(Duration::from_secs(pc.idle_timeout_secs)) })
+            .max_lifetime(if in_memory { None } else { Some(Duration::from_secs(pc.max_lifetime_secs)) })
+            .acquire_timeout(Duration::from_secs(pc.acquire_timeout_secs))
+            .after_release(|connection, _| Box::pin(async move {
+                connection.lock_handle().await?.remove_progress_handler();
+                Ok(true)
+            }))
+            .connect_with(options)
+            .await
+            .map_err(|e| {
+                DbError::ConnectionError(format!("Failed to connect to SQLite: {}", e))
+            })?;
+
+        // Enable WAL mode to allow concurrent reads with a single writer
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("PRAGMA busy_timeout=5000")
+            .execute(&pool)
+            .await
+            .ok();
+
+        log::info!("Successfully connected to SQLite");
+
+        Ok(Self { pool, in_memory })
+    }
+}
+
+/// Quote a SQLite identifier with double quotes
+fn sqlite_quote_table(table: &str) -> String {
+    format!("\"{}\"", table.replace('"', "\"\""))
+}
+
+impl SQLiteConnection {
+    async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError> {
+        let start = Instant::now();
+        let mut connection = self.pool.acquire().await.map_err(super::session::sqlx_error)?;
+        let mut interrupt = super::sqlite_interrupt::QueryInterrupt::install(&mut connection).await?;
+        let result = sqlx::query(sql)
+            .execute(&mut *connection)
+            .await;
+        interrupt.complete();
+        let result = result.map_err(super::session::sqlx_error)?;
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        Ok(ExecuteResult {
+            rows_affected: result.rows_affected(),
+            execution_time_ms: elapsed,
+        })
+    }
+
+    async fn query_sql(&self, sql: &str) -> Result<QueryResult, DbError> {
+        let started = Instant::now();
+        let mut connection = self.pool.acquire().await.map_err(super::session::sqlx_error)?;
+        let mut result = Self::query_on(&mut connection, sql).await?;
+        result.execution_time_ms = started.elapsed().as_millis() as u64;
+        Ok(result)
+    }
+
+    pub(crate) async fn query_on(connection: &mut sqlx::SqliteConnection, sql: &str) -> Result<QueryResult, DbError> {
+        let start = Instant::now();
+        let mut interrupt = super::sqlite_interrupt::QueryInterrupt::install(connection).await?;
+
+        let result = sqlx::query(sql)
+            .fetch_all(&mut *connection)
+            .await;
+        interrupt.complete();
+        let result = result.map_err(super::session::sqlx_error)?;
+
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        if result.is_empty() {
+            // No rows: recover column metadata from the prepared statement so
+            // the result grid keeps its headers.
+            let columns = match sqlx::Executor::describe(&mut *connection, sql).await {
+                Ok(d) => d
+                    .columns()
+                    .iter()
+                    .map(|col| ColumnInfo {
+                        name: col.name().to_string(),
+                        data_type: format!("{:?}", col.type_info()),
+                        nullable: true,
+                        is_primary_key: false,
+                        default_value: None,
+                        comment: None,
+                        character_maximum_length: None,
+                        numeric_precision: None,
+                        numeric_scale: None,
+                    })
+                    .collect(),
+                Err(_) => vec![],
+            };
+            return Ok(QueryResult {
+                columns,
+                rows: vec![],
+                row_count: 0,
+                execution_time_ms: elapsed,
+            });
+        }
+
+        Ok(Self::decode_rows(&result, elapsed))
+    }
+
+    pub(crate) fn decode_rows(result: &[sqlx::sqlite::SqliteRow], elapsed: u64) -> QueryResult {
+        let columns = result.first().map(build_columns_from_sqlite_row).unwrap_or_default();
+
+        let mut result_rows = Vec::new();
+        for row in result {
+            let mut map = serde_json::Map::new();
+            for col in row.columns() {
+                let name = col.name().to_string();
+                // SQL NULL first: lenient decodes below (e.g. NULL -> "")
+                // must never turn a NULL into a typed zero value.
+                {
+                    use sqlx::ValueRef;
+                    if row
+                        .try_get_raw(col.name())
+                        .map(|v| v.is_null())
+                        .unwrap_or(false)
+                    {
+                        map.insert(name, serde_json::Value::Null);
+                        continue;
+                    }
+                }
+                let type_name = col.type_info().name();
+                let value = match type_name {
+                    "INTEGER" | "INT" | "BIGINT" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(v) = row.try_get::<i64, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "REAL" | "FLOAT" | "DOUBLE" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(v) = row.try_get::<f64, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "NUMERIC" | "DECIMAL" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "TEXT" | "VARCHAR" | "CHAR" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "BOOLEAN" | "BOOL" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<bool>, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(v) = row.try_get::<bool, _>(col.name()) {
+                            serde_json::Value::Bool(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "DATE" | "TIME" | "DATETIME" | "TIMESTAMP" => {
+                        if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    "JSON" => {
+                        if let Ok(Some(v)) =
+                            row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(
+                                col.name(),
+                            )
+                        {
+                            v.0
+                        } else if let Ok(v) =
+                            row.try_get::<sqlx::types::Json<serde_json::Value>, _>(col.name())
+                        {
+                            v.0
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                    _ => {
+                        // Expression / aggregate columns (count(*), sums, CTE
+                        // outputs) have no decltype, so the declared type is
+                        // "NULL". Probe by value using Option decodes only:
+                        // Ok(None) means a genuine SQL NULL and must NOT be
+                        // rendered as an empty string.
+                        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(col.name()) {
+                            serde_json::json!(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(col.name()) {
+                            serde_json::Value::String(v)
+                        } else if let Ok(Some(v)) = row.try_get::<Option<Vec<u8>>, _>(col.name())
+                        {
+                            serde_json::Value::String(
+                                String::from_utf8_lossy(&v).to_string(),
+                            )
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    }
+                };
+                map.insert(name, value);
+            }
+            result_rows.push(map);
+        }
+
+        let row_count = result_rows.len() as u64;
+
+        QueryResult {
+            columns,
+            rows: result_rows,
+            row_count,
+            execution_time_ms: elapsed,
+        }
+    }
+}
+
+#[async_trait]
+impl DatabaseConnection for SQLiteConnection {
+    fn supports_script_sessions(&self) -> bool { !self.in_memory }
+
+    async fn execute_sql(&self, sql: &str) -> Result<ExecuteResult, DbError> {
+        SQLiteConnection::execute_sql(self, sql).await
+    }
+
+    async fn query_sql(&self, sql: &str) -> Result<QueryResult, DbError> {
+        SQLiteConnection::query_sql(self, sql).await
+    }
+
+    async fn open_session(&self) -> Result<Box<dyn super::session::DatabaseSession>, DbError> {
+        if self.in_memory {
+            return Err(DbError::QueryError("Isolated script sessions require a file-backed SQLite database".into()));
+        }
+        let mut connection = self.pool.acquire().await.map_err(super::session::sqlx_error)?;
+        connection.close_on_drop();
+        let interrupted = super::sqlite_interrupt::QueryInterrupt::install(&mut connection).await?.detach();
+        Ok(Box::new(super::session::SqlxSession::with_cancel(connection, super::session_cancel::SessionCancel::Sqlite { interrupted })))
+    }
+
+    async fn get_tables(&self) -> Result<Vec<TableInfo>, DbError> {
+        let sql = r#"
+            SELECT name, type
+            FROM sqlite_master
+            WHERE type IN ('table', 'view')
+            AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+        "#;
+
+        let rows = sqlx::query(sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| DbError::QueryError(e.to_string()))?;
+
+        let tables = rows
+            .iter()
+            .map(|row| {
+                let table_type: String = row.get(1);
+                TableInfo {
+                    name: row.get(0),
+                    schema: None,
+                    row_count: None,
+                    comment: None,
+                    table_type: table_type.to_uppercase(),
+                    oid: None,
+                    owner: None,
+                    acl: None,
+                    primary_key: None,
+                    partition_of: None,
+                    has_indexes: None,
+                    has_triggers: None,
+                    engine: None,
+                    data_length: None,
+                    create_time: None,
+                    update_time: None,
+                    collation: None,
+                }
+            })
+            .collect();
+
+        Ok(tables)
+    }
+
+    async fn get_columns(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<ColumnInfo>, DbError> {
+        let escaped_table = table.replace("\"", "\"\"");
+        let sql = format!("PRAGMA table_info(\"{}\")", escaped_table);
+
+        let rows = sqlx::query(&sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| DbError::QueryError(e.to_string()))?;
+
+        let columns = rows
+            .iter()
+            .map(|row| {
+                let pk: i32 = row.get(5);
+                let notnull: i32 = row.get(3);
+                let dflt_value: Option<String> = row.get(4);
+                ColumnInfo {
+                    name: row.get(1),
+                    data_type: row.get(2),
+                    nullable: notnull == 0,
+                    is_primary_key: pk > 0,
+                    default_value: dflt_value,
+                    comment: None,
+                    character_maximum_length: None,
+                    numeric_precision: None,
+                    numeric_scale: None,
+                }
+            })
+            .collect();
+
+        Ok(columns)
+    }
+
+    async fn get_schemas(&self) -> Result<Vec<String>, DbError> {
+        Ok(vec!["main".to_string()])
+    }
+
+    fn db_type(&self) -> DatabaseType {
+        DatabaseType::SQLite
+    }
+
+    async fn export_table_sql(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+    ) -> Result<String, DbError> {
+        let sql = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?";
+        let rows = sqlx::query(sql)
+            .bind(table)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| DbError::QueryError(e.to_string()))?;
+
+        if let Some(row) = rows.first() {
+            let create_sql: Option<String> = row.get(0);
+            if let Some(sql) = create_sql {
+                return Ok(format!("-- Table: {}\n{}\n", table, sql));
+            }
+        }
+
+        // Fallback: build from PRAGMA
+        let escaped_table = table.replace("\"", "\"\"");
+        let pragma_sql = format!("PRAGMA table_info(\"{}\")", escaped_table);
+        let cols = sqlx::query(&pragma_sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| DbError::QueryError(e.to_string()))?;
+
+        let col_defs: Vec<String> = cols
+            .iter()
+            .map(|row| {
+                let name: String = row.get(1);
+                let data_type: String = row.get(2);
+                let notnull: i32 = row.get(3);
+                let dflt_value: Option<String> = row.get(4);
+                let pk: i32 = row.get(5);
+                let pk_str = if pk > 0 { " PRIMARY KEY" } else { "" };
+                let null_str = if notnull == 0 { "" } else { " NOT NULL" };
+                let default_str = match dflt_value {
+                    Some(d) => format!(" DEFAULT {}", d),
+                    None => String::new(),
+                };
+                format!(
+                    "    {} {}{}{}{}",
+                    name, data_type, pk_str, null_str, default_str
+                )
+            })
+            .collect();
+
+        Ok(format!(
+            "-- Table: {}\nCREATE TABLE IF NOT EXISTS {} (\n{}\n);\n",
+            table,
+            table,
+            col_defs.join(",\n")
+        ))
+    }
+
+    async fn query_sql_paged(
+        &self,
+        sql: &str,
+        limit: u64,
+        _offset: u64,
+    ) -> Result<(QueryResult, bool), DbError> {
+        // SQL already has LIMIT limit+1 injected — fetch_all is safe (bounded)
+        let result = self.query_sql(sql).await?;
+        let has_more = result.rows.len() as u64 > limit;
+        let rows = if has_more {
+            result.rows.into_iter().take(limit as usize).collect()
+        } else {
+            result.rows
+        };
+        Ok((QueryResult { rows, ..result }, has_more))
+    }
+
+    async fn close(&self) {
+        self.pool.close().await;
+    }
+
+    async fn get_views(&self, _schema: Option<&str>) -> Result<Vec<TableInfo>, DbError> {
+        let sql =
+            "SELECT name, 'main' as schema FROM sqlite_master WHERE type = 'view' ORDER BY name";
+        let rows = self.query_sql(sql).await?;
+        let views = rows
+            .rows
+            .iter()
+            .map(|row| TableInfo {
+                name: row
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                schema: Some("main".to_string()),
+                row_count: None,
+                comment: None,
+                table_type: "VIEW".to_string(),
+                oid: None,
+                owner: None,
+                acl: None,
+                primary_key: None,
+                partition_of: None,
+                has_indexes: None,
+                has_triggers: None,
+                engine: None,
+                data_length: None,
+                create_time: None,
+                update_time: None,
+                collation: None,
+            })
+            .collect();
+        Ok(views)
+    }
+
+    async fn get_indexes(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>, DbError> {
+        let sql = format!(
+            "PRAGMA index_list(\"{}\")",
+            table.replace('"', "\"\"")
+        );
+        let rows = self.query_sql(&sql).await?;
+        Ok(rows
+            .rows
+            .into_iter()
+            .map(serde_json::Value::Object)
+            .collect())
+    }
+
+    async fn get_foreign_keys(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>, DbError> {
+        let sql = format!(
+            "PRAGMA foreign_key_list(\"{}\")",
+            table.replace('"', "\"\"")
+        );
+        let rows = self.query_sql(&sql).await?;
+        Ok(rows
+            .rows
+            .into_iter()
+            .map(serde_json::Value::Object)
+            .collect())
+    }
+
+    async fn get_table_row_count(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+    ) -> Result<u64, DbError> {
+        let sql = format!(
+            "SELECT COUNT(*) as cnt FROM {}",
+            sqlite_quote_table(table)
+        );
+        let rows = self.query_sql(&sql).await?;
+        if let Some(row) = rows.rows.first() {
+            if let Some(cnt) = row
+                .get("cnt")
+                .and_then(|v| v.as_u64())
+            {
+                return Ok(cnt);
+            }
+        }
+        Ok(0)
+    }
+
+    async fn get_table_data(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        page: u32,
+        page_size: u32,
+        order_by: Option<&str>,
+    ) -> Result<QueryResult, DbError> {
+        let order_clause = if let Some(o) = order_by {
+            crate::db::trait_def::sanitize_order_by(o)?;
+            format!(" ORDER BY {}", o)
+        } else {
+            String::new()
+        };
+        let offset = (page.saturating_sub(1)) * page_size;
+        let sql = format!(
+            "SELECT * FROM {}{} LIMIT {} OFFSET {}",
+            sqlite_quote_table(table),
+            order_clause,
+            page_size,
+            offset
+        );
+        let mut result = self.query_sql(&sql).await?;
+        if result.columns.is_empty() {
+            result.columns = self.get_columns(table, _schema).await.unwrap_or_default();
+        }
+        Ok(result)
+    }
+
+    async fn update_table_rows(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        updates: &[(String, serde_json::Value)],
+        where_conditions: &[crate::db::types::WhereCondition],
+    ) -> Result<ExecuteResult, DbError> {
+        let set_clauses: Vec<String> = updates
+            .iter()
+            .map(|(col, val)| format!("{} = {}", sqlite_quote_table(col), json_value_to_sql(val)))
+            .collect();
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| sqlite_quote_table(c),
+        )?;
+        let sql = format!(
+            "UPDATE {} SET {} WHERE {}",
+            sqlite_quote_table(table),
+            set_clauses.join(", "),
+            where_sql
+        );
+        self.execute_sql(&sql).await
+    }
+
+    async fn insert_table_row(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        values: &[(String, serde_json::Value)],
+    ) -> Result<ExecuteResult, DbError> {
+        let columns: Vec<String> = values.iter().map(|(c, _)| sqlite_quote_table(c)).collect();
+        let value_strs: Vec<String> = values.iter().map(|(_, val)| json_value_to_sql(val)).collect();
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            sqlite_quote_table(table),
+            columns.join(", "),
+            value_strs.join(", ")
+        );
+        self.execute_sql(&sql).await
+    }
+
+    async fn delete_table_rows(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        where_conditions: &[crate::db::types::WhereCondition],
+    ) -> Result<ExecuteResult, DbError> {
+        let where_sql = crate::db::trait_def::build_where_sql(
+            where_conditions,
+            &|c| sqlite_quote_table(c),
+        )?;
+        let sql = format!(
+            "DELETE FROM {} WHERE {}",
+            sqlite_quote_table(table),
+            where_sql
+        );
+        self.execute_sql(&sql).await
+    }
+}
+
+/// Build column info from a SqliteRow
+fn build_columns_from_sqlite_row(row: &sqlx::sqlite::SqliteRow) -> Vec<ColumnInfo> {
+    use sqlx::Column;
+
+    let columns = row.columns();
+    let mut result = Vec::with_capacity(columns.len());
+    for col in columns {
+        result.push(ColumnInfo {
+            name: col.name().to_string(),
+            data_type: format!("{:?}", col.type_info()),
+            nullable: true,
+            is_primary_key: false,
+            default_value: None,
+            comment: None,
+            character_maximum_length: None,
+            numeric_precision: None,
+            numeric_scale: None,
+        });
+    }
+    result
+}
