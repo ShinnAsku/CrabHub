@@ -133,14 +133,46 @@ const mssqlTypes: DataType[] = [
   { name: 'XML', category: 'other', hasLength: false, hasPrecision: false, hasScale: false },
 ];
 
+const jdbcTypes: DataType[] = [
+  { name: 'INTEGER', category: 'numeric', hasLength: false, hasPrecision: false, hasScale: false },
+  { name: 'DECIMAL', category: 'numeric', hasLength: false, hasPrecision: true, hasScale: true },
+  { name: 'VARCHAR', category: 'string', hasLength: true, hasPrecision: false, hasScale: false },
+  { name: 'CHAR', category: 'string', hasLength: true, hasPrecision: false, hasScale: false },
+  { name: 'DATE', category: 'date', hasLength: false, hasPrecision: false, hasScale: false },
+  { name: 'TIMESTAMP', category: 'date', hasLength: false, hasPrecision: false, hasScale: false },
+  { name: 'BLOB', category: 'binary', hasLength: false, hasPrecision: false, hasScale: false },
+  { name: 'CLOB', category: 'string', hasLength: false, hasPrecision: false, hasScale: false },
+];
+
 export const DATA_TYPES: Record<string, DataType[]> = {
+  oracle: [
+    ...jdbcTypes,
+    { name: 'NUMBER', category: 'numeric', hasLength: false, hasPrecision: true, hasScale: true },
+    { name: 'VARCHAR2', category: 'string', hasLength: true, hasPrecision: false, hasScale: false },
+    { name: 'NVARCHAR2', category: 'string', hasLength: true, hasPrecision: false, hasScale: false },
+    { name: 'NCHAR', category: 'string', hasLength: true, hasPrecision: false, hasScale: false },
+    { name: 'NCLOB', category: 'string', hasLength: false, hasPrecision: false, hasScale: false },
+    { name: 'RAW', category: 'binary', hasLength: true, hasPrecision: false, hasScale: false },
+    { name: 'BINARY_FLOAT', category: 'numeric', hasLength: false, hasPrecision: false, hasScale: false },
+    { name: 'BINARY_DOUBLE', category: 'numeric', hasLength: false, hasPrecision: false, hasScale: false },
+    { name: 'TIMESTAMP WITH TIME ZONE', category: 'date', hasLength: false, hasPrecision: false, hasScale: false },
+  ],
   postgresql: pgTypes,
+  kingbase: pgTypes,
+  vastbase: pgTypes,
   gaussdb: pgTypes,
   opengauss: pgTypes,
   mysql: mysqlTypes,
+  oceanbase: mysqlTypes,
+  tidb: mysqlTypes,
+  tdsql: mysqlTypes,
+  dameng: jdbcTypes,
+  yashandb: jdbcTypes,
+  gbase: jdbcTypes,
   sqlite: sqliteTypes,
   clickhouse: clickhouseTypes,
   mssql: mssqlTypes,
+  sqlserver: mssqlTypes,
 };
 
 export const DATA_TYPE_CATEGORIES: { key: DataType['category']; labelZh: string; labelEn: string }[] = [

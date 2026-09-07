@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Tab, QueryResult } from '@/types';
+import type { Tab, QueryResult } from '@/types/index';
+import { useTransactionStore } from "@/features/editor/transaction-store";
 
 interface TabState {
   tabs: Tab[];
@@ -55,7 +56,8 @@ export const useTabStore = create<TabState>()(
         return newTab.id;
       },
 
-      closeTab: (id) =>
+      closeTab: (id) => {
+        void useTransactionStore.getState().cancel(id).catch(() => {});
         set((state) => {
           const newTabs = state.tabs.filter((t) => t.id !== id);
           let newActiveId = state.activeTabId;
@@ -72,7 +74,8 @@ export const useTabStore = create<TabState>()(
           const newExecuting = { ...state.isExecuting };
           delete newExecuting[id];
           return { tabs: newTabs, activeTabId: newActiveId, queryResults: newQueryResults, isExecuting: newExecuting };
-        }),
+        });
+      },
 
       setActiveTab: (id) => set({ activeTabId: id }),
 

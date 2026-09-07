@@ -1,0 +1,990 @@
+import { useState, useCallback, useRef, useEffect } from 'react'
+import {
+  Send,
+  Settings,
+  ChevronDown,
+  Bot,
+  User,
+  Copy,
+  Play,
+  FileCode,
+  X,
+  Loader2,
+  Minus,
+  Square,
+  GripHorizontal,
+  Lightbulb,
+  Code,
+  Database,
+  BarChart2,
+  Zap,
+  Brain,
+} from 'lucide-react'
+import { useConnectionStore, useTabStore, useUIStore } from '@/stores/app-store'
+import { useExplorerStore } from '@/features/explorer/store'
+import { useShallow } from 'zustand/react/shallow'
+import { t } from '@/lib/i18n'
+import { setAiApiKey, getAiApiKey, testAiConnection } from '@/features/ai/commands'
+import { transportInvoke } from '@/lib/tauri-commands'
+import { AgentToolCard } from '@/features/ai/AgentToolCard'
+import { AgentConfirmBar } from '@/features/ai/AgentConfirmBar'
+// Reserved for agent event rendering in chat messages
+void AgentToolCard
+void AgentConfirmBar
+
+// ===== AI Settings Types =====
+
+interface AISettings {
+  provider: 'deepseek' | 'qwen' | 'ollama' | 'openai' | 'custom'
+  endpoint: string
+  apiKey: string
+  model: string
+  temperature: number
+}
+
+const DEFAULT_ENDPOINTS: Record<string, string> = {
+  deepseek: 'https://api.deepseek.com/v1',
+  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  ollama: 'http://localhost:11434/v1',
+  openai: 'https://api.openai.com/v1',
+}
+
+const DEFAULT_MODELS: Record<string, string> = {
+  deepseek: 'deepseek-chat',
+  qwen: 'qwen-turbo',
+  ollama: 'llama3',
+  openai: 'gpt-4o-mini',
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  deepseek: 'DeepSeek',
+  qwen: 'Qwen',
+  ollama: 'Ollama',
+  openai: 'OpenAI',
+  custom: 'Custom',
+}
+
+// ===== Message Types =====
+
+interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  sqlBlocks?: string[]
+  streaming?: boolean
+}
+
+// ===== AI Settings Dialog =====
+
+function AISettingsDialog({
+  settings,
+  onSave,
+  onClose,
+}: {
+  settings: AISettings
+  onSave: (s: AISettings) => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState<AISettings>({ ...settings })
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const resp = await testAiConnection(form.provider, form.endpoint, form.apiKey, form.model)
+      setTestResult({ ok: true, msg: resp.slice(0, 200) })
+    } catch (e: any) {
+      setTestResult({ ok: false, msg: String(e).slice(0, 300) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleProviderChange = (provider: AISettings['provider']) => {
+    setForm({
+      ...form,
+      provider,
+      endpoint: DEFAULT_ENDPOINTS[provider] ?? form.endpoint,
+      model: DEFAULT_MODELS[provider] ?? form.model,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-[380px] bg-background border border-border rounded-lg shadow-xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="text-sm font-medium text-foreground">{t('ai.settings')}</span>
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div className="px-4 py-3 space-y-3">
+          {/* Provider */}
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t('ai.provider')}</label>
+            <div className="relative">
+              <select
+                value={form.provider}
+                onChange={e => handleProviderChange(e.target.value as AISettings['provider'])}
+                className="w-full appearance-none px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground cursor-pointer pr-8"
+              >
+                {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={12}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              />
+            </div>
+          </div>
+
+          {/* Endpoint */}
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t('ai.endpoint')}</label>
+            <input
+              type="text"
+              value={form.endpoint}
+              onChange={e => setForm({ ...form, endpoint: e.target.value })}
+              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground"
+            />
+          </div>
+
+          {/* API Key */}
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t('ai.apiKey')}</label>
+            <input
+              type="password"
+              value={form.apiKey}
+              onChange={e => setForm({ ...form, apiKey: e.target.value })}
+              placeholder={form.provider === 'ollama' ? t('ai.noApiKey') : 'sk-...'}
+              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground placeholder:text-muted-foreground/60"
+            />
+          </div>
+
+          {/* Model */}
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t('ai.model')}</label>
+            <input
+              type="text"
+              value={form.model}
+              onChange={e => setForm({ ...form, model: e.target.value })}
+              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded outline-none focus:border-[hsl(var(--tab-active))] transition-colors text-foreground"
+            />
+          </div>
+
+          {/* Temperature */}
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">
+              {t('ai.temperature', { value: form.temperature.toFixed(1) })}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={form.temperature}
+              onChange={e => setForm({ ...form, temperature: parseFloat(e.target.value) })}
+              className="w-full accent-[hsl(var(--tab-active))]"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTest}
+              disabled={testing}
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors disabled:opacity-50"
+            >
+              {testing ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 size={12} className="animate-spin" />
+                  {t('connection.testing')}
+                </span>
+              ) : (
+                t('connection.testConnection')
+              )}
+            </button>
+            {testResult && (
+              <span
+                className={`text-[11px] ${testResult.ok ? 'text-green-500' : 'text-destructive'}`}
+              >
+                {testResult.ok
+                  ? '✓ ' + t('connection.testSuccess')
+                  : '✗ ' + t('connection.testFailed')}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={() => {
+                onSave(form)
+                onClose()
+              }}
+              className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              {t('common.save')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ===== Main AIPanel (Floating) =====
+
+function AIPanel() {
+  const { connections, activeConnectionId } = useConnectionStore(
+    useShallow(state => ({
+      connections: state.connections,
+      activeConnectionId: state.activeConnectionId,
+    }))
+  )
+  const { addTab, tabs, activeTabId, updateTabContent } = useTabStore(
+    useShallow(state => ({
+      addTab: state.addTab,
+      tabs: state.tabs,
+      activeTabId: state.activeTabId,
+      updateTabContent: state.updateTabContent,
+    }))
+  )
+  const { toggleAIPanel } = useUIStore(
+    useShallow(state => ({
+      toggleAIPanel: state.toggleAIPanel,
+      language: state.language,
+    }))
+  )
+
+  const [settings, setSettings] = useState<AISettings>(() => ({
+    provider: 'deepseek' as const,
+    endpoint: DEFAULT_ENDPOINTS['deepseek'] as string,
+    apiKey: '',
+    model: DEFAULT_MODELS['deepseek'] as string,
+    temperature: 0.3,
+  }))
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+  const [showSettings, setShowSettings] = useState(false)
+  const [minimized, setMinimized] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const sessionIdRef = useRef(`session-${Date.now()}`)
+
+  // Load chat history from SQLite on mount (works on desktop AND web — the
+  // transport layer routes to Tauri IPC or the HTTP API automatically)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const rows = (await transportInvoke('load_chat_history', {
+          sessionId: sessionIdRef.current,
+        })) as [string, string, string][]
+        if (rows.length > 0) {
+          setMessages(
+            rows.map((r, i) => ({
+              id: String(i + 1),
+              role: r[0] as 'user' | 'assistant',
+              content: r[1],
+            }))
+          )
+        }
+      } catch {
+        /* ignore */
+      }
+      setHistoryLoaded(true)
+    })()
+  }, [])
+
+  // Save new messages to SQLite
+  useEffect(() => {
+    if (!historyLoaded) return
+    ;(async () => {
+      try {
+        const existing = (await transportInvoke('load_chat_history', {
+          sessionId: sessionIdRef.current,
+        })) as [string, string, string][]
+        const existingCount = existing.length
+        if (messages.length > existingCount) {
+          for (let i = existingCount; i < messages.length; i++) {
+            const msg = messages[i]!
+            if (!msg.streaming) {
+              await transportInvoke('save_chat_message', {
+                sessionId: sessionIdRef.current,
+                role: msg.role,
+                content: msg.content,
+              })
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    })()
+  }, [messages, historyLoaded])
+
+  const [input, setInput] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Drag state
+  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 36 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 })
+
+  // Resize state
+  const [panelWidth, setPanelWidth] = useState(380)
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeStartRef = useRef({ mouseX: 0, startWidth: 380 })
+
+  // Load settings + API key on mount
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const json = (await transportInvoke('load_ai_settings')) as string | null
+        if (!cancelled && json) {
+          const saved = JSON.parse(json) as Partial<AISettings>
+          setSettings(prev => ({
+            ...prev,
+            provider: saved.provider ?? prev.provider,
+            endpoint: saved.endpoint ?? prev.endpoint,
+            model: saved.model ?? prev.model,
+            temperature: saved.temperature ?? prev.temperature,
+          }))
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        const key = await getAiApiKey('deepseek')
+        if (!cancelled && key) setSettings(prev => ({ ...prev, apiKey: key }))
+      } catch {
+        /* ignore */
+      }
+      setSettingsLoaded(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Save settings to SQLite whenever they change
+  useEffect(() => {
+    if (!settingsLoaded) return
+    const { apiKey: _omit, ...safe } = settings
+    void _omit
+    transportInvoke('save_ai_settings', { settingsJson: JSON.stringify(safe) }).catch(() => {})
+  }, [settings, settingsLoaded])
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // Drag handlers
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = dragStartRef.current.mouseX - e.clientX
+      const deltaY = e.clientY - dragStartRef.current.mouseY
+
+      let newX = dragStartRef.current.startX + deltaX
+      let newY = dragStartRef.current.startY + deltaY
+
+      const MIN_VISIBLE = 80
+      const maxX = window.innerWidth - MIN_VISIBLE
+      newX = Math.max(0, Math.min(maxX, newX))
+
+      const maxY = window.innerHeight - 24 - MIN_VISIBLE
+      newY = Math.max(0, Math.min(maxY, newY))
+
+      setPanelOffset({ x: newX, y: newY })
+    }
+
+    const handleMouseUp = () => setIsDragging(false)
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging])
+
+  // Resize handlers
+  useEffect(() => {
+    if (!isResizing) return
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = resizeStartRef.current.mouseX - e.clientX
+      const newWidth = Math.max(280, Math.min(800, resizeStartRef.current.startWidth + deltaX))
+      setPanelWidth(newWidth)
+    }
+    const handleMouseUp = () => setIsResizing(false)
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing])
+
+  // Build system prompt with database context
+  const buildSystemPrompt = useCallback(() => {
+    const activeConnection = connections.find(c => c.id === activeConnectionId)
+
+    let prompt = t('ai.systemPrompt')
+
+    if (activeConnection) {
+      prompt += `\n\n${t('ai.currentConnection')}${activeConnection.name} (${activeConnection.type})`
+      prompt += `\n${t('ai.database')}${activeConnection.database}`
+
+      // Add table info if available
+      const { schemaData } = useExplorerStore.getState()
+      const schema = schemaData[activeConnection.id]
+      if (schema && schema.length > 0) {
+        prompt += `\n\n${t('ai.dbStructure')}`
+        const describeNode = (node: (typeof schema)[0], indent: string = '') => {
+          let desc = `${indent}${node.type}: ${node.name}`
+          if (node.children) {
+            for (const child of node.children) {
+              if (child.type === 'function') {
+                desc += `\n${indent}  - ${child.name}`
+              } else {
+                desc += `\n${describeNode(child, indent + '  ')}`
+              }
+            }
+          }
+          return desc
+        }
+        for (const node of schema) {
+          prompt += `\n${describeNode(node)}`
+        }
+      }
+    }
+
+    prompt += `\n\n${t('ai.languageInstruction')}`
+    return prompt
+  }, [connections, activeConnectionId])
+
+  // Extract SQL blocks from markdown
+  const extractSqlBlocks = (text: string): string[] => {
+    const regex = /```sql\r?\n?([\s\S]*?)```/g
+    const blocks: string[] = []
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(text)) !== null) {
+      blocks.push((match[1] ?? '').trim())
+    }
+    return blocks
+  }
+
+  // Call AI API with streaming
+  const callAI = useCallback(
+    async (userMessage: string) => {
+      if (isStreaming) return
+
+      setIsStreaming(true)
+      const abortController = new AbortController()
+      abortRef.current = abortController
+
+      // Add user message
+      const userMsg: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: userMessage,
+      }
+      setMessages(prev => [...prev, userMsg])
+
+      // Add placeholder assistant message
+      const assistantId = (Date.now() + 1).toString()
+      setMessages(prev => [
+        ...prev,
+        {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          streaming: true,
+          sqlBlocks: [],
+        },
+      ])
+
+      try {
+        const systemPrompt = buildSystemPrompt()
+        const apiMessages = [
+          ...messages
+            .filter(m => !m.streaming)
+            .map(m => ({
+              role: m.role,
+              content: m.content,
+            })),
+          { role: 'user' as const, content: userMessage },
+        ]
+
+        const response = await fetch(`${settings.endpoint}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            model: settings.model,
+            messages: [{ role: 'system', content: systemPrompt }, ...apiMessages],
+            temperature: settings.temperature,
+            stream: true,
+          }),
+          signal: abortController.signal,
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => t('ai.unknownError'))
+          throw new Error(`${t('ai.apiError')}${response.status}): ${errorText.slice(0, 200)}`)
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error(t('ai.streamError'))
+
+        const decoder = new TextDecoder()
+        let fullContent = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split('\n')
+
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith('data: ')) continue
+
+            const data = trimmed.slice(6)
+            if (data === '[DONE]') continue
+
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta?.content
+              if (delta) {
+                fullContent += delta
+                setMessages(prev =>
+                  prev.map(m =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          content: fullContent,
+                          sqlBlocks: extractSqlBlocks(fullContent),
+                        }
+                      : m
+                  )
+                )
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+
+        // Finalize message
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  streaming: false,
+                  content: fullContent,
+                  sqlBlocks: extractSqlBlocks(fullContent),
+                }
+              : m
+          )
+        )
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === assistantId ? { ...m, streaming: false, content: t('ai.cancelled') } : m
+            )
+          )
+        } else {
+          const errorMsg =
+            err instanceof Error ? err.message : typeof err === 'string' ? err : t('ai.callFailed')
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    streaming: false,
+                    content: `${t('ai.errorPrefix')}${errorMsg}\n\n${t('ai.errorHint')}`,
+                  }
+                : m
+            )
+          )
+        }
+      } finally {
+        setIsStreaming(false)
+        abortRef.current = null
+      }
+    },
+    [isStreaming, messages, settings, buildSystemPrompt]
+  )
+
+  const handleSend = useCallback(() => {
+    if (!input.trim() || isStreaming) return
+    const msg = input.trim()
+    setInput('')
+    callAI(msg)
+  }, [input, isStreaming, callAI])
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleSend()
+      }
+    },
+    [handleSend]
+  )
+
+  const handleCopySQL = useCallback((sql: string) => {
+    navigator.clipboard.writeText(sql).catch(() => {
+      const textarea = document.createElement('textarea')
+      textarea.value = sql
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    })
+  }, [])
+
+  const handleInsertToEditor = useCallback(
+    (sql: string) => {
+      if (activeTabId) {
+        const currentTab = tabs.find(t => t.id === activeTabId)
+        const newContent = currentTab ? currentTab.content + '\n' + sql : sql
+        updateTabContent(activeTabId, newContent)
+      } else {
+        addTab({
+          title: t('ai.queryTitle'),
+          titleKey: 'ai.queryTitle',
+          type: 'query',
+          content: sql,
+        })
+      }
+    },
+    [activeTabId, tabs, addTab, updateTabContent]
+  )
+
+  const handleExecuteSQL = useCallback(
+    (sql: string) => {
+      // Insert into current editor tab (or create one), then dispatch execute event
+      if (activeTabId) {
+        const currentTab = tabs.find(t => t.id === activeTabId)
+        const newContent = currentTab ? currentTab.content + '\n' + sql : sql
+        updateTabContent(activeTabId, newContent)
+      } else {
+        addTab({
+          title: t('tab.query') + ' 1',
+          titleKey: 'tab.query',
+          titleNum: 1,
+          type: 'query',
+          content: sql,
+        })
+      }
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('crabhub:execute-query'))
+      }, 100)
+    },
+    [activeTabId, tabs, addTab, updateTabContent]
+  )
+
+  // Simple markdown-like rendering — extracts SQL blocks and renders
+  // them with copy/run/insert buttons, separated from conversation text.
+  const renderContent = (content: string) => {
+    const parts = content.split(/(```sql[\s\S]*?```)/g)
+    return parts.map((part, i) => {
+      if (part.startsWith('```sql')) {
+        // Strip ```sql and trailing ```, handle optional newline after "sql"
+        const sql = part
+          .replace(/^```sql\r?\n?/, '')
+          .replace(/```$/, '')
+          .trim()
+        return (
+          <div key={i} className="my-1.5">
+            <pre className="bg-muted/80 rounded p-2 text-xs font-mono overflow-x-auto text-foreground border border-border/50">
+              {sql}
+            </pre>
+            <div className="flex items-center gap-1 mt-1">
+              <button
+                onClick={() => handleCopySQL(sql)}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Copy size={10} />
+                {t('ai.copySql')}
+              </button>
+              <button
+                onClick={() => handleExecuteSQL(sql)}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Play size={10} />
+                {t('ai.runSql')}
+              </button>
+              <button
+                onClick={() => handleInsertToEditor(sql)}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <FileCode size={10} />
+                {t('ai.insertEditor')}
+              </button>
+            </div>
+          </div>
+        )
+      }
+      return (
+        <span key={i} className="whitespace-pre-wrap">
+          {part}
+        </span>
+      )
+    })
+  }
+
+  return (
+    <div
+      className="ai-panel fixed z-30 flex flex-col bg-background border-l border-border shadow-xl"
+      style={{
+        right: panelOffset.x,
+        top: panelOffset.y,
+        bottom: '24px',
+        width: `${panelWidth}px`,
+        borderRadius: '6px 0 0 6px',
+        userSelect: isDragging || isResizing ? 'none' : undefined,
+      }}
+    >
+      {/* Left resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-[hsl(var(--tab-active))]/30 transition-colors z-10"
+        style={{ left: -3 }}
+        onMouseDown={e => {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsResizing(true)
+          resizeStartRef.current = { mouseX: e.clientX, startWidth: panelWidth }
+        }}
+      />
+
+      {/* Drag Handle + Header */}
+      <div
+        className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0 select-none"
+        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        onMouseDown={e => {
+          e.preventDefault()
+          setIsDragging(true)
+          dragStartRef.current = {
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            startX: panelOffset.x,
+            startY: panelOffset.y,
+          }
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <GripHorizontal size={12} className="text-muted-foreground/50" />
+          <Bot size={13} className="text-[hsl(var(--tab-active))]" />
+          <span className="text-xs font-medium text-foreground">{t('ai.title')}</span>
+          <span className="text-[11px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+            {PROVIDER_LABELS[settings.provider]}
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title={t('ai.settings')}
+          >
+            <Settings size={12} />
+          </button>
+          <button
+            onClick={() => setMinimized(!minimized)}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title={minimized ? t('ai.expand') : t('ai.minimize')}
+          >
+            {minimized ? <Square size={10} /> : <Minus size={12} />}
+          </button>
+          <button
+            aria-label={t('common.close')}
+            onClick={toggleAIPanel}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title={t('common.close')}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* Content (hidden when minimized) */}
+      {!minimized && (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+            {messages.map(msg => (
+              <div
+                key={msg.id}
+                className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+              >
+                {/* Avatar */}
+                <div
+                  className={`w-5 h-5 rounded flex items-center justify-center shrink-0 mt-0.5 ${
+                    msg.role === 'user'
+                      ? 'bg-accent text-accent-foreground'
+                      : 'bg-[hsl(var(--tab-active))] text-white'
+                  }`}
+                >
+                  {msg.role === 'user' ? <User size={11} /> : <Bot size={11} />}
+                </div>
+                {/* Content */}
+                <div
+                  className={`text-xs leading-relaxed px-2.5 py-1.5 rounded-lg max-w-[85%] ${
+                    msg.role === 'user'
+                      ? 'bg-accent text-accent-foreground'
+                      : 'bg-muted text-foreground'
+                  }`}
+                >
+                  {msg.streaming && !msg.content ? (
+                    <div className="flex items-center gap-1">
+                      <Loader2 size={11} className="animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">{t('ai.thinking')}</span>
+                    </div>
+                  ) : (
+                    renderContent(msg.content)
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Quick Actions */}
+          <div className="px-3 py-2 shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setInput(t('ai.prompt.writeSql'))}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Code size={10} />
+                <span>{t('ai.writeSql')}</span>
+              </button>
+              <button
+                onClick={() => setInput(t('ai.prompt.analyzePerformance'))}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Zap size={10} />
+                <span>{t('ai.analyzePerformance')}</span>
+              </button>
+              <button
+                onClick={() => setInput(t('ai.prompt.designTable'))}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Database size={10} />
+                <span>{t('ai.designTable')}</span>
+              </button>
+              <button
+                onClick={() => setInput(t('ai.prompt.analyzeData'))}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <BarChart2 size={10} />
+                <span>{t('ai.analyzeData')}</span>
+              </button>
+              <button
+                onClick={() => setInput(t('ai.prompt.explainSql'))}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Brain size={10} />
+                <span>{t('ai.explainSql')}</span>
+              </button>
+              <button
+                onClick={() => setInput(t('ai.prompt.optimizeSql'))}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <Lightbulb size={10} />
+                <span>{t('ai.optimizeSql')}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Context indicator */}
+          {activeConnectionId && (
+            <div className="px-3 py-1 shrink-0">
+              <span className="text-[11px] text-muted-foreground">{t('ai.schemaInjected')}</span>
+            </div>
+          )}
+
+          {/* Input Area */}
+          <div className="border-t border-border p-2 shrink-0">
+            <div className="flex items-end gap-1.5 bg-muted rounded-lg p-1.5">
+              <textarea
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t('ai.inputPlaceholder')}
+                rows={1}
+                className="ai-input flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none resize-none min-h-[20px] max-h-[80px]"
+                style={{ lineHeight: '20px' }}
+              />
+              {isStreaming ? (
+                <button
+                  onClick={() => abortRef.current?.abort()}
+                  className="p-1 rounded text-destructive hover:bg-accent transition-colors shrink-0"
+                  title={t('ai.stopGenerate')}
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-30 disabled:hover:bg-transparent shrink-0"
+                >
+                  <Send size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Settings Dialog */}
+      {showSettings && (
+        <AISettingsDialog
+          settings={settings}
+          onSave={s => {
+            setSettings(s)
+            // Persist key to OS keyring (never to localStorage).
+            void setAiApiKey(s.provider, s.apiKey).catch(err => {
+              console.error('Failed to save AI API key to keyring:', err)
+            })
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+export default AIPanel

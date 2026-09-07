@@ -1,7 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionConfig, QueryResult, PagedQueryResult, ExecuteResult, TableInfo, ColumnInfo, ConnectionHealth } from "@/types";
-import { getPassword } from "./secure-storage";
-import { isMockMode, mockInvoke } from "./tauri-commands-mock";
+import type { ConnectionConfig, QueryResult, PagedQueryResult, ExecuteResult, TableInfo, ColumnInfo, ConnectionHealth } from "@/types/index";
+import { getPassword } from "@/lib/secure-storage";
+import { toRuntimeConnection } from "@/features/connections/profile";
+import { transportInvoke as safeInvoke } from "@/lib/transport";
+export { transportInvoke } from "@/lib/transport";
 
 /**
  * Structured WHERE condition for row-level UPDATE/DELETE. Multiple conditions
@@ -23,82 +24,12 @@ export interface UpdateStatus {
   url: string;
 }
 
-// Check if we're running in Tauri environment
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
-// ---------------------------------------------------------------------------
-// Web transport — used when the app is served by crabhub-server (self-hosted
-// / Docker). Same command names and argument shapes as Tauri invoke; the
-// backend dispatches at POST /api/invoke/{cmd}.
-// ---------------------------------------------------------------------------
-
-function getWebToken(): string | null {
-  try { return sessionStorage.getItem("crabhub-web-token"); } catch { return null; }
-}
-
-async function webInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const token = getWebToken();
-  const res = await fetch(`/api/invoke/${cmd}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(args ?? {}),
-  });
-  if (res.status === 401) {
-    // Session expired or missing — drop the stale token and reload so the
-    // WebAuthGate login screen takes over. No prompt(): embedded browsers
-    // block it and it's a poor experience anyway.
-    try { sessionStorage.removeItem("crabhub-web-token"); } catch { /* ignore */ }
-    window.location.reload();
-    throw new Error("Unauthorized: login required");
-  }
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(body?.error ?? `HTTP ${res.status}`);
-  }
-  return body as T;
-}
-
-// Wrapper for invoke that picks the right transport:
-// Tauri IPC (desktop) → mock (dev) → HTTP (web/self-hosted).
-async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (isMockMode()) {
-    return mockInvoke<T>(cmd, args);
-  }
-  if (!isTauri) {
-    return webInvoke<T>(cmd, args);
-  }
-  return invoke<T>(cmd, args);
-}
-
-/** Shared transport for modules outside this file (stores, panels). */
-export const transportInvoke = safeInvoke;
-
 export interface ConnectResult {
   connectionId: string;
   detectedType: string;
 }
 
-/**
- * Strip empty / zero entries from pool overrides so the backend falls back to
- * its per-database defaults instead of receiving `0` and clamping later.
- */
-function sanitizePoolOptions(
-  po: ConnectionConfig["poolOptions"]
-): ConnectionConfig["poolOptions"] | undefined {
-  if (!po) return undefined;
-  const out: NonNullable<ConnectionConfig["poolOptions"]> = {};
-  if (po.maxConnections && po.maxConnections > 0) out.maxConnections = po.maxConnections;
-  if (po.idleTimeoutSecs !== undefined && po.idleTimeoutSecs >= 0) out.idleTimeoutSecs = po.idleTimeoutSecs;
-  if (po.maxLifetimeSecs !== undefined && po.maxLifetimeSecs >= 0) out.maxLifetimeSecs = po.maxLifetimeSecs;
-  if (po.acquireTimeoutSecs && po.acquireTimeoutSecs > 0) out.acquireTimeoutSecs = po.acquireTimeoutSecs;
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-export async function connectDatabase(config: ConnectionConfig): Promise<ConnectResult> {
-  // Get password from secure storage if not provided
+async function resolveRuntimeConnection(config: ConnectionConfig) {
   let password = config.password;
   if (password == null && config.id) {
     const storedPassword = await getPassword(config.id);
@@ -107,23 +38,11 @@ export async function connectDatabase(config: ConnectionConfig): Promise<Connect
     }
   }
   
-  // Convert frontend ConnectionConfig to backend format (camelCase)
-  const backendConfig = {
-    id: config.id || crypto.randomUUID(),
-    name: config.name,
-    dbType: config.type,
-    host: config.host || undefined,
-    port: config.port || undefined,
-    username: config.username || undefined,
-    password: password || undefined,
-    database: config.database || undefined,
-    sslEnabled: config.enableSsl || false,
-    keepaliveInterval: config.keepaliveInterval || 30,
-    autoReconnect: config.autoReconnect !== false,
-    queryTimeoutSecs: config.queryTimeoutSecs ?? 300,
-    poolOptions: sanitizePoolOptions(config.poolOptions)
-  };
-  return safeInvoke<ConnectResult>("connect_to_database", { config: backendConfig });
+  return toRuntimeConnection({ ...config, password });
+}
+
+export async function connectDatabase(config: ConnectionConfig): Promise<ConnectResult> {
+  return safeInvoke<ConnectResult>("connect_to_database", { config: await resolveRuntimeConnection(config) });
 }
 
 export async function disconnectDatabase(id: string): Promise<void> {
@@ -141,14 +60,21 @@ export async function executeQuery(id: string, sql: string): Promise<QueryResult
 
 export async function executeBatch(id: string, statements: string[]): Promise<BatchResultItem[]> {
   const raw = await safeInvoke<RawBatchItem[]>("execute_batch", { id, statements });
-  return raw.map((r) => {
-    const item = r as BatchResultItem;
-    if (item.type === "error" || item.type === "empty") return item;
-    if ((r as RawQueryResult).columns) {
-      return { ...mapRawQueryResult(r as RawQueryResult), hasMore: (r as RawQueryResult).hasMore ?? false };
-    }
-    return item; // ExecuteResult-shape
-  });
+  return raw.map(mapRawBatchResult);
+}
+
+export function mapRawBatchResult(raw: RawBatchItem): BatchResultItem {
+  if ("type" in raw) return { ...raw, duration: raw.executionTimeMs ?? 0 };
+  if ("columns" in raw) {
+    return { ...mapRawQueryResult(raw), hasMore: raw.hasMore ?? false };
+  }
+  const rowsAffected = "rowsAffected" in raw ? raw.rowsAffected ?? 0 : 0;
+  return {
+    success: true,
+    rowsAffected,
+    message: `${rowsAffected} rows affected`,
+    duration: raw.executionTimeMs ?? 0,
+  };
 }
 
 export async function executeQueryPaged(id: string, sql: string, limit: number, offset: number): Promise<PagedQueryResult> {
@@ -183,8 +109,8 @@ interface RawQueryResult {
 
 type RawBatchItem =
   | RawQueryResult
-  | { type: "error"; message: string }
-  | { type: "empty" }
+  | { type: "error"; message: string; executionTimeMs?: number }
+  | { type: "empty"; executionTimeMs?: number }
   | { rowsAffected?: number; executionTimeMs?: number };
 
 export interface BatchResultItem {
@@ -198,6 +124,7 @@ export interface BatchResultItem {
   duration?: number;
   hasMore?: boolean;
   // ExecuteResult shape (set when the statement did not return rows).
+  rowsAffected?: number;
   success?: boolean;
   error?: string;
 }
@@ -305,28 +232,7 @@ export async function getSchemasForDatabase(id: string, databaseName: string): P
 }
 
 export async function testConnection(config: ConnectionConfig): Promise<boolean> {
-  // Convert frontend ConnectionConfig to backend format (camelCase)
-  const backendConfig = {
-    id: config.id || crypto.randomUUID(),
-    name: config.name,
-    dbType: config.type,
-    host: config.host || undefined,
-    port: config.port || undefined,
-    username: config.username || undefined,
-    password: config.password || undefined,
-    database: config.database || undefined,
-    sslEnabled: config.enableSsl || false,
-    keepaliveInterval: config.keepaliveInterval || 30,
-    autoReconnect: config.autoReconnect !== false,
-    queryTimeoutSecs: config.queryTimeoutSecs ?? 300,
-    poolOptions: sanitizePoolOptions(config.poolOptions)
-  };
-  try {
-    return await safeInvoke<boolean>("test_connection_cmd", { config: backendConfig });
-  } catch (error) {
-    console.error("Connection test error:", error);
-    throw error;
-  }
+  return safeInvoke<boolean>("test_connection_cmd", { config: await resolveRuntimeConnection(config) });
 }
 
 export async function exportDatabase(id: string, tables?: string[]): Promise<string> {
@@ -563,6 +469,8 @@ export async function cancelQuery(id: string): Promise<boolean> {
 }
 
 export interface DriverCapabilities {
+  supportsScriptSessions?: boolean;
+  supportsInteractiveTransactions?: boolean;
   supportsSchemas: boolean;
   supportsManageTables: boolean;
   supportsViews: boolean;

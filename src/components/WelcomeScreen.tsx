@@ -1,9 +1,9 @@
 import { ChevronRight, Code2, Database, Sparkles, Table2 } from "lucide-react";
-import { useAppStore, useTabStore } from "@/stores/app-store";
+import { useUIStore, useTabStore } from "@/stores/app-store";
 import { t } from "@/lib/i18n";
 
 export default function WelcomeScreen() {
-  const { toggleAIPanel } = useAppStore();
+  const toggleAIPanel = useUIStore(state => state.toggleAIPanel);
   const { addTab } = useTabStore();
 
   const handleNewQuery = () => {

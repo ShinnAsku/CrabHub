@@ -1,8 +1,11 @@
 import { Minus, Square, X, Sun, Moon, Globe } from "lucide-react";
-import { useAppStore } from "@/stores/app-store";
+import { useUIStore } from "@/stores/app-store";
+import { useShallow } from "zustand/react/shallow";
 
 export function TitleBar() {
-  const { theme, toggleTheme, language, setLanguage } = useAppStore();
+  const { theme, toggleTheme, language, setLanguage } = useUIStore(useShallow(state => ({
+    theme: state.theme, toggleTheme: state.toggleTheme, language: state.language, setLanguage: state.setLanguage,
+  })));
 
   // Handle non-Tauri environments gracefully
   const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

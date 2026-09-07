@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { QueryHistoryEntry, SlowQueryEntry } from '@/types';
+import type { QueryHistoryEntry, SlowQueryEntry } from '@/types/index';
 
 // Load query history from localStorage
 function loadQueryHistory(): QueryHistoryEntry[] {
@@ -67,6 +67,7 @@ interface HistoryState {
 
   // Actions
   addQueryHistory: (entry: Omit<QueryHistoryEntry, "id">) => void;
+  addQueryHistoryBatch: (entries: Omit<QueryHistoryEntry, "id">[]) => void;
   clearQueryHistory: () => void;
   addSlowQuery: (query: Omit<SlowQueryEntry, "id">) => void;
   clearSlowQueries: () => void;
@@ -75,20 +76,23 @@ interface HistoryState {
 
 let historyCounter = 0;
 
-export const useHistoryStore = create<HistoryState>((set) => ({
+export const useHistoryStore = create<HistoryState>((set, get) => ({
   queryHistory: loadQueryHistory(),
   slowQueryLog: loadSlowQueryLog(),
   slowQueryThreshold: loadSlowQueryThreshold(),
   historyCounter: 0,
 
-  addQueryHistory: (entry) =>
+  addQueryHistory: (entry) => get().addQueryHistoryBatch([entry]),
+
+  addQueryHistoryBatch: (entries) => {
+    if (entries.length === 0) return;
     set((state) => {
-      historyCounter++;
-      const newEntry: QueryHistoryEntry = { ...entry, id: `hist-${historyCounter}` };
-      const newHistory = [newEntry, ...state.queryHistory].slice(0, 100);
+      const added = entries.map(entry => ({ ...entry, id: `hist-${++historyCounter}` }));
+      const newHistory = [...added.reverse(), ...state.queryHistory].slice(0, 100);
       saveQueryHistory(newHistory);
-      return { queryHistory: newHistory };
-    }),
+      return { queryHistory: newHistory, historyCounter };
+    });
+  },
 
   clearQueryHistory: () =>
     set(() => {

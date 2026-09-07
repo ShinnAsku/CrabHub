@@ -7,7 +7,7 @@
  * is left in place and surfaced as a warning so the user stays in control.
  */
 
-import { TYPE_MAPPINGS, mapType } from "./migration";
+import { TYPE_MAPPINGS, mapType } from "@/lib/migration";
 
 export interface ConvertResult {
   sql: string;

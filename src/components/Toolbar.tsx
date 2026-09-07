@@ -5,7 +5,8 @@ import {
   ArrowLeftRight,
   Package, NotebookText, Palette, Check,
 } from 'lucide-react';
-import { useAppStore, useTabStore } from "@/stores/app-store";
+import { useUIStore, useTabStore } from "@/stores/app-store";
+import { useShallow } from "zustand/react/shallow";
 import { THEMES } from "@/stores/modules/ui";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,10 @@ function ToolbarActions({
   onOpenImport: () => void;
   onOpenExport: () => void;
 }) {
-  const { aiPanelOpen, toggleAIPanel, theme, setTheme } = useAppStore();
-  const { addTab } = useTabStore();
+  const { aiPanelOpen, toggleAIPanel, theme, setTheme } = useUIStore(useShallow(state => ({
+    aiPanelOpen: state.aiPanelOpen, toggleAIPanel: state.toggleAIPanel, theme: state.theme, setTheme: state.setTheme, language: state.language,
+  })));
+  const addTab = useTabStore(state => state.addTab);
   const [moreOpen, setMoreOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -61,7 +64,7 @@ function ToolbarActions({
 
       {/* More Actions Dropdown */}
       <div className="relative" ref={moreMenuRef}>
-        <Button variant="ghost" size="icon" className={BTN_CLS} onClick={(e) => { e.stopPropagation(); setMoreOpen(!moreOpen); }} title="">
+        <Button variant="ghost" size="icon" className={BTN_CLS} onClick={(e) => { e.stopPropagation(); setMoreOpen(!moreOpen); }} title={t('toolbar.moreActions')} aria-label={t('toolbar.moreActions')} data-testid="toolbar-more">
           <MoreHorizontal size={ICON_SIZE} />
         </Button>
         {moreOpen && (

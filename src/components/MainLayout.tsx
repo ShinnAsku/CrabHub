@@ -1,53 +1,31 @@
+import { useExplorerStore } from "@/features/explorer/store";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Plug } from "lucide-react";
+import { Container, Database, Plug } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
 import { useConnectionStore, useTabStore, useUIStore } from "@/stores/app-store";
-import type { Connection } from "@/types";
+import type { Connection } from "@/types/index";
 import { t } from "@/lib/i18n";
-import { TitleBar } from "./TitleBar";
-import ToolbarActions from "./Toolbar";
-import Sidebar from "./Sidebar";
-import CrabHubMainPanel from "./CrabHubMainPanel";
-import EditorPanel from "./EditorPanel";
-import AIPanel from "./AIPanel";
-import ConnectionDialog from "./ConnectionDialog";
-import SnippetPanel from "./SnippetPanel";
-import SchemaDiffDialog from "./SchemaDiffDialog";
-import DataMigration from "./DataMigration";
-import ErrorBoundary from "./ErrorBoundary";
-import ERSelectorDialog from "./ERSelectorDialog";
-import ImportExportDialog from "./ImportExportDialog";
-import PluginManager from "./PluginManager";
-import UpdateManager from "./UpdateManager";
-import MessageDialog, { showMessage } from "./MessageDialog";
-import { log } from "@/lib/log";
+import { TitleBar } from "@/components/TitleBar";
+import ToolbarActions from "@/components/Toolbar";
+import Sidebar from "@/features/explorer/Sidebar";
+import CrabHubMainPanel from "@/features/explorer/CrabHubMainPanel";
+import EditorPanel from "@/features/editor/EditorPanel";
+import AIPanel from "@/features/ai/AIPanel";
+import ConnectionDialog from "@/features/connections/ConnectionDialog";
+import SnippetPanel from "@/features/editor/SnippetPanel";
+import SchemaDiffDialog from "@/features/schema/SchemaDiffDialog";
+import DataMigration from "@/features/transfer/DataMigration";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import ERSelectorDialog from "@/features/schema/ERSelectorDialog";
+import ImportExportDialog from "@/features/transfer/ImportExportDialog";
+import PluginManager from "@/features/plugins/PluginManager";
+import UpdateManager from "@/features/updates/UpdateManager";
+import DockerManager from "@/features/docker/DockerManager";
+import MessageDialog, { showMessage } from "@/components/MessageDialog";
 
 function MainLayout() {
-  // Responsive scaling via root font-size (affects all rem-based Tailwind units)
-  useEffect(() => {
-    const BASE_WIDTH = 1280;
-    const BASE_FONT = 16;
-    const handleResize = () => {
-      const ratio = window.innerWidth / BASE_WIDTH;
-      const clamped = Math.max(0.75, Math.min(1.4, ratio));
-      document.documentElement.style.fontSize = `${BASE_FONT * clamped}px`;
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const {
-    aiPanelOpen,
-    sidebarOpen,
-    toggleSidebar,
-    toggleAIPanel,
-    snippetPanelOpen,
-    toggleSnippetPanel,
-    selectedSchemaName,
-    viewModeType,
-    setViewModeType,
-  } = useUIStore();
+  const { aiPanelOpen, sidebarOpen, toggleSidebar, toggleAIPanel, snippetPanelOpen, toggleSnippetPanel, viewModeType, setViewModeType } = useUIStore(), { selectedSchemaName } = useExplorerStore();
 
   const {
     addTab,
@@ -70,6 +48,8 @@ function MainLayout() {
   const [importExportMode, setImportExportMode] = useState<"import" | "export" | null>(null);
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
   const [updateManagerOpen, setUpdateManagerOpen] = useState(false);
+  const [dockerOpen, setDockerOpen] = useState(false);
+  const [dockerMounted, setDockerMounted] = useState(false);
 
   const handleOpenConnectionDialog = useCallback(
     (editConnection?: Connection) => {
@@ -126,34 +106,10 @@ function MainLayout() {
     }
   }, [rehydrated, activeConnectionId]);
 
-  // Clear test connection data on startup
-  useEffect(() => {
-    try {
-      const STORAGE_KEY = "crabhub-connections";
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Filter out test connections (those with "test" in name or host)
-        const filtered = parsed.filter((conn: any) => {
-          const name = (conn.name || "").toLowerCase();
-          const host = (conn.host || "").toLowerCase();
-          return !name.includes('test') && !host.includes('test') && !name.includes('示例') && !host.includes('示例');
-        });
-        if (filtered.length !== parsed.length) {
-          log.debug(`Cleared ${parsed.length - filtered.length} test connections`);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-          // Force reload connections in store
-          useConnectionStore.getState().setConnections(filtered);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to clear test connections:", e);
-    }
-  }, []);
-
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (dockerOpen) return;
       const ctrl = e.ctrlKey || e.metaKey;
 
       // Ctrl+N: Open new connection dialog
@@ -271,7 +227,7 @@ function MainLayout() {
       window.removeEventListener("openPluginManager", handleOpenPluginManager);
       window.removeEventListener("openUpdateManager", handleOpenUpdateManager);
     };
-  }, [addTab, closeTab, activeTabId, tabs.length, toggleSidebar, toggleAIPanel]);
+  }, [addTab, closeTab, activeTabId, tabs.length, toggleSidebar, toggleAIPanel, dockerOpen]);
 
   // Memoize the lookup so the Connection object reference is stable across
   // renders when the underlying connection didn't change. Without this, every
@@ -300,6 +256,16 @@ function MainLayout() {
         >
           <Plug size={14} />
         </button>
+        {isTauri() && <div role="tablist" aria-label={t("layout.workspace")} className="flex h-full shrink-0 items-stretch">
+          <button type="button" role="tab" aria-selected={!dockerOpen} data-testid="workspace-databases" onClick={() => setDockerOpen(false)}
+            className={`flex items-center gap-1.5 border-b-2 px-3 text-sm ${!dockerOpen ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:bg-muted"}`}>
+            <Database size={14} />{t("layout.databaseWorkspace")}
+          </button>
+          <button type="button" role="tab" aria-selected={dockerOpen} data-testid="docker-open" onClick={() => { setDockerMounted(true); setDockerOpen(true); }}
+            className={`flex items-center gap-1.5 border-b-2 px-3 text-sm ${dockerOpen ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:bg-muted"}`}>
+            <Container size={14} />Docker
+          </button>
+        </div>}
         <div className="flex-1" />
         <ToolbarActions
           onOpenConnectionDialog={() => handleOpenConnectionDialog()}
@@ -313,6 +279,8 @@ function MainLayout() {
       </div>
 
       {/* Main Content: Sidebar + Editor/Navicat Panel */}
+      <div className="relative min-h-0 flex-1">
+      <div className={`h-full ${dockerOpen ? "hidden" : ""}`} aria-hidden={dockerOpen} inert={dockerOpen}>
       <PanelGroup direction="horizontal">
         {/* Left Sidebar (Connection Tree) */}
         {sidebarOpen && (
@@ -339,9 +307,12 @@ function MainLayout() {
           </ErrorBoundary>
         </Panel>
       </PanelGroup>
+      </div>
+      {dockerMounted && <div className={`absolute inset-0 z-20 ${dockerOpen ? "" : "hidden"}`} aria-hidden={!dockerOpen} inert={!dockerOpen}><DockerManager onClose={() => setDockerOpen(false)} /></div>}
+      </div>
 
       {/* Floating AI Panel */}
-      {aiPanelOpen && <AIPanel />}
+      {aiPanelOpen && !dockerOpen && <AIPanel />}
 
       {/* Dialogs */}
       <ConnectionDialog

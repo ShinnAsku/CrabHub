@@ -1,6 +1,7 @@
 import { executeQuery, executeSql, getTables, getColumns } from "@/lib/tauri-commands";
+import { supportsBulkWrite, insertRowsBulk } from "@/lib/bulk-client";
 import { generateCreateTable, type TableDef, type ColumnDef } from "@/lib/ddl-generator";
-import type { Connection, ColumnInfo } from "@/types";
+import type { Connection, ColumnInfo } from "@/types/index";
 
 // ===== Types =====
 
@@ -870,6 +871,7 @@ export async function migrateData(
   log(`Mode: ${config.mode}, Tables: ${config.tables.length}, Batch size: ${config.batchSize}`);
 
   try {
+    const parameterized = await supportsBulkWrite(config.targetConnectionId);
     for (let i = 0; i < config.tables.length; i++) {
       checkCancelled();
 
@@ -1001,7 +1003,7 @@ export async function migrateData(
             if (!result.rows || result.rows.length === 0) break;
 
             // Generate INSERT for target
-            const insertSql = buildInsertStatement(
+            const insertSql = parameterized ? "" : buildInsertStatement(
               tableName,
               config.targetSchema || tableSchema,
               targetConnection.type,
@@ -1009,7 +1011,11 @@ export async function migrateData(
               result.rows
             );
 
-            if (insertSql) {
+            if (parameterized) {
+              await insertRowsBulk({ id: config.targetConnectionId, table: tableName,
+                schema: config.targetSchema || tableSchema, columns: columnNames },
+                result.rows.map(row => columnNames.map(column => row[column] ?? null)), true);
+            } else if (insertSql) {
               await executeSql(config.targetConnectionId, insertSql);
             }
 

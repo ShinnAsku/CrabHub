@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles/index.css";
-import App from "./App";
+import App from "@/App";
 
 // Configure Monaco Editor web workers using Vite's native ?worker imports.
 // This avoids main-thread fallback which causes UI freezes during syntax highlighting.

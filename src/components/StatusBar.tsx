@@ -1,11 +1,19 @@
-import { useAppStore } from "@/stores/app-store";
+import { useConnectionStore, useTabStore } from "@/stores/app-store";
+import { useShallow } from "zustand/react/shallow";
 import { t } from "@/lib/i18n";
+import { useTransactionStore } from "@/features/editor/transaction-store";
 
 function StatusBar() {
-  const { connections, activeConnectionId, isExecuting, queryResults, activeTabId, transactionActive, tabs } = useAppStore();
-  const activeConn = connections.find(c => c.id === activeConnectionId);
+  const { connections, activeConnectionId } = useConnectionStore(useShallow(state => ({
+    connections: state.connections, activeConnectionId: state.activeConnectionId,
+  })));
+  const { isExecuting, queryResults, activeTabId, tabs } = useTabStore(useShallow(state => ({
+    isExecuting: state.isExecuting, queryResults: state.queryResults, activeTabId: state.activeTabId, tabs: state.tabs,
+  })));
+  const transaction = useTransactionStore(state => activeTabId ? state.sessions[activeTabId] : undefined);
+  const activeConn = connections.find(c => c.id === (transaction?.connectionId || activeConnectionId));
   const result = activeTabId ? queryResults[activeTabId] : null;
-  const isTxActive = activeConnectionId ? !!transactionActive[activeConnectionId] : false;
+  const isTxActive = !!transaction;
   const activeConnections = connections.filter(c => c.connected);
   // Only check executing state for tabs that still exist (stale entries can persist)
   const isAnyTabExecuting = Object.entries(isExecuting).some(([id, v]) => v && tabs.some(t => t.id === id));

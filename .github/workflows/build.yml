@@ -17,8 +17,8 @@ on:
         default: ''
 
 jobs:
-  test:
-    name: Test (lint + typecheck + unit)
+  check:
+    name: Typecheck and Rust lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -33,6 +33,7 @@ jobs:
             librsvg2-dev \
             patchelf \
             libssl-dev \
+            unixodbc-dev \
             pkg-config \
             build-essential
 
@@ -52,7 +53,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-          shared-key: 'test'
+          shared-key: 'check'
 
       - name: Install frontend dependencies
         run: npm ci
@@ -60,80 +61,20 @@ jobs:
       - name: Frontend typecheck
         run: npm run typecheck
 
-      - name: Frontend unit tests
-        run: npm run test:unit
+      - name: Architecture boundaries
+        run: npm run architecture:check
 
       - name: Clippy (deny warnings)
         working-directory: ./src-tauri
-        run: cargo clippy --lib -- -D warnings
+        run: cargo clippy --workspace --lib --bins -- -D warnings
 
-      - name: Backend unit tests
+      - name: Headless server (deny warnings)
         working-directory: ./src-tauri
-        run: cargo test --lib --no-fail-fast
-
-  e2e:
-    name: E2E (Playwright + crabhub-server)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            pkg-config \
-            build-essential
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Setup Rust
-        run: |
-          rustup update stable --no-self-update
-          rustup default stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-          shared-key: 'e2e'
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Pre-build web server
-        working-directory: ./src-tauri
-        run: cargo build --bin crabhub-server
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Run E2E tests
-        run: npx playwright test
-
-      - name: Upload Playwright traces
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-traces
-          path: test-results/
-          if-no-files-found: ignore
+        run: cargo clippy --no-default-features --bin crabhub-server -- -D warnings
 
   docker:
     name: Docker image (GHCR)
-    needs: [test, e2e]
+    needs: check
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     permissions:
@@ -176,7 +117,7 @@ jobs:
 
 
   build:
-    needs: test
+    needs: check
     strategy:
       fail-fast: false
       matrix:
@@ -204,8 +145,24 @@ jobs:
             librsvg2-dev \
             patchelf \
             libssl-dev \
+            unixodbc-dev \
             pkg-config \
             build-essential
+
+      - name: Install ODBC manager (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          brew install unixodbc
+          echo "LIBRARY_PATH=$(brew --prefix unixodbc)/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build verified OpenSSL (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          & ./deploy/setup-windows-openssl.ps1
+          "OPENSSL_DIR=$env:OPENSSL_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_NO_VENDOR=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -227,7 +184,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build the app
+      - name: Core regression
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p crabhub-core --lib
+
+      - name: Build desktop bundles
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

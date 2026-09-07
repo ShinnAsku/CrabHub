@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import type { ColumnInfo } from "@/types";
+import type { ColumnInfo } from "@/types/index";
 
 /**
  * Export query results to CSV format
