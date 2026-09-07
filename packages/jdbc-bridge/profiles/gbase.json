@@ -1,0 +1,7 @@
+{
+  "driver": "com.gbasedbt.jdbc.Driver",
+  "jar": "gbase8s.jar",
+  "urlTemplate": "jdbc:gbasedbt-sqli://{host}:{port}/{database}",
+  "dialect": "generic",
+  "properties": { "DELIMIDENT": "y" }
+}

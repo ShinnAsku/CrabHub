@@ -1,0 +1,7 @@
+{
+  "driver": "dm.jdbc.driver.DmDriver",
+  "jar": "dameng.jar",
+  "urlTemplate": "jdbc:dm://{host}:{port}",
+  "dialect": "dameng",
+  "properties": { "dbmdChkPrv": "true", "autoReconnect": "0" }
+}

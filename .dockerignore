@@ -1,0 +1,12 @@
+.git
+node_modules
+dist
+src-tauri/target
+**/target
+**/*.log
+.claude
+.superpowers
+test-results
+test
+e2e
+docs

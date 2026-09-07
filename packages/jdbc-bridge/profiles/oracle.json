@@ -1,0 +1,10 @@
+{
+  "driver": "oracle.jdbc.OracleDriver",
+  "jar": "oracle.jar",
+  "urlTemplate": "jdbc:oracle:thin:@//{host}:{port}/{database}",
+  "dialect": "oracle",
+  "properties": {
+    "remarksReporting": "true",
+    "oracle.net.CONNECT_TIMEOUT": "15000"
+  }
+}

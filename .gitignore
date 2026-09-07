@@ -39,6 +39,7 @@ coverage/
 e2e/.data/
 test-results/
 playwright-report/
+test/benchmark/results/
 
 # Temporary files
 *.tmp

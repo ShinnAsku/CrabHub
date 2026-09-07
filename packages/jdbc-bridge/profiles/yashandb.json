@@ -1,0 +1,6 @@
+{
+  "driver": "com.yashandb.jdbc.Driver",
+  "jar": "yashandb.jar",
+  "urlTemplate": "jdbc:yasdb://{host}:{port}/{database}",
+  "dialect": "yashandb"
+}
