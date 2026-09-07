@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **多数据库支持** — 17 种数据库：PostgreSQL、MySQL、SQLite、ClickHouse、GaussDB、Kingbase、Vastbase、YashanDB、OceanBase、TiDB、TDSQL、Oracle、SQL Server、DaMeng、GBase、Redis、MongoDB（Redis/MongoDB 为原生 Rust 驱动，桌面 / Web / MCP / CLI 全通道可用）
+- **数据库连接** — 17 个内置连接选项，支持程度不同。Oracle、达梦、崖山和 GBase 默认使用 Rust 原生适配路径，JDBC 为显式备选。见 [原生客户端安装](packages/native-clients/README.md) 和 [JDBC 安装](packages/jdbc-bridge/README.md)。
 - **Web 版 / Docker 部署** — 同一套 UI 跑在浏览器里，单二进制 `crabhub-server` + Docker 镜像，自带密码登录（PBKDF2 + 暴破退避），见 [Web 版部署](#web-版部署)
 - **MCP 接入** — 内置 MCP Server，Claude Code / Cursor / VS Code 等 AI 客户端可直接使用 CrabHub 已配置的连接查库
 - **CLI** — `crabhub connections/tables/columns/query` 命令行直接查库，复用应用内连接，支持 `--json` 输出
@@ -13,7 +13,7 @@
 - **SQL 编辑器** — 基于 Monaco Editor，语法高亮、schema 感知自动补全（列信息按需加载，无表数上限）、格式化、多语句执行
 - **数据浏览与编辑** — Navicat 风格表格视图、行内编辑、分页、导入导出（CSV/JSON/SQL/XLSX）
 - **流式导出** — Rust 侧分批拉取直写文件，内存恒定，任意大小表可导出，带进度与取消
-- **服务端查询取消** — 取消真正终止服务器上的查询（pg_cancel_backend / KILL QUERY / 协议级 CancelRequest），连接池不被幽灵查询占用
+- **查询取消** — 新会话在 PostgreSQL/MySQL 上按物理租约定向取消；取消请求不等于写入已回滚，提交状态未知时不自动重试
 - **ER 图** — 可视化表关系和外键，自动布局
 - **表设计器** — 字段、索引、外键、触发器设计，DDL 预览
 - **结构对比** — Schema Diff，生成迁移 SQL
@@ -26,6 +26,16 @@
 - **7 套主题** — Light / Dark / Solarized Light / Nord / Dracula / One Dark / Midnight，中英双语，自适应窗口缩放
 - **安全** — OS Keyring 凭证存储，AES-256-GCM 加密，TLS/SSH 隧道，SQL 注入防护
 
+## SQL 执行模式
+
+编辑器保留旧模式为默认，并为已适配的 SQLite 文件库、PostgreSQL 和 MySQL 提供显式脚本会话及独立只读模式。脚本使用固定物理连接，事务需要明确选择；CSV/JSON 导入可选参数化批量写入，数据迁移在已支持的目标上按页使用 bulk。
+
+支持逐语句渐进结果、主机密钥校验的 SSH、定向取消和故障开关。GaussDB 新会话与原生多结果集批处理仍未启用；大结果是预览而非完整导出。
+
+交互式事务由后端持有固定物理会话，按编辑器页签保存句柄，支持 SQLite 文件库、PostgreSQL 和 MySQL。事务中仅允许已分类的查询和 DML；MySQL 写入要求可见的 InnoDB 表且无触发器。提交、回滚、执行错误、取消、关闭页签、断连或连续闲置五分钟后释放会话，全局最多 16 个。事务内结果仍为有界预览，表格直接编辑和导入不能绕过事务会话。网络错误后的写入结果可能未知，不会自动重试。
+
+普通连接池入口拒绝独立的 `BEGIN`、`COMMIT`、`ROLLBACK` 等事务控制；完整事务脚本应使用脚本会话。事务占用连接池名额，池满只报告等待超时，不触发重连或自动扩大连接数。自定义 TLS 证书配置可保存和回填，其中私钥加密存储；当前运行时未接入自定义证书校验，显式使用时返回不支持，不会静默忽略。
+
 ## 技术栈
 
 | 层 | 技术 |
@@ -36,21 +46,22 @@
 | 状态管理 | Zustand 5 (modular stores: tab, ui, connection, history) |
 | 编辑器 | Monaco Editor |
 | 流程图 | ReactFlow (ER 图) |
-| 数据库驱动 | SQLx (PG/MySQL/SQLite), ShinnAsku/gaussdb-rs, tiberius (MSSQL), clickhouse-rs, ssh2 (SSH) |
+| 数据库驱动 | SQLx (PG/MySQL/SQLite), gaussdb-rs, Tiberius, ClickHouse HTTP, Rust 原生客户端适配器 |
 | 插件通信 | JSON-RPC 2.0 over stdio (Tabularis 兼容) |
 | AI | reqwest SSE streaming, DeepSeek/OpenAI API 兼容 |
 | 构建 | Vite 6 + Rust/Cargo |
-| 测试 | Vitest (前端), cargo test (Rust) |
 
 ## 快速开始
 
 ### 环境要求
 
 - **Node.js** ≥ 18
-- **Rust** ≥ 1.77.2
+- **Rust** 1.95（由 rust-toolchain.toml 固定）
 - **Windows**: Visual Studio Build Tools 2022 (C++ 桌面开发)
 - **macOS**: Xcode Command Line Tools
 - **Linux**: build-essential, libwebkit2gtk, libgtk-3-dev
+
+Windows 构建前在同一个 PowerShell 会话运行 `./deploy/setup-windows-openssl.ps1`，配置所需的静态 OpenSSL。Linux/macOS 构建还需要 unixODBC。
 
 ### 开发
 
@@ -77,97 +88,38 @@ npm run tauri build
 | `npm run tauri dev` | 启动桌面应用开发 |
 | `npm run tauri build` | 生产构建 |
 | `npm run typecheck` | TypeScript 类型检查 |
-| `npm run test:unit` | 前端单元测试 (Vitest) |
-| `npm run test:e2e` | 端到端测试（Playwright，自动启动 crabhub-server + SQLite，需先 `npm run build`） |
-| `npm run rust:test` | Rust 单元测试 (cargo test) |
-| `npm run test:all` | 全部检查（TS + Rust + 测试） |
+| `npm run architecture:check` | 核心依赖、功能归属和导入资源边界检查 |
 
 ## 项目结构
 
-```
-crabhub/
-├── src/                              # React 前端
-│   ├── components/                   # UI 组件
-│   │   ├── MainLayout.tsx            # 主布局（缩放、视图切换）
-│   │   ├── TitleBar.tsx              # 自定义标题栏（窗口控制 + 螃蟹图标）
-│   │   ├── Toolbar.tsx               # 工具栏操作
-│   │   ├── Sidebar.tsx               # 侧边栏（连接树 + schema 浏览器）
-│   │   ├── EditorPanel.tsx           # SQL 编辑器 + 页签内容分发
-│   │   ├── CrabHubMainPanel.tsx      # Navicat 风格数据库浏览器
-│   │   ├── main-panel/
-│   │   │   ├── MainPanelTabBar.tsx   # 双层 Tab 栏（编辑器 / 数据）
-│   │   │   ├── ObjectListView.tsx    # 对象列表（表 + 列预览 + DDL）
-│   │   │   ├── TableDataView.tsx     # 表数据视图（分页 + CRUD）
-│   │   │   └── TableContextMenu.tsx  # 表右键菜单
-│   │   ├── AIPanel.tsx               # AI 助手浮动面板
-│   │   ├── WelcomeScreen.tsx         # 欢迎页
-│   │   ├── ConnectionDialog.tsx      # 新建/编辑连接
-│   │   ├── PluginManager.tsx         # 插件管理
-│   │   ├── TableDesigner.tsx         # 表设计器
-│   │   ├── ERDiagram.tsx             # ER 图 (ReactFlow)
-│   │   ├── SchemaDiffDialog.tsx      # 结构对比
-│   │   ├── DataMigration.tsx         # 数据迁移
-│   │   ├── ImportExportDialog.tsx    # 导入导出
-│   │   ├── notebook/                 # SQL 笔记本
-│   │   └── query-builder/            # 可视化查询构建器
-│   ├── stores/                       # Zustand 状态管理 (modular)
-│   ├── lib/                          # 工具库 (i18n, DDL, 导出, 命令, 日志)
-│   ├── types/                        # TypeScript 类型
-│   └── styles/                       # CSS 主题变量
-│
-├── src-tauri/                        # Tauri Rust 后端
-│   ├── src/
-│   │   ├── db/                       # 数据库驱动层
-│   │   │   ├── trait_def.rs          # DatabaseConnection trait
-│   │   │   ├── manager.rs            # 连接管理器（心跳、重连、取消、元数据缓存）
-│   │   │   ├── types.rs              # 连接配置、查询结果（含 IPC wire 类型）、错误类型
-│   │   │   ├── export.rs             # 流式导出（CSV/JSON/SQL/XLSX + 进度事件）
-│   │   │   ├── dialect.rs            # SQL 方言配置（PG/MySQL/Oracle/...）
-│   │   │   ├── sql_limiter.rs        # SQL 注入防护（tokenizer + LIMIT 注入）
-│   │   │   ├── postgres.rs           # PostgreSQL 驱动 (SQLx)
-│   │   │   ├── mysql.rs              # MySQL 驱动 (SQLx)
-│   │   │   ├── sqlite.rs             # SQLite 驱动 (SQLx + rusqlite)
-│   │   │   ├── clickhouse.rs         # ClickHouse 驱动 (HTTP)
-│   │   │   ├── gauss_rs.rs           # GaussDB 驱动 (tokio-gaussdb wire protocol)
-│   │   │   ├── pg_compatible.rs      # PG 兼容驱动 (Kingbase/Vastbase/YashanDB)
-│   │   │   ├── sqlserver.rs          # SQL Server 驱动 (tiberius TDS)
-│   │   │   ├── odbc_bridge.rs        # ODBC 桥接 (Oracle/DaMeng/GBase 保留)
-│   │   │   └── smoke_tests.rs        # 冒烟测试
-│   │   ├── connection_store/         # 连接持久化 (SQLite + AES-256-GCM 加密)
-│   │   ├── plugins/                  # 插件系统
-│   │   │   ├── manager.rs            # 插件管理器（发现、加载、生命周期）
-│   │   │   ├── driver.rs             # PluginDriver (DatabaseConnection → JSON-RPC)
-│   │   │   ├── rpc.rs                # RpcClient (stdio JSON-RPC 2.0)
-│   │   │   ├── installer.rs          # 插件安装器（下载 + ZIP + SHA-256 校验）
-│   │   │   ├── registry.rs           # 插件注册表（本地 + 远程）
-│   │   │   └── commands.rs           # Tauri 命令
-│   │   ├── ai/                       # AI 模块
-│   │   │   ├── agent.rs              # Agent 循环（LLM ↔ 工具执行）
-│   │   │   ├── client.rs             # HTTP 客户端（SSE 流式 + 重试）
-│   │   │   ├── safety.rs             # SQL 安全门（多语句检测、DDL/DML 确认）
-│   │   │   ├── optimizer.rs          # SQL 静态分析优化建议
-│   │   │   ├── tools.rs              # AI 工具定义
-│   │   │   ├── types.rs              # AI 类型
-│   │   │   ├── commands.rs           # AI 相关 Tauri 命令
-│   │   │   └── context.rs            # AI 上下文构建
-│   │   ├── ssh/                      # SSH 隧道（ssh2）
-│   │   ├── rpc/                      # jsonrpsee RPC 服务器（127.0.0.1:3030，MCP/CLI 后端）
-│   │   ├── server/                   # axum Web 服务器（认证 + /api/invoke 命令分发）
-│   │   ├── bin/crabhub-server.rs     # Web 版独立二进制入口
-│   │   └── testing/                  # 测试工具（mock 数据 + benchmark）
-│   ├── icons/                        # 螃蟹图标 (ico/icns/png/svg, 40+ 平台)
-│   └── tauri.conf.json               # Tauri 配置
-│
-├── packages/
-│   ├── mcp-server/                   # MCP Server（stdio → 本地 RPC 桥，零依赖）
-│   └── cli/                          # CLI（connections/tables/columns/query，零依赖）
-│
-├── deploy/                           # Web 版部署（Dockerfile + docker-compose.yml）
-│
-├── test/                             # 前端测试
-│   ├── unit/                         # 单元测试（stores, i18n, utils, commands）
-│   └── mock/                         # Mock 数据
-└── package.json
+```text
+src/
+  app/                     应用级跨功能生命周期协调
+  components/              布局、导航和共享 UI
+  features/
+    connections/           连接表单、配置转换、仓储、连接状态
+    editor/                查询控制器、查询视图、结果表格、事务、笔记本
+    explorer/              对象树、表数据浏览、对象选择与元数据状态
+    schema/                表设计、ER 图、结构比较
+    transfer/              数据迁移与导入导出
+    ai/                    AI 界面、客户端及状态
+    docker/                Docker 管理
+    plugins/               插件管理界面
+    updates/               更新界面
+  stores/                  全局 UI 偏好、页签和历史记录
+  lib/                     传输、数据库 API、SQL 工具、日志和国际化
+  types/                   共享契约
+  styles/                  主题和布局样式
+src-tauri/
+  crates/crabhub-core/     无桌面依赖的独立 Rust 核心库
+    src/db/               连接生命周期、驱动创建、查询与元数据服务
+    src/connection_store/ 配置持久化、迁移与加密
+    src/ai/               AI 执行、安全检查与上下文
+    src/plugins/          插件发现、加载和协议
+    src/ssh/              SSH 传输
+  src/                    桌面命令、HTTP/RPC 适配与启动入口
+packages/                 CLI、MCP、JDBC 桥和原生客户端安装
+deploy/                   部署文件、构建准备和架构门禁
 ```
 
 ## 数据库驱动
@@ -181,19 +133,38 @@ crabhub/
 | GaussDB | 内置 | tokio-gaussdb wire protocol | 8000 |
 | Kingbase | 内置 | PG 兼容 (SQLx) | 54321 |
 | Vastbase | 内置 | PG 兼容 (SQLx) | 5432 |
-| YashanDB | 内置 | PG 兼容 (SQLx) | 1688 |
+| YashanDB | 原生 | Rust yashandb + yascli | 1688 |
 | OceanBase | 内置 | MySQL 兼容 (SQLx) | 3306 |
-| TiDB | 内置 | MySQL 兼容 (SQLx) | 3306 |
+| TiDB | 内置 | MySQL 兼容 (SQLx) | 4000 |
 | TDSQL | 内置 | MySQL 兼容 (SQLx) | 3306 |
-| Oracle | ODBC | ODBC 桥接 | 1521 |
+| Oracle | 原生 | Rust oracle + Oracle Instant Client | 1521 |
 | SQL Server | 内置 | tiberius TDS | 1433 |
-| DaMeng | ODBC | ODBC 桥接 | 5236 |
-| GBase | ODBC | ODBC 桥接 | 5258 |
+| DaMeng | 原生 | tokio-dameng 协议适配（完整厂商验收未完成） | 5236 |
+| GBase | 原生 | Rust odbc-api + GBase 8s ODBC（需安装客户端） | 5258 |
 | Redis | 内置 | redis-rs 原生异步（查询编辑器直接写 Redis 命令） | 6379 |
 | MongoDB | 内置 | mongodb 官方驱动（mongo-shell 语法：`db.coll.find({...})`，支持 `mongodb+srv://` URI） | 27017 |
 | DuckDB/CSV/... | 插件 | Tabularis JSON-RPC 协议（仅桌面版） | 插件定义 |
 
 ## 架构
+
+当前按模块化单体渐进收敛，保留 React、Zustand、Tauri 和 Rust：
+
+- [src/lib/transport.ts](src/lib/transport.ts) 只负责桌面、Web、Mock 路由与认证头；旧数据库命令导出保持兼容。
+- [src/features/connections/profile.ts](src/features/connections/profile.ts) 统一连接配置转换，[src/features/connections/repository.ts](src/features/connections/repository.ts) 封装持久化调用；运行状态更新不写配置，保存失败不更新本地列表。
+- [src-tauri/crates/crabhub-core/src/connection_store/mod.rs](src-tauri/crates/crabhub-core/src/connection_store/mod.rs) 负责兼容迁移与凭据加密；不再新增前端安全存储副本。旧副本仅在没有配置密码时用于迁移兼容。
+- [src-tauri/crates/crabhub-core/src/db/transactions.rs](src-tauri/crates/crabhub-core/src/db/transactions.rs) 负责事务会话、调用者隔离、资源限制与清理；桌面和 Web 使用同一请求协议。
+- [src-tauri/crates/crabhub-core/src/db/metadata_cache.rs](src-tauri/crates/crabhub-core/src/db/metadata_cache.rs) 统一元数据缓存的 60 秒有效期及按连接失效规则。
+- [src-tauri/crates/crabhub-core/src/db/manager.rs](src-tauri/crates/crabhub-core/src/db/manager.rs) 保留连接生命周期和兼容门面；[connector.rs](src-tauri/crates/crabhub-core/src/db/connector.rs) 管理驱动与 SSH 创建，[query_service.rs](src-tauri/crates/crabhub-core/src/db/query_service.rs) 管理查询和执行策略，[metadata_service.rs](src-tauri/crates/crabhub-core/src/db/metadata_service.rs) 管理目录、元数据和表数据访问。
+- [src/features/editor/transaction-store.ts](src/features/editor/transaction-store.ts) 只保存后端返回的页签事务句柄；[useQueryEditor.tsx](src/features/editor/useQueryEditor.tsx) 管理编辑器状态和操作，[QueryEditor.tsx](src/features/editor/QueryEditor.tsx) 与 [ResultTable.tsx](src/features/editor/ResultTable.tsx) 分别负责查询界面和结果展示。
+- [src/features/explorer/store.ts](src/features/explorer/store.ts) 拥有对象选择和元数据状态，全局 UI store 只保留主题、语言与界面偏好；[src/app/connection-lifecycle.ts](src/app/connection-lifecycle.ts) 协调断连后的事务和对象状态清理。
+- RPC 失败使用标准 JSON-RPC `error`，成功数据格式保持兼容；运行时能力查询由连接管理器统一提供给桌面和 Web。
+- Rust 默认启用 `desktop`，保持原桌面构建。`cargo build --manifest-path src-tauri/Cargo.toml --no-default-features --bin crabhub-server` 只构建无桌面服务端，依赖图不含 Tauri、GTK 或 WebKit；Docker 和 CI 使用这条路径，仍需原生数据库客户端及 ODBC 等相应运行依赖。
+
+核心已经物理拆为独立的 `crabhub-core` crate，不引用 Tauri；应用层保留桌面、HTTP 和 RPC 适配。前端按 connections、editor、explorer、schema、transfer、ai、docker、plugins、updates 分组。公共组件只放跨功能 UI，跨功能生命周期由应用层协调。CI 运行 `npm run architecture:check` 和 workspace Clippy，禁止将桌面依赖重新引入核心。
+
+Rust 回归使用 `cargo test --manifest-path src-tauri/Cargo.toml --workspace --lib`。实库事务契约 `live_transaction_contract` 默认跳过；设置 `CRABHUB_TRANSACTION_TEST_CONFIG` 为隔离数据库的运行配置 JSON 后，通过 `cargo test --manifest-path src-tauri/Cargo.toml -p crabhub-core --lib live_transaction_contract -- --ignored` 单独运行。不要将真实凭据提交到仓库。PostgreSQL/MySQL 隔离实例已验证提交、回滚、错误清理、调用者隔离和断连释放。
+
+2026-09-07 本机验证：Windows workspace 103 项回归通过，实库契约分别在 PostgreSQL/MySQL 通过；桌面与无桌面 Clippy、前端类型和生产构建通过。独立 Edge 验证登录、保存重载、查询结果、事务回滚、断连清理、语言切换、1280px/390px 操作和未登录拒绝。Linux Docker 构建受 Docker Hub CDN 与 Debian 软件源连接超时阻塞，未完成镜像运行验收；macOS/Linux 发布验证需在 CI 对应平台执行，不能以 Windows 编译结果替代。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
